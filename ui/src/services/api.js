@@ -376,6 +376,20 @@ export const systemAPI = {
     updateSIPProfile: (id, data) => api.put(`/system/sip-profiles/${id}`, data),
     deleteSIPProfile: (id) => api.delete(`/system/sip-profiles/${id}`),
 
+    // Messaging Providers
+    listMessagingProviders: () => api.get('/system/messaging-providers'),
+    getMessagingProvider: (id) => api.get(`/system/messaging-providers/${id}`),
+    createMessagingProvider: (data) => api.post('/system/messaging-providers', data),
+    updateMessagingProvider: (id, data) => api.put(`/system/messaging-providers/${id}`, data),
+    deleteMessagingProvider: (id) => api.delete(`/system/messaging-providers/${id}`),
+
+    // Global Dial Plans
+    listDialplans: () => api.get('/system/dialplans'),
+    getDialplan: (id) => api.get(`/system/dialplans/${id}`),
+    createDialplan: (data) => api.post('/system/dialplans', data),
+    updateDialplan: (id, data) => api.put(`/system/dialplans/${id}`, data),
+    deleteDialplan: (id) => api.delete(`/system/dialplans/${id}`),
+
     // Settings
     getSettings: () => api.get('/system/settings'),
     updateSettings: (data) => api.put('/system/settings', data),

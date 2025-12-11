@@ -104,8 +104,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
+import { systemAPI } from '../../services/api'
 
 const columns = [
   { key: 'name', label: 'Profile Name' },
@@ -115,85 +116,122 @@ const columns = [
   { key: 'features', label: 'Features' }
 ]
 
-const profiles = ref([
-  { 
-    id: 1, 
-    name: 'Basic (SMB)', 
-    code: 'basic', 
-    tenantCount: 15,
-    limits: { extensions: 10, disk: 5, channels: 5 },
-    features: { hospitality: false, recording: false, fax: false }
-  },
-  { 
-    id: 2, 
-    name: 'Hospitality Standard', 
-    code: 'hotel', 
-    tenantCount: 4,
-    limits: { extensions: 200, disk: 50, channels: 50 },
-    features: { hospitality: true, recording: false, fax: false }
-  },
-  { 
-    id: 3, 
-    name: 'Enterprise', 
-    code: 'enterprise', 
-    tenantCount: 2,
-    limits: { extensions: 1000, disk: 500, channels: 200 },
-    features: { hospitality: true, recording: true, fax: true }
-  },
-])
-
+const profiles = ref([])
+const loading = ref(true)
 const showModal = ref(false)
 const isEditing = ref(false)
-const activeProfile = ref({
+const saving = ref(false)
+
+const defaultProfile = () => ({
   name: '',
   code: '',
-  limits: { extensions: 10, disk: 5, channels: 5 },
-  features: { hospitality: false, recording: false, fax: false }
+  max_extensions: 10,
+  max_disk_gb: 5,
+  max_channels: 5,
+  hospitality_enabled: false,
+  recording_enabled: false,
+  fax_enabled: false
 })
 
+const activeProfile = ref(defaultProfile())
+
+// Transform API response to UI format
+const transformProfile = (p) => ({
+  id: p.id,
+  name: p.name,
+  code: p.code,
+  tenantCount: p.tenant_count || 0,
+  limits: {
+    extensions: p.max_extensions || 0,
+    disk: p.max_disk_gb || 0,
+    channels: p.max_channels || 0
+  },
+  features: {
+    hospitality: p.hospitality_enabled || false,
+    recording: p.recording_enabled || false,
+    fax: p.fax_enabled || false
+  },
+  // Keep raw for editing
+  _raw: p
+})
+
+// Transform UI format to API format
+const transformForAPI = (p) => ({
+  name: p.name,
+  code: p.code,
+  max_extensions: p.limits?.extensions || p.max_extensions || 10,
+  max_disk_gb: p.limits?.disk || p.max_disk_gb || 5,
+  max_channels: p.limits?.channels || p.max_channels || 5,
+  hospitality_enabled: p.features?.hospitality || p.hospitality_enabled || false,
+  recording_enabled: p.features?.recording || p.recording_enabled || false,
+  fax_enabled: p.features?.fax || p.fax_enabled || false
+})
+
+const loadProfiles = async () => {
+  loading.value = true
+  try {
+    const response = await systemAPI.listProfiles()
+    profiles.value = (response.data.data || response.data || []).map(transformProfile)
+  } catch (e) {
+    console.error('Failed to load profiles:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadProfiles)
+
 const editProfile = (profile) => {
-  activeProfile.value = JSON.parse(JSON.stringify(profile))
+  activeProfile.value = {
+    id: profile.id,
+    name: profile.name,
+    code: profile.code,
+    limits: { ...profile.limits },
+    features: { ...profile.features }
+  }
   isEditing.value = true
   showModal.value = true
 }
 
 const duplicateProfile = (profile) => {
   activeProfile.value = {
-    ...JSON.parse(JSON.stringify(profile)),
-    id: null,
     name: `${profile.name} (Copy)`,
     code: `${profile.code}_copy`,
-    tenantCount: 0
+    limits: { ...profile.limits },
+    features: { ...profile.features }
   }
   isEditing.value = false
   showModal.value = true
 }
 
-const deleteProfile = (profile) => {
-  if (confirm(`Delete profile "${profile.name}"?`)) {
-    profiles.value = profiles.value.filter(p => p.id !== profile.id)
+const deleteProfile = async (profile) => {
+  if (!confirm(`Delete profile "${profile.name}"?`)) return
+  try {
+    await systemAPI.deleteProfile(profile.id)
+    await loadProfiles()
+  } catch (e) {
+    alert('Failed to delete profile: ' + e.message)
   }
 }
 
-const saveProfile = () => {
-  if (isEditing.value) {
-    const idx = profiles.value.findIndex(p => p.id === activeProfile.value.id)
-    if (idx !== -1) profiles.value[idx] = { ...activeProfile.value }
-  } else {
-    profiles.value.push({
-      ...activeProfile.value,
-      id: Date.now(),
-      tenantCount: 0
-    })
+const saveProfile = async () => {
+  saving.value = true
+  try {
+    const data = transformForAPI(activeProfile.value)
+    if (isEditing.value && activeProfile.value.id) {
+      await systemAPI.updateProfile(activeProfile.value.id, data)
+    } else {
+      await systemAPI.createProfile(data)
+    }
+    await loadProfiles()
+    showModal.value = false
+    activeProfile.value = defaultProfile()
+    isEditing.value = false
+  } catch (e) {
+    alert('Failed to save profile: ' + e.message)
+  } finally {
+    saving.value = false
   }
-  showModal.value = false
-  activeProfile.value = {
-    name: '',
-    code: '',
-    limits: { extensions: 10, disk: 5, channels: 5 },
-    features: { hospitality: false, recording: false, fax: false }
-  }
-  isEditing.value = false
 }
 </script>
 

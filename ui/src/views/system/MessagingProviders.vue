@@ -254,8 +254,8 @@
 
         <div class="modal-actions">
           <button class="btn-secondary" @click="closeModal">Cancel</button>
-          <button class="btn-primary" @click="saveProvider" :disabled="!canSave">
-            {{ editingProvider ? 'Save Changes' : 'Add Provider' }}
+          <button class="btn-primary" @click="saveProvider" :disabled="!canSave || saving">
+            {{ saving ? 'Saving...' : (editingProvider ? 'Save Changes' : 'Add Provider') }}
           </button>
         </div>
       </div>
@@ -264,18 +264,21 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   Plus as PlusIcon, PlusCircle as PlusCircleIcon, Server as ServerIcon,
   GitMerge as GitMergeIcon, Wrench as WrenchIcon, Edit as EditIcon,
   Trash2 as TrashIcon, Send as SendIcon, Power as PowerIcon,
   X as XIcon, GripVertical as GripVerticalIcon
 } from 'lucide-vue-next'
+import { systemAPI } from '../../services/api'
 
 const activeTab = ref('providers')
 const showAddModal = ref(false)
 const showRuleModal = ref(false)
 const editingProvider = ref(null)
+const loading = ref(true)
+const saving = ref(false)
 
 const providerForm = ref({
   name: '',
@@ -287,62 +290,90 @@ const providerForm = ref({
   numbers: []
 })
 
-const providers = ref([
-  { id: 1, name: 'Twilio Primary', type: 'twilio', accountSid: 'ACd8a7...', status: 'connected', enabled: true, isDefault: true, isFailover: false, numbers: ['+14155551234', '+14155555678'], messagesToday: 1247 },
-  { id: 2, name: 'Bandwidth Backup', type: 'bandwidth', accountSid: 'BWa1b2...', status: 'connected', enabled: true, isDefault: false, isFailover: true, numbers: ['+14155559999'], messagesToday: 23 },
-  { id: 3, name: 'Telnyx International', type: 'telnyx', accountSid: 'TXf3g4...', status: 'connected', enabled: false, isDefault: false, isFailover: false, numbers: [], messagesToday: 0 },
-])
+const providers = ref([])
+const routingRules = ref([])
+const outboundTransforms = ref([])
+const inboundTransforms = ref([])
+const availableNumbers = ref([])
 
-const routingRules = ref([
-  { id: 1, priority: 1, pattern: '+1800*', provider: 'Bandwidth Backup', providerType: 'bandwidth', description: 'Toll-free via Bandwidth' },
-  { id: 2, priority: 2, pattern: '+44*', provider: 'Telnyx International', providerType: 'telnyx', description: 'UK numbers via Telnyx' },
-  { id: 3, priority: 3, pattern: '*', provider: 'Twilio Primary', providerType: 'twilio', description: 'Default fallback' },
-])
+const canSave = computed(() => providerForm.value.name && providerForm.value.accountSid)
 
-const outboundTransforms = ref([
-  { id: 1, match: '^1(\\d{10})$', replace: '+1$1', description: 'Add + prefix to US numbers' },
-  { id: 2, match: '^(\\d{10})$', replace: '+1$1', description: 'Add +1 to 10-digit numbers' },
-])
+const loadProviders = async () => {
+  loading.value = true
+  try {
+    const response = await systemAPI.listMessagingProviders()
+    const data = response.data.data || response.data || []
+    providers.value = data.map(p => ({
+      id: p.id,
+      name: p.name,
+      type: p.type,
+      accountSid: p.account_sid || '',
+      status: p.enabled ? 'connected' : 'disabled',
+      enabled: p.enabled,
+      isDefault: p.priority === 0,
+      isFailover: p.priority > 0,
+      numbers: p.phone_numbers || [],
+      messagesToday: 0
+    }))
+  } catch (e) {
+    console.error('Failed to load messaging providers:', e)
+  } finally {
+    loading.value = false
+  }
+}
 
-const inboundTransforms = ref([
-  { id: 1, match: '^\\+1(\\d{10})$', replace: '$1', description: 'Strip +1 from US numbers' },
-])
-
-const availableNumbers = ref([
-  { id: 1, number: '+1 (415) 555-1234', label: 'Main' },
-  { id: 2, number: '+1 (415) 555-5678', label: 'Sales' },
-  { id: 3, number: '+1 (415) 555-9999', label: 'Support' },
-])
-
-const canSave = computed(() => providerForm.value.name && providerForm.value.accountSid && providerForm.value.authToken)
+onMounted(loadProviders)
 
 const editProvider = (provider) => {
   editingProvider.value = provider
-  providerForm.value = { ...provider }
+  providerForm.value = { ...provider, authToken: '' }
   showAddModal.value = true
 }
 
 const testProvider = (provider) => alert(`Testing connection to ${provider.name}...`)
-const toggleProvider = (provider) => { provider.enabled = !provider.enabled }
-const deleteProvider = (provider) => {
-  if (confirm(`Delete provider ${provider.name}?`)) {
-    providers.value = providers.value.filter(p => p.id !== provider.id)
+
+const toggleProvider = async (provider) => {
+  try {
+    await systemAPI.updateMessagingProvider(provider.id, { enabled: !provider.enabled })
+    await loadProviders()
+  } catch (e) {
+    alert('Failed to toggle provider: ' + e.message)
   }
 }
 
-const saveProvider = () => {
-  if (editingProvider.value) {
-    Object.assign(editingProvider.value, providerForm.value)
-  } else {
-    providers.value.push({
-      id: Date.now(),
-      ...providerForm.value,
-      status: 'pending',
-      enabled: true,
-      messagesToday: 0
-    })
+const deleteProvider = async (provider) => {
+  if (!confirm(`Delete provider ${provider.name}?`)) return
+  try {
+    await systemAPI.deleteMessagingProvider(provider.id)
+    await loadProviders()
+  } catch (e) {
+    alert('Failed to delete provider: ' + e.message)
   }
-  closeModal()
+}
+
+const saveProvider = async () => {
+  saving.value = true
+  try {
+    const data = {
+      name: providerForm.value.name,
+      type: providerForm.value.type,
+      account_sid: providerForm.value.accountSid,
+      priority: providerForm.value.isDefault ? 0 : 1,
+      enabled: true,
+      phone_numbers: providerForm.value.numbers
+    }
+    if (editingProvider.value) {
+      await systemAPI.updateMessagingProvider(editingProvider.value.id, data)
+    } else {
+      await systemAPI.createMessagingProvider(data)
+    }
+    await loadProviders()
+    closeModal()
+  } catch (e) {
+    alert('Failed to save provider: ' + e.message)
+  } finally {
+    saving.value = false
+  }
 }
 
 const closeModal = () => {
@@ -351,7 +382,11 @@ const closeModal = () => {
   providerForm.value = { name: '', type: 'twilio', accountSid: '', authToken: '', isDefault: false, isFailover: false, numbers: [] }
 }
 
-const copyWebhook = () => alert('Webhook URL copied!')
+const copyWebhook = () => {
+  const url = `${window.location.origin}/api/webhooks/sms/${providerForm.value.name?.toLowerCase().replace(/\s+/g, '_') || 'provider'}`
+  navigator.clipboard?.writeText(url) || alert(`Webhook URL: ${url}`)
+}
+
 const editRule = (rule) => alert(`Edit rule: ${rule.pattern}`)
 const deleteRule = (rule) => { routingRules.value = routingRules.value.filter(r => r.id !== rule.id) }
 const editTransform = (t) => alert(`Edit transform: ${t.match}`)

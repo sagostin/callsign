@@ -27,9 +27,10 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
+import { systemAPI } from '../../services/api'
 
 const columns = [
    { key: 'name', label: 'Tenant Name' },
@@ -38,11 +39,32 @@ const columns = [
    { key: 'status', label: 'Status', width: '100px' }
 ]
 
-const tenants = ref([
-   { id: 1, name: 'Acme Corp', domain: 'acme.callsign.io', extensions: 12, limit_ext: 50, disk: '4.2GB', limit_disk: '10GB', status: 'Active' },
-   { id: 2, name: 'Hotel California', domain: 'hcal.callsign.io', extensions: 8, limit_ext: 200, disk: '1.1GB', limit_disk: '50GB', status: 'Active' },
-   { id: 3, name: 'StartUp Inc', domain: 'startup.io', extensions: 4, limit_ext: 5, disk: '0.2GB', limit_disk: '1GB', status: 'Suspended' },
-])
+const tenants = ref([])
+const loading = ref(true)
+
+const loadTenants = async () => {
+  loading.value = true
+  try {
+    const response = await systemAPI.listTenants()
+    const data = response.data.data || response.data || []
+    tenants.value = data.map(t => ({
+      id: t.id,
+      name: t.name,
+      domain: t.domain || t.name.toLowerCase().replace(/\s+/g, '-') + '.callsign.io',
+      extensions: t.extension_count || 0,
+      limit_ext: t.profile?.max_extensions || 50,
+      disk: t.disk_usage || '0GB',
+      limit_disk: (t.profile?.max_disk_gb || 10) + 'GB',
+      status: t.enabled !== false ? 'Active' : 'Suspended'
+    }))
+  } catch (e) {
+    console.error('Failed to load tenants:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadTenants)
 </script>
 
 <style scoped>

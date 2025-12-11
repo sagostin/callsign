@@ -397,6 +397,26 @@ func (r *Router) Init() {
 					logs.Get("/", r.Handler.GetSystemLogs)
 				}
 
+				// Messaging providers (system-level)
+				messaging := system.Party("/messaging-providers")
+				{
+					messaging.Get("/", r.Handler.ListMessagingProviders)
+					messaging.Post("/", r.Handler.CreateMessagingProvider)
+					messaging.Get("/{id}", r.Handler.GetMessagingProvider)
+					messaging.Put("/{id}", r.Handler.UpdateMessagingProvider)
+					messaging.Delete("/{id}", r.Handler.DeleteMessagingProvider)
+				}
+
+				// Global dial plans
+				dialplans := system.Party("/dialplans")
+				{
+					dialplans.Get("/", r.Handler.ListGlobalDialplans)
+					dialplans.Post("/", r.Handler.CreateGlobalDialplan)
+					dialplans.Get("/{id}", r.Handler.GetGlobalDialplan)
+					dialplans.Put("/{id}", r.Handler.UpdateGlobalDialplan)
+					dialplans.Delete("/{id}", r.Handler.DeleteGlobalDialplan)
+				}
+
 				// System status
 				system.Get("/status", r.Handler.GetSystemStatus)
 				system.Get("/stats", r.Handler.GetSystemStats)
@@ -416,15 +436,20 @@ func (r *Router) Init() {
 		}
 	}
 
-	// FreeSWITCH XML CURL endpoint (separate auth from main API)
-	fs := r.App.Party("/freeswitch")
+	// FreeSWITCH XML CURL endpoints (inside /api for consistency with Caddy routing)
+	fs := r.App.Party("/api/freeswitch")
 	fs.Use(freeswitch.FreeSwitchAuthMiddleware(r.Config))
 	{
-		// Main XML CURL handler - receives POST from mod_xml_curl
+		// Individual section handlers - FreeSWITCH mod_xml_curl calls these
+		fs.Post("/directory", r.FSHandler.HandleXMLCurl)     // sip_auth, registration
+		fs.Post("/dialplan", r.FSHandler.HandleXMLCurl)      // call routing
+		fs.Post("/configuration", r.FSHandler.HandleXMLCurl) // sofia, event_socket, etc
+
+		// Legacy combined handler (for backwards compatibility)
 		fs.Post("/xmlapi", r.FSHandler.HandleXMLCurl)
 
 		// CDR handler - receives POST from mod_xml_cdr
-		// Config in FreeSWITCH: <param name="url" value="http://api:8080/freeswitch/cdr"/>
+		// Config in FreeSWITCH: <param name="url" value="http://127.0.0.1:8080/api/freeswitch/cdr"/>
 		fs.Post("/cdr", r.FSHandler.HandleXMLCDR)
 
 		// Cache management endpoints

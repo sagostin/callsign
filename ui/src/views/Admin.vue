@@ -20,7 +20,7 @@
         </div>
         <div class="stat-info">
            <span class="label">Total Tenants</span>
-           <span class="value">12</span>
+           <span class="value">{{ stats.tenants }}</span>
         </div>
      </div>
      <div class="stat-card">
@@ -29,7 +29,7 @@
         </div>
         <div class="stat-info">
            <span class="label">Active Users</span>
-           <span class="value">1,248</span>
+           <span class="value">{{ stats.users.toLocaleString() }}</span>
         </div>
      </div>
      <div class="stat-card">
@@ -38,7 +38,7 @@
         </div>
         <div class="stat-info">
            <span class="label">Active Channels</span>
-           <span class="value">34</span>
+           <span class="value">{{ stats.active_channels }}</span>
         </div>
      </div>
      <div class="stat-card">
@@ -47,7 +47,7 @@
         </div>
         <div class="stat-info">
            <span class="label">System Alerts</span>
-           <span class="value">0</span>
+           <span class="value">{{ stats.alerts }}</span>
         </div>
      </div>
   </div>
@@ -62,10 +62,10 @@
               <span class="reg-title">Desk Phones</span>
            </div>
            <div class="reg-stats">
-              <div class="stat-num">847</div>
+              <div class="stat-num">{{ stats.devices?.desk_phones?.total || 0 }}</div>
               <div class="stat-details">
-                 <span class="online"><span class="dot"></span> 782 online</span>
-                 <span class="offline"><span class="dot"></span> 65 offline</span>
+                 <span class="online"><span class="dot"></span> {{ stats.devices?.desk_phones?.online || 0 }} online</span>
+                 <span class="offline"><span class="dot"></span> {{ (stats.devices?.desk_phones?.total || 0) - (stats.devices?.desk_phones?.online || 0) }} offline</span>
               </div>
            </div>
         </div>
@@ -75,10 +75,10 @@
               <span class="reg-title">Softphones</span>
            </div>
            <div class="reg-stats">
-              <div class="stat-num">356</div>
+              <div class="stat-num">{{ stats.devices?.softphones?.total || 0 }}</div>
               <div class="stat-details">
-                 <span class="online"><span class="dot"></span> 289 online</span>
-                 <span class="offline"><span class="dot"></span> 67 offline</span>
+                 <span class="online"><span class="dot"></span> {{ stats.devices?.softphones?.online || 0 }} online</span>
+                 <span class="offline"><span class="dot"></span> {{ (stats.devices?.softphones?.total || 0) - (stats.devices?.softphones?.online || 0) }} offline</span>
               </div>
            </div>
         </div>
@@ -88,10 +88,10 @@
               <span class="reg-title">Mobile Apps</span>
            </div>
            <div class="reg-stats">
-              <div class="stat-num">124</div>
+              <div class="stat-num">{{ stats.devices?.mobile?.total || 0 }}</div>
               <div class="stat-details">
-                 <span class="online"><span class="dot"></span> 98 online</span>
-                 <span class="offline"><span class="dot"></span> 26 offline</span>
+                 <span class="online"><span class="dot"></span> {{ stats.devices?.mobile?.online || 0 }} online</span>
+                 <span class="offline"><span class="dot"></span> {{ (stats.devices?.mobile?.total || 0) - (stats.devices?.mobile?.online || 0) }} offline</span>
               </div>
            </div>
         </div>
@@ -101,10 +101,10 @@
               <span class="reg-title">SIP Trunks</span>
            </div>
            <div class="reg-stats">
-              <div class="stat-num">8</div>
+              <div class="stat-num">{{ stats.devices?.trunks?.total || 0 }}</div>
               <div class="stat-details">
-                 <span class="online"><span class="dot"></span> 8 online</span>
-                 <span class="offline"><span class="dot"></span> 0 offline</span>
+                 <span class="online"><span class="dot"></span> {{ stats.devices?.trunks?.online || 0 }} online</span>
+                 <span class="offline"><span class="dot"></span> {{ (stats.devices?.trunks?.total || 0) - (stats.devices?.trunks?.online || 0) }} offline</span>
               </div>
            </div>
         </div>
@@ -131,7 +131,38 @@
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue'
 import { Building, Users, Phone, AlertTriangle, Monitor as MonitorIcon, Smartphone as SmartphoneIcon, Phone as PhoneIcon, Server as ServerIcon } from 'lucide-vue-next'
+import { systemAPI } from '../services/api'
+
+// Stats data
+const stats = ref({
+  tenants: 0,
+  users: 0,
+  active_channels: 0,
+  alerts: 0,
+  devices: {
+    desk_phones: { total: 0, online: 0 },
+    softphones: { total: 0, online: 0 },
+    mobile: { total: 0, online: 0 },
+    trunks: { total: 0, online: 0 }
+  }
+})
+
+const loading = ref(true)
+const error = ref(null)
+
+onMounted(async () => {
+  try {
+    const response = await systemAPI.getStats()
+    stats.value = response.data
+  } catch (e) {
+    error.value = e.message
+    console.error('Failed to load system stats:', e)
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <style scoped>

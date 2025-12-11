@@ -5,8 +5,8 @@
         <h2>Global System Settings</h2>
         <p class="text-muted text-sm">Cluster-wide configurations for SMTP, SIP, and FreeSWITCH defaults.</p>
       </div>
-      <button class="btn-primary" @click="save">
-        <SaveIcon class="btn-icon" /> Save All Changes
+      <button class="btn-primary" @click="save" :disabled="saving">
+        <SaveIcon class="btn-icon" /> {{ saving ? 'Saving...' : 'Save All Changes' }}
       </button>
     </div>
 
@@ -243,14 +243,17 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import {
   Mail as MailIcon, Server as ServerIcon, MessageSquare as MessageIcon,
   Database as DatabaseIcon, Layers as ClusterIcon, Save as SaveIcon,
   Send as SendIcon, GripVertical as GripVerticalIcon
 } from 'lucide-vue-next'
+import { systemAPI } from '../../services/api'
 
 const activeSection = ref('smtp')
+const loading = ref(true)
+const saving = ref(false)
 
 const sections = [
   { id: 'smtp', label: 'SMTP Settings', icon: MailIcon },
@@ -262,11 +265,11 @@ const sections = [
 
 const smtp = ref({
   enabled: true,
-  host: 'smtp.sendgrid.net',
+  host: '',
   port: '587',
-  username: 'apikey',
+  username: '',
   password: '',
-  fromEmail: 'noreply@callsign.io',
+  fromEmail: '',
   fromName: 'CallSign PBX',
   encryption: 'tls',
   timeout: 30
@@ -292,19 +295,54 @@ const freeswitch = ref({
 
 const messaging = ref({
   provider: 'twilio',
-  accountSid: 'ACglobal...',
+  accountSid: '',
   authToken: ''
 })
 
 const cluster = ref({
-  nodes: [
-    { id: 1, name: 'fs-node-01', ip: '10.0.1.10', status: 'online', sessions: 156, cpu: 23, memory: 45 },
-    { id: 2, name: 'fs-node-02', ip: '10.0.1.11', status: 'online', sessions: 142, cpu: 19, memory: 41 },
-    { id: 3, name: 'fs-node-03', ip: '10.0.1.12', status: 'standby', sessions: 0, cpu: 2, memory: 18 },
-  ]
+  nodes: []
 })
 
-const save = () => alert('Global settings saved!')
+const database = ref({
+  host: '',
+  dbName: ''
+})
+
+const loadSettings = async () => {
+  loading.value = true
+  try {
+    const response = await systemAPI.getSettings()
+    const data = response.data || {}
+    database.value.host = data.db_host || ''
+    // FreeSWITCH settings from API
+    if (data.freeswitch_host) {
+      freeswitch.value.host = data.freeswitch_host
+    }
+  } catch (e) {
+    console.error('Failed to load settings:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadSettings)
+
+const save = async () => {
+  saving.value = true
+  try {
+    await systemAPI.updateSettings({
+      smtp: smtp.value,
+      freeswitch: freeswitch.value,
+      messaging: messaging.value
+    })
+    alert('Settings saved successfully!')
+  } catch (e) {
+    alert('Failed to save settings: ' + (e.message || 'Not implemented yet'))
+  } finally {
+    saving.value = false
+  }
+}
+
 const testSmtp = () => alert('Test email sent to admin@callsign.io')
 </script>
 

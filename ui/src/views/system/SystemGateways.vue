@@ -129,10 +129,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { X as XIcon } from 'lucide-vue-next'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
+import { systemAPI } from '../../services/api'
 
 const columns = [
   { key: 'name', label: 'Gateway Name' },
@@ -142,44 +143,55 @@ const columns = [
   { key: 'status', label: 'Status', width: '120px' }
 ]
 
-const gateways = ref([
-  { id: 1, name: 'Flowroute Primary', hostname: 'sip.flowroute.com', type: 'Public', tenants: 8, status: 'Registered', protocol: 'udp', port: '5060', register: true, username: 'user1', access: 'all' },
-  { id: 2, name: 'Twilio Elastic SIP', hostname: 'callsign.pstn.twilio.com', type: 'Public', tenants: 5, status: 'Registered', protocol: 'tls', port: '5061', register: true, username: 'twilio_user', access: 'all' },
-  { id: 3, name: 'Telnyx Backup', hostname: 'sip.telnyx.com', type: 'Public', tenants: 3, status: 'Registered', protocol: 'udp', port: '5060', register: true, username: 'telnyx_acct', access: 'selected' },
-  { id: 4, name: 'Local PRI Gateway', hostname: '192.168.1.200', type: 'Local', tenants: 2, status: 'Error', protocol: 'udp', port: '5060', register: false, access: 'all' },
-])
-
+const gateways = ref([])
+const loading = ref(true)
 const showModal = ref(false)
 const isEditing = ref(false)
-const form = ref({
+const saving = ref(false)
+
+const defaultForm = () => ({
   id: null,
   name: '',
   hostname: '',
   protocol: 'udp',
-  port: '5060',
+  port: 5060,
   type: 'Public',
   register: false,
   username: '',
   password: '',
   realm: '',
-  access: 'all'
+  enabled: true
 })
 
-const resetForm = () => {
-  form.value = {
-    id: null,
-    name: '',
-    hostname: '',
-    protocol: 'udp',
-    port: '5060',
-    type: 'Public',
-    register: false,
-    username: '',
-    password: '',
-    realm: '',
-    access: 'all'
+const form = ref(defaultForm())
+
+const loadGateways = async () => {
+  loading.value = true
+  try {
+    const response = await systemAPI.listGateways()
+    const data = response.data.data || response.data || []
+    gateways.value = data.map(g => ({
+      id: g.id,
+      name: g.name,
+      hostname: g.proxy || g.hostname,
+      type: g.gateway_type || 'Public',
+      tenants: g.tenant_count || 0,
+      status: g.enabled ? (g.register ? 'Registered' : 'Active') : 'Disabled',
+      protocol: g.protocol || 'udp',
+      port: g.port || 5060,
+      register: g.register || false,
+      username: g.username || '',
+      realm: g.realm || '',
+      enabled: g.enabled !== false
+    }))
+  } catch (e) {
+    console.error('Failed to load gateways:', e)
+  } finally {
+    loading.value = false
   }
 }
+
+onMounted(loadGateways)
 
 const editGateway = (gw) => {
   form.value = { ...gw, password: '' }
@@ -187,33 +199,49 @@ const editGateway = (gw) => {
   showModal.value = true
 }
 
-const saveGateway = () => {
-  if (isEditing.value) {
-    const idx = gateways.value.findIndex(g => g.id === form.value.id)
-    if (idx !== -1) {
-      gateways.value[idx] = { ...form.value, status: gateways.value[idx].status }
+const saveGateway = async () => {
+  saving.value = true
+  try {
+    const data = {
+      name: form.value.name,
+      proxy: form.value.hostname,
+      protocol: form.value.protocol,
+      port: parseInt(form.value.port) || 5060,
+      gateway_type: form.value.type,
+      register: form.value.register,
+      username: form.value.username,
+      password: form.value.password,
+      realm: form.value.realm,
+      enabled: form.value.enabled
     }
-  } else {
-    gateways.value.push({
-      ...form.value,
-      id: Date.now(),
-      status: 'Pending',
-      tenants: 0
-    })
+    if (isEditing.value && form.value.id) {
+      await systemAPI.updateGateway(form.value.id, data)
+    } else {
+      await systemAPI.createGateway(data)
+    }
+    await loadGateways()
+    showModal.value = false
+    isEditing.value = false
+    form.value = defaultForm()
+  } catch (e) {
+    alert('Failed to save gateway: ' + (e.response?.data?.error || e.message))
+  } finally {
+    saving.value = false
   }
-  showModal.value = false
-  isEditing.value = false
-  resetForm()
 }
 
-const deleteGateway = (gw) => {
-  if (confirm(`Delete gateway "${gw.name}"?`)) {
-    gateways.value = gateways.value.filter(g => g.id !== gw.id)
+const deleteGateway = async (gw) => {
+  if (!confirm(`Delete gateway "${gw.name}"?`)) return
+  try {
+    await systemAPI.deleteGateway(gw.id)
+    await loadGateways()
+  } catch (e) {
+    alert('Failed to delete gateway: ' + e.message)
   }
 }
 
 const restartGateway = (gw) => {
-  alert(`Restarting gateway: ${gw.name}`)
+  alert(`Restarting gateway: ${gw.name} - Not implemented yet`)
 }
 </script>
 

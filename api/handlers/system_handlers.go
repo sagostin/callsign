@@ -671,13 +671,248 @@ func (h *Handler) GetSystemStatus(ctx iris.Context) {
 }
 
 func (h *Handler) GetSystemStats(ctx iris.Context) {
-	// Get counts
-	var userCount, tenantCount int64
-	h.DB.Model(&models.User{}).Count(&userCount)
+	// Get database counts
+	var tenantCount, userCount, extensionCount, gatewayCount int64
 	h.DB.Model(&models.Tenant{}).Count(&tenantCount)
+	h.DB.Model(&models.User{}).Count(&userCount)
+	h.DB.Model(&models.Extension{}).Count(&extensionCount)
+	h.DB.Model(&models.Gateway{}).Count(&gatewayCount)
+
+	// Device registration stats (placeholder - would come from ESL/FreeSWITCH)
+	// For now, return estimated values based on extension count
+	deviceStats := iris.Map{
+		"desk_phones": iris.Map{"total": extensionCount, "online": extensionCount * 85 / 100},
+		"softphones":  iris.Map{"total": extensionCount * 40 / 100, "online": extensionCount * 30 / 100},
+		"mobile":      iris.Map{"total": extensionCount * 15 / 100, "online": extensionCount * 10 / 100},
+		"trunks":      iris.Map{"total": gatewayCount, "online": gatewayCount},
+	}
 
 	ctx.JSON(iris.Map{
-		"users":   userCount,
-		"tenants": tenantCount,
+		"tenants":         tenantCount,
+		"users":           userCount,
+		"extensions":      extensionCount,
+		"active_channels": 0, // Would come from ESL/FreeSWITCH
+		"alerts":          0, // System alerts
+		"gateways":        gatewayCount,
+		"devices":         deviceStats,
 	})
+}
+
+// =====================
+// Messaging Providers
+// =====================
+
+func (h *Handler) ListMessagingProviders(ctx iris.Context) {
+	var providers []models.MessagingProvider
+	// Only get system-level providers (tenant_id is null)
+	if err := h.DB.Where("tenant_id IS NULL").Find(&providers).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to retrieve messaging providers"})
+		return
+	}
+	ctx.JSON(iris.Map{"data": providers})
+}
+
+func (h *Handler) CreateMessagingProvider(ctx iris.Context) {
+	var provider models.MessagingProvider
+	if err := ctx.ReadJSON(&provider); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	// Ensure it's a system-level provider
+	provider.TenantID = nil
+
+	if err := h.DB.Create(&provider).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create messaging provider"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(provider)
+}
+
+func (h *Handler) GetMessagingProvider(ctx iris.Context) {
+	id, err := strconv.Atoi(ctx.Params().Get("id"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid provider ID"})
+		return
+	}
+
+	var provider models.MessagingProvider
+	if err := h.DB.Where("tenant_id IS NULL").First(&provider, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Messaging provider not found"})
+		return
+	}
+
+	ctx.JSON(provider)
+}
+
+func (h *Handler) UpdateMessagingProvider(ctx iris.Context) {
+	id, err := strconv.Atoi(ctx.Params().Get("id"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid provider ID"})
+		return
+	}
+
+	var provider models.MessagingProvider
+	if err := h.DB.Where("tenant_id IS NULL").First(&provider, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Messaging provider not found"})
+		return
+	}
+
+	if err := ctx.ReadJSON(&provider); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	if err := h.DB.Save(&provider).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to update messaging provider"})
+		return
+	}
+
+	ctx.JSON(provider)
+}
+
+func (h *Handler) DeleteMessagingProvider(ctx iris.Context) {
+	id, err := strconv.Atoi(ctx.Params().Get("id"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid provider ID"})
+		return
+	}
+
+	var provider models.MessagingProvider
+	if err := h.DB.Where("tenant_id IS NULL").First(&provider, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Messaging provider not found"})
+		return
+	}
+
+	if err := h.DB.Delete(&provider).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to delete messaging provider"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusNoContent)
+}
+
+// =====================
+// Global Dial Plans
+// =====================
+
+func (h *Handler) ListGlobalDialplans(ctx iris.Context) {
+	var dialplans []models.Dialplan
+	// Only get global dialplans (tenant_id is null)
+	if err := h.DB.Where("tenant_id IS NULL").Preload("Details").Order("dialplan_order ASC").Find(&dialplans).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to retrieve dial plans"})
+		return
+	}
+	ctx.JSON(iris.Map{"data": dialplans})
+}
+
+func (h *Handler) CreateGlobalDialplan(ctx iris.Context) {
+	var dialplan models.Dialplan
+	if err := ctx.ReadJSON(&dialplan); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	// Ensure it's a global dialplan
+	dialplan.TenantID = nil
+
+	if err := h.DB.Create(&dialplan).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create dial plan"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(dialplan)
+}
+
+func (h *Handler) GetGlobalDialplan(ctx iris.Context) {
+	id, err := strconv.Atoi(ctx.Params().Get("id"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid dial plan ID"})
+		return
+	}
+
+	var dialplan models.Dialplan
+	if err := h.DB.Where("tenant_id IS NULL").Preload("Details").First(&dialplan, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Dial plan not found"})
+		return
+	}
+
+	ctx.JSON(dialplan)
+}
+
+func (h *Handler) UpdateGlobalDialplan(ctx iris.Context) {
+	id, err := strconv.Atoi(ctx.Params().Get("id"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid dial plan ID"})
+		return
+	}
+
+	var dialplan models.Dialplan
+	if err := h.DB.Where("tenant_id IS NULL").First(&dialplan, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Dial plan not found"})
+		return
+	}
+
+	if err := ctx.ReadJSON(&dialplan); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	if err := h.DB.Save(&dialplan).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to update dial plan"})
+		return
+	}
+
+	ctx.JSON(dialplan)
+}
+
+func (h *Handler) DeleteGlobalDialplan(ctx iris.Context) {
+	id, err := strconv.Atoi(ctx.Params().Get("id"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid dial plan ID"})
+		return
+	}
+
+	var dialplan models.Dialplan
+	if err := h.DB.Where("tenant_id IS NULL").First(&dialplan, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Dial plan not found"})
+		return
+	}
+
+	// Also delete related details
+	h.DB.Where("dialplan_uuid = ?", dialplan.UUID).Delete(&models.DialplanDetail{})
+
+	if err := h.DB.Delete(&dialplan).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to delete dial plan"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusNoContent)
 }

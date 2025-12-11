@@ -176,9 +176,12 @@ router.beforeEach((to, from, next) => {
   // Public routes that don't need auth
   const publicRoutes = ['Login', 'AdminLogin']
   if (publicRoutes.includes(to.name)) {
-    // If already logged in, redirect
+    // If already logged in, redirect based on role
     if (token && user) {
-      if (['system_admin', 'tenant_admin'].includes(user.role)) {
+      if (user.role === 'system_admin') {
+        return next('/system')
+      }
+      if (user.role === 'tenant_admin') {
         return next('/admin')
       }
       return next('/dialer')
@@ -193,6 +196,15 @@ router.beforeEach((to, from, next) => {
       return next('/admin/login')
     }
     return next('/login')
+  }
+
+  // System admin restrictions
+  if (user?.role === 'system_admin') {
+    // Block system admin from user portal routes
+    const userPortalRoutes = ['', '/', '/dialer', '/messages', '/voicemail', '/conferences', '/fax', '/contacts', '/recordings', '/history', '/settings']
+    if (userPortalRoutes.includes(to.path) || to.path.match(/^\/(?!admin|system)/)) {
+      return next('/system')
+    }
   }
 
   // Check role permissions for admin/system routes
