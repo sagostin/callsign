@@ -76,10 +76,8 @@ type CallRecording struct {
 	// Access Control
 	IsConfidential bool `json:"is_confidential" gorm:"default:false"`
 
-	// Transcription
-	TranscriptionID     *uint               `json:"transcription_id,omitempty"`
+	// Transcription status (transcription is linked via CallRecordingID in Transcription model)
 	TranscriptionStatus TranscriptionStatus `json:"transcription_status" gorm:"default:'pending'"`
-	Transcription       *Transcription      `json:"transcription,omitempty" gorm:"foreignKey:ID;references:TranscriptionID"`
 
 	// Tags/Notes
 	Tags  string `json:"tags,omitempty"` // Comma-separated tags
