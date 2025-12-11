@@ -61,17 +61,17 @@ type Config struct {
 // Load reads configuration from environment variables
 func Load() *Config {
 	return &Config{
-		// Server
-		ServerHost: getEnv("SERVER_HOST", "0.0.0.0"),
-		ServerPort: getEnv("SERVER_PORT", "8080"),
+		// Server - matches API_HOST, API_PORT from docker-compose
+		ServerHost: getEnv("API_HOST", "0.0.0.0"),
+		ServerPort: getEnv("API_PORT", "8080"),
 
-		// Database
-		DBHost:     getEnv("DB_HOST", "localhost"),
-		DBPort:     getEnv("DB_PORT", "5432"),
-		DBUser:     getEnv("DB_USER", "callsign"),
-		DBPassword: getEnv("DB_PASSWORD", ""),
-		DBName:     getEnv("DB_NAME", "callsign"),
-		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
+		// Database - matches POSTGRES_* from docker-compose
+		DBHost:     getEnv("POSTGRES_HOST", "localhost"),
+		DBPort:     getEnv("POSTGRES_PORT", "5432"),
+		DBUser:     getEnv("POSTGRES_USER", "callsign"),
+		DBPassword: getEnv("POSTGRES_PASSWORD", ""),
+		DBName:     getEnv("POSTGRES_DB", "callsign"),
+		DBSSLMode:  getEnv("POSTGRES_SSLMODE", "disable"),
 
 		// JWT
 		JWTSecret:     getEnv("JWT_SECRET", "change-me-in-production"),
@@ -80,10 +80,10 @@ func Load() *Config {
 		// CORS
 		CORSOrigins: []string{getEnv("CORS_ORIGINS", "*")},
 
-		// FreeSWITCH
-		FreeSwitchHost:     getEnv("FREESWITCH_HOST", "localhost"),
-		FreeSwitchPort:     getEnv("FREESWITCH_PORT", "8021"),
-		FreeSwitchPassword: getEnv("FREESWITCH_PASSWORD", "ClueCon"),
+		// FreeSWITCH - matches FREESWITCH_* from docker-compose
+		FreeSwitchHost:     getEnv("FREESWITCH_HOST", "127.0.0.1"),
+		FreeSwitchPort:     getEnv("FREESWITCH_ESL_PORT", "8021"),
+		FreeSwitchPassword: getEnv("FREESWITCH_ESL_PASSWORD", "ClueCon"),
 		FreeSwitchAPIKey:   getEnv("FREESWITCH_API_KEY", ""),
 
 		// ESL Service Addresses
@@ -92,9 +92,9 @@ func Load() *Config {
 		ESLConferenceAddr:  getEnv("ESL_CONFERENCE_ADDR", "127.0.0.4:9001"),
 		ESLQueueAddr:       getEnv("ESL_QUEUE_ADDR", "127.0.0.5:9001"),
 
-		// ClickHouse
+		// ClickHouse - matches CLICKHOUSE_* from docker-compose
 		ClickHouseEnabled: getEnvAsBool("CLICKHOUSE_ENABLED", false),
-		ClickHouseHost:    getEnv("CLICKHOUSE_HOST", "localhost"),
+		ClickHouseHost:    getEnv("CLICKHOUSE_HOST", "127.0.0.1"),
 		ClickHousePort:    getEnv("CLICKHOUSE_PORT", "9000"),
 		ClickHouseDB:      getEnv("CLICKHOUSE_DB", "callsign"),
 		ClickHouseUser:    getEnv("CLICKHOUSE_USER", "default"),
@@ -104,9 +104,9 @@ func Load() *Config {
 		LogLevel:  getEnv("LOG_LEVEL", "info"),
 		LogFormat: getEnv("LOG_FORMAT", "text"),
 
-		// Loki
+		// Loki - matches LOKI_URL from docker-compose
 		LokiEnabled:  getEnvAsBool("LOKI_ENABLED", false),
-		LokiPushURL:  getEnv("LOKI_PUSH_URL", ""),
+		LokiPushURL:  getEnv("LOKI_URL", ""),
 		LokiUsername: getEnv("LOKI_USERNAME", ""),
 		LokiPassword: getEnv("LOKI_PASSWORD", ""),
 		LokiJob:      getEnv("LOKI_JOB", "callsign-api"),
