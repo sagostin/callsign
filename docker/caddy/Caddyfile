@@ -1,0 +1,44 @@
+# CallSign Caddyfile - Development (No SSL)
+# Caddy proxies to Vite dev server and API
+#
+# For production with SSL, change :80 to your domain name
+
+{
+    auto_https off
+    admin off
+}
+
+:80 {
+    # API routes
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8080
+    }
+    
+    # WebSocket connections (API)
+    handle /ws/* {
+        reverse_proxy 127.0.0.1:8080
+    }
+    
+    # FreeSWITCH XML handler
+    handle /freeswitch/* {
+        reverse_proxy 127.0.0.1:8080
+    }
+    
+    # UI - Vite dev server on port 5173
+    handle {
+        reverse_proxy 127.0.0.1:5173
+    }
+    
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options SAMEORIGIN
+        X-XSS-Protection "1; mode=block"
+    }
+    
+    # Logging
+    log {
+        output stdout
+        format console
+    }
+}
