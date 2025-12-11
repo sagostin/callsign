@@ -150,14 +150,25 @@ collect_freeswitch_config() {
     echo -e "${CYAN}=== FreeSWITCH Configuration ===${NC}"
     echo ""
     
-    prompt_yes_no "Is FreeSWITCH running on this host?" "y" FS_LOCAL
-    
-    if [ "$FS_LOCAL" = "true" ]; then
-        FREESWITCH_HOST="host.docker.internal"
+    # Check if FreeSWITCH is already installed
+    if command -v freeswitch &> /dev/null || [ -f /usr/bin/freeswitch ]; then
+        log_success "FreeSWITCH is already installed"
+        INSTALL_FREESWITCH=false
     else
-        prompt "FreeSWITCH host IP/hostname" "127.0.0.1" FREESWITCH_HOST
+        prompt_yes_no "Install FreeSWITCH on this server?" "y" INSTALL_FREESWITCH
+        
+        if [ "$INSTALL_FREESWITCH" = "true" ]; then
+            echo ""
+            log_info "FreeSWITCH will be installed from SignalWire packages"
+            log_info "Get a free token at: https://freeswitch.signalwire.com/"
+            echo ""
+            prompt "SignalWire token (leave empty to skip official packages)" "" SIGNALWIRE_TOKEN
+        fi
     fi
     
+    # FreeSWITCH connection settings
+    echo ""
+    FREESWITCH_HOST="127.0.0.1"
     prompt "FreeSWITCH ESL port" "8021" FREESWITCH_ESL_PORT
     prompt "FreeSWITCH ESL password" "ClueCon" FREESWITCH_ESL_PASSWORD
 }
@@ -1090,8 +1101,31 @@ main() {
     echo "     Password: admin (change immediately!)"
     echo ""
     
-    # Ask to start
-    prompt_yes_no "Start CallSign now?" "y" START_NOW
+    # Ask to install FreeSWITCH
+    if [ "$INSTALL_FREESWITCH" = "true" ]; then
+        echo ""
+        echo -e "${CYAN}=== Installing FreeSWITCH ===${NC}"
+        echo ""
+        
+        # Export config for the install script
+        export CALLSIGN_API_URL="http://127.0.0.1:8080"
+        export ESL_PASSWORD="$FREESWITCH_ESL_PASSWORD"
+        export SIGNALWIRE_TOKEN="$SIGNALWIRE_TOKEN"
+        
+        if [ "$EUID" -eq 0 ]; then
+            # Already root
+            bash "$SCRIPT_DIR/install/freeswitch/install.sh"
+        else
+            # Need sudo
+            log_info "FreeSWITCH installation requires root privileges"
+            sudo -E bash "$SCRIPT_DIR/install/freeswitch/install.sh"
+        fi
+        
+        log_success "FreeSWITCH installed and configured"
+    fi
+    
+    # Ask to start Docker
+    prompt_yes_no "Start CallSign Docker services now?" "y" START_NOW
     
     if [ "$START_NOW" = "true" ]; then
         log_info "Building and starting services..."
