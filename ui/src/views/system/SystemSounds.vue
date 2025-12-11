@@ -140,6 +140,14 @@
             </div>
           </div>
           <div class="form-group">
+            <label>Source</label>
+            <div class="tabs-small">
+               <button :class="{ active: uploadSource === 'file' }" @click="uploadSource = 'file'">Upload File</button>
+               <button :class="{ active: uploadSource === 'record' }" @click="uploadSource = 'record'">Record Audio</button>
+            </div>
+          </div>
+          
+          <div v-if="uploadSource === 'file'" class="form-group">
             <label>Audio File</label>
             <div class="file-upload">
               <input type="file" id="sound-file" accept=".wav,.mp3,.ogg" @change="handleFileUpload">
@@ -149,6 +157,12 @@
                 <span v-else>Choose file or drag & drop</span>
               </label>
             </div>
+          </div>
+          
+          <div v-else class="form-group">
+             <label>Record New Sound</label>
+             <AudioRecorder @record-complete="handleRecordingComplete" />
+             <p class="text-xs text-muted mt-2" v-if="uploadForm.blob">Recording captured ready for upload.</p>
           </div>
         </div>
         <div class="modal-footer">
@@ -168,6 +182,7 @@ import {
   Phone, Bell, VolumeX, Volume2, Music, MessageSquare, AlertCircle, Clock
 } from 'lucide-vue-next'
 import { systemAPI, tenantMediaAPI } from '../../services/api'
+import AudioRecorder from '../../components/common/AudioRecorder.vue'
 
 const selectedLanguage = ref('en/us') // changed to path format
 const expandedCategories = ref([])
@@ -177,7 +192,8 @@ const currentlyPlaying = ref(null)
 const isLoading = ref(false)
 const rawData = ref([]) // The full tree from API
 
-const uploadForm = ref({ name: '', description: '', category: 'ivr', language: 'en/us', file: null })
+const uploadForm = ref({ name: '', description: '', category: 'ivr', language: 'en/us', file: null, blob: null })
+const uploadSource = ref('file')
 
 // Computed languages based on available folders in rawData
 const languages = computed(() => {
@@ -211,7 +227,8 @@ const languages = computed(() => {
   return langs.length ? langs : [{ code: 'en/us', name: 'English (US)', flag: '🇺🇸' }]
 })
 
-// Dynamically generate categories based on modules found in the selected language
+// Dynamically generate categories based on available files
+// For strict mode we might want predefined categories, but dynamic is fine here.
 const categories = computed(() => {
   const cats = new Set()
   // Default categories to ensure order/existence of common ones
@@ -328,6 +345,9 @@ const uploadForLang = (sound) => {
   uploadForm.value.name = sound.name
   uploadForm.value.description = ''
   uploadForm.value.category = sound.category
+  uploadForm.value.file = null
+  uploadForm.value.blob = null
+  uploadSource.value = 'file'
   showUploadModal.value = true
 }
 
@@ -335,8 +355,22 @@ const handleFileUpload = (event) => {
     uploadForm.value.file = event.target.files[0]
 }
 
+const handleRecordingComplete = (blob) => {
+    uploadForm.value.blob = blob
+}
+
 const submitUpload = async () => {
-    if (!uploadForm.value.file) return
+    let fileToUpload = null
+    
+    if (uploadSource.value === 'file') {
+        fileToUpload = uploadForm.value.file
+    } else {
+        if (!uploadForm.value.blob) return
+        // Create file from blob
+        fileToUpload = new File([uploadForm.value.blob], uploadForm.value.name || 'recording.wav', { type: 'audio/wav' })
+    }
+    
+    if (!fileToUpload) return
     
     // Construct path: lang/region/voice/category
     // We need to know the voice. For now, default to first voice found or 'callie'?
@@ -355,7 +389,7 @@ const submitUpload = async () => {
     const targetPath = `${uploadForm.value.language}/${voice}/${uploadForm.value.category}`
     
     const formData = new FormData()
-    formData.append('file', uploadForm.value.file)
+    formData.append('file', fileToUpload)
     formData.append('path', targetPath)
     
     try {
@@ -463,6 +497,11 @@ onMounted(() => {
     padding: 2px 6px; border-radius: 4px; border: 1px solid #fcd34d; margin-left: 8px;
     text-transform: uppercase;
 }
+
+.tabs-small { display: flex; gap: 4px; margin-bottom: 8px; }
+.tabs-small button { padding: 4px 8px; font-size: 12px; border: 1px solid var(--border-color); background: white; border-radius: 4px; cursor: pointer; }
+.tabs-small button.active { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+.mt-2 { margin-top: 8px; }
 
 /* Modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; }

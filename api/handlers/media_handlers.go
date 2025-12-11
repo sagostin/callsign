@@ -409,3 +409,143 @@ func (h *Handler) DeleteTenantSound(ctx iris.Context) {
 
 	ctx.JSON(iris.Map{"message": "File deleted, revert to system sound if applicable"})
 }
+
+// ListTenantMusic merges system music with tenant overrides
+func (h *Handler) ListTenantMusic(ctx iris.Context) {
+	tenantID := middleware.GetScopedTenantID(ctx)
+	if tenantID == 0 {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Tenant context required"})
+		return
+	}
+
+	systemRoot := "/usr/share/freeswitch/sounds/music"
+	tenantRoot := fmt.Sprintf("/usr/share/freeswitch/sounds/music/tenants/%d", tenantID)
+
+	systemTree, err := buildFileTree(systemRoot, systemRoot)
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to scan system music: " + err.Error()})
+		return
+	}
+	markSource(systemTree, "system")
+
+	tenantTree, err := buildFileTree(tenantRoot, tenantRoot)
+	if err == nil && tenantTree != nil {
+		markSource(tenantTree, "tenant")
+		mergeTrees(systemTree, tenantTree)
+	}
+
+	// Unlike sounds, we don't need to filter specific dirs from music root usually
+	// But let's filter "tenants" if it exists in root
+	var filteredChildren []*FileNode
+	for _, child := range systemTree.Children {
+		if child.Name != "tenants" {
+			filteredChildren = append(filteredChildren, child)
+		}
+	}
+	systemTree.Children = filteredChildren
+
+	ctx.JSON(iris.Map{"data": systemTree.Children})
+}
+
+// UploadTenantMusic handles uploading a music file to a specific rate directory for a tenant
+func (h *Handler) UploadTenantMusic(ctx iris.Context) {
+	tenantID := middleware.GetScopedTenantID(ctx)
+	if tenantID == 0 {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Tenant context required"})
+		return
+	}
+
+	// Rate folder (e.g., "8000", "16000", "32000", "48000")
+	rate := ctx.FormValue("rate")
+	if rate != "8000" && rate != "16000" && rate != "32000" && rate != "48000" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid sample rate"})
+		return
+	}
+
+	file, header, err := ctx.FormFile("file")
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Failed to read file"})
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if ext != ".wav" && ext != ".mp3" && ext != ".ogg" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid file type"})
+		return
+	}
+
+	// Save to /usr/share/freeswitch/sounds/music/tenants/{id}/{rate}
+	baseDir := fmt.Sprintf("/usr/share/freeswitch/sounds/music/tenants/%d", tenantID)
+	fullRatePath := filepath.Join(baseDir, rate)
+
+	if err := os.MkdirAll(fullRatePath, 0755); err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create tenant directory"})
+		return
+	}
+
+	dstPath := filepath.Join(fullRatePath, header.Filename)
+	out, err := os.Create(dstPath)
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create destination file"})
+		return
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, file); err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to save file"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": filepath.Join(rate, header.Filename), "is_override": true})
+}
+
+// DeleteTenantMusic removes a tenant music file
+func (h *Handler) DeleteTenantMusic(ctx iris.Context) {
+	tenantID := middleware.GetScopedTenantID(ctx)
+	if tenantID == 0 {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Tenant context required"})
+		return
+	}
+
+	// Path relative to music/tenant root (e.g. "8000/music.wav")
+	targetPath := ctx.URLParam("path")
+	if targetPath == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Path required"})
+		return
+	}
+
+	if strings.Contains(targetPath, "..") {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid path"})
+		return
+	}
+
+	baseDir := fmt.Sprintf("/usr/share/freeswitch/sounds/music/tenants/%d", tenantID)
+	fullPath := filepath.Join(baseDir, targetPath)
+
+	if err := os.Remove(fullPath); err != nil {
+		if os.IsNotExist(err) {
+			ctx.StatusCode(http.StatusNotFound)
+			ctx.JSON(iris.Map{"error": "File not found"})
+			return
+		}
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to delete file"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "File deleted"})
+}

@@ -30,11 +30,15 @@
       </div>
 
       <DataTable :columns="columns" :data="currentFiles" actions>
+        <template #name="{ item }">
+            <span class="font-mono text-sm">{{ item.name }}</span>
+            <span v-if="item.isOverride" class="override-badge">Override</span>
+        </template>
         <template #size="{ value }">
             <span class="font-mono text-xs">{{ (value / 1024).toFixed(1) }} KB</span>
         </template>
         <template #actions="{ item }">
-          <button class="btn-link text-bad" @click="deleteFile(item)">Delete</button>
+          <button v-if="isTenant && item.isOverride" class="btn-link text-bad" @click="deleteFile(item)">Revert</button>
         </template>
       </DataTable>
   </div>
@@ -62,7 +66,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { systemAPI } from '../services/api'
+import { systemAPI, tenantMediaAPI } from '../services/api'
 import DataTable from '../components/common/DataTable.vue'
 import { Upload as UploadIcon, Download as DownloadIcon } from 'lucide-vue-next'
 
@@ -85,6 +89,8 @@ const rates = computed(() => {
     return folders.length ? folders : ['8000', '16000', '32000', '48000']
 })
 
+const isTenant = computed(() => !!localStorage.getItem('tenantId'))
+
 // Get files for active tab
 const currentFiles = computed(() => {
     const rateNode = musicData.value.find(n => n.name === activeTab.value)
@@ -94,7 +100,8 @@ const currentFiles = computed(() => {
         name: f.name,
         path: f.path,
         size: f.size,
-        rate: activeTab.value
+        rate: activeTab.value,
+        isOverride: f.is_override
     }))
 })
 
@@ -107,7 +114,8 @@ const columns = [
 const loadMusic = async () => {
     isLoading.value = true
     try {
-        const response = await systemAPI.listMusic()
+        const apiCall = isTenant.value ? tenantMediaAPI.listMusic : systemAPI.listMusic
+        const response = await apiCall()
         musicData.value = response.data.data
         // Set active tab to first available if not set or invalid
         if (rates.value.length && !rates.value.includes(activeTab.value)) {
@@ -132,7 +140,11 @@ const submitUpload = async () => {
     formData.append('rate', activeTab.value)
     
     try {
-        await systemAPI.uploadMusic(formData)
+        if (isTenant.value) {
+            await tenantMediaAPI.uploadMusic(formData)
+        } else {
+            await systemAPI.uploadMusic(formData)
+        }
         showUploadModal.value = false
         loadMusic()
     } catch (e) {
@@ -141,9 +153,20 @@ const submitUpload = async () => {
     }
 }
 
-const deleteFile = (file) => {
-    // Implement delete if API supports it
-    console.log('Delete not implemented', file)
+const deleteFile = async (file) => {
+    if (isTenant.value) {
+        if (!confirm(`Delete/Revert ${file.name}?`)) return
+        try {
+            await tenantMediaAPI.deleteMusic(file.path)
+            loadMusic()
+        } catch (e) {
+            console.error('Delete failed', e)
+            alert('Failed to delete file')
+        }
+    } else {
+        // System admin delete not implemented yet/safe
+        console.log('System delete restricted for safety', file)
+    }
 }
 
 onMounted(() => {
@@ -228,4 +251,10 @@ onMounted(() => {
 .form-group { margin-bottom: 16px; }
 .form-group label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
 .input-field { width: 100%; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; box-sizing: border-box; }
+
+.override-badge { 
+    font-size: 10px; font-weight: 700; color: #d97706; background: #fef3c7; 
+    padding: 2px 6px; border-radius: 4px; border: 1px solid #fcd34d; margin-left: 8px;
+    text-transform: uppercase;
+}
 </style>

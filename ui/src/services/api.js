@@ -441,6 +441,12 @@ export const tenantMediaAPI = {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
     deleteSound: (path) => api.delete('/media/sounds', { params: { path } }),
+
+    listMusic: () => api.get('/media/music'),
+    uploadMusic: (formData) => api.post('/media/music', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    deleteMusic: (path) => api.delete('/media/music', { params: { path } }),
 }
 
 // =====================

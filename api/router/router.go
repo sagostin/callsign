@@ -322,6 +322,10 @@ func (r *Router) Init() {
 					media.Get("/sounds", r.Handler.ListTenantSounds)
 					media.Post("/sounds", r.Handler.UploadTenantSound)
 					media.Delete("/sounds", r.Handler.DeleteTenantSound)
+
+					media.Get("/music", r.Handler.ListTenantMusic)
+					media.Post("/music", r.Handler.UploadTenantMusic)
+					media.Delete("/music", r.Handler.DeleteTenantMusic)
 				}
 			}
 
