@@ -142,11 +142,10 @@ const routes = [
 
       { path: 'provisioning-templates', component: () => import('./views/system/ProvisioningTemplates.vue'), name: 'ProvisioningTemplates' },
       { path: 'firmware', component: () => import('./views/system/FirmwareUpdates.vue'), name: 'FirmwareUpdates' },
-      { path: 'sounds', component: () => import('./views/system/SystemSounds.vue'), name: 'SystemSounds' },
-      { path: 'recordings', component: () => import('./views/system/SystemRecordings.vue'), name: 'SystemRecordings' },
-      { path: 'phrases', component: () => import('./views/system/SystemPhrases.vue'), name: 'SystemPhrases' },
-      { path: 'moh', component: () => import('./views/system/SystemStreams.vue'), name: 'MusicOnHold' },
-      { path: 'streams', component: () => import('./views/system/SystemStreams.vue'), name: 'SystemStreams' },
+      { path: 'media', component: () => import('./views/system/SystemMedia.vue'), name: 'SystemMedia' },
+      { path: 'sounds', redirect: '/system/media' }, // legacy redirect
+      { path: 'moh', redirect: '/system/media' },    // legacy redirect
+      { path: 'phrases', redirect: '/system/media' },// legacy redirect
 
       { path: 'infrastructure', component: () => import('./views/Infrastructure.vue'), name: 'Infrastructure' },
       { path: 'gateways', component: () => import('./views/system/SystemGateways.vue'), name: 'SystemGateways' },
