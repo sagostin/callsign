@@ -1,5 +1,5 @@
-# UI Dockerfile for CallSign
-FROM node:20-alpine AS builder
+# UI Dockerfile for CallSign - Vue Dev Server
+FROM node:20-alpine
 
 WORKDIR /app
 
@@ -10,26 +10,8 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build production bundle - API URL uses relative path which works with reverse proxy
-ENV VITE_API_URL=/api
-RUN npm run build
+# Expose Vite dev server port
+EXPOSE 5173
 
-# -----------------------------------
-# Runtime image (nginx)
-# -----------------------------------
-FROM nginx:alpine
-
-# Copy built files
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Copy nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Expose port
-EXPOSE 80
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
-
-CMD ["nginx", "-g", "daemon off;"]
+# Run Vite dev server (host mode for Docker)
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]

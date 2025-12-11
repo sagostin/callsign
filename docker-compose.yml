@@ -19,6 +19,19 @@ services:
       - caddy_config:/config
 
   # ========================
+  # UI Server (Vue/Vite)
+  # ========================
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: callsign-ui
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      - VITE_API_URL=/api
+
+  # ========================
   # API Server
   # ========================
   api:
@@ -58,20 +71,6 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-
-  # ========================
-  # UI Server (Vue + Nginx)
-  # ========================
-  # UI runs on port 3001 to avoid conflicts
-  ui:
-    build:
-      context: ./ui
-      dockerfile: Dockerfile
-    container_name: callsign-ui
-    restart: unless-stopped
-    network_mode: "host"
-    environment:
-      - NGINX_PORT=3001
 
   # ========================
   # PostgreSQL Database
