@@ -17,8 +17,9 @@ type Message struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Ownership
-	TenantID    uint `json:"tenant_id" gorm:"index;not null"`
-	ExtensionID uint `json:"extension_id" gorm:"index"`
+	TenantID       uint  `json:"tenant_id" gorm:"index;not null"`
+	ExtensionID    uint  `json:"extension_id" gorm:"index"`
+	ConversationID *uint `json:"conversation_id" gorm:"index"` // Links to Conversation
 
 	// Type: sms or mms
 	Type string `json:"type" gorm:"default:'sms'"` // sms, mms
@@ -109,8 +110,8 @@ type Conversation struct {
 	LastMessage time.Time `json:"last_message"`
 	Status      string    `json:"status" gorm:"default:'active'"` // active, archived, blocked
 
-	// Relations
-	Messages []Message `json:"messages,omitempty" gorm:"foreignKey:TenantID;references:TenantID"`
+	// Relations - Messages linked via ConversationID
+	Messages []Message `json:"messages,omitempty" gorm:"foreignKey:ConversationID"`
 }
 
 // BeforeCreate generates UUID
