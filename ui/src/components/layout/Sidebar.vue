@@ -279,6 +279,10 @@
             <NetworkIcon class="nav-icon" />
             <span class="nav-label">SIP Profiles</span>
           </router-link>
+          <router-link to="/system/acls" class="nav-item" v-tooltip="isCollapsed ? 'Access Control' : ''">
+            <Shield class="nav-icon" />
+            <span class="nav-label">Access Control</span>
+          </router-link>
           <router-link to="/system/gateways" class="nav-item" v-tooltip="isCollapsed ? 'Gateways' : ''">
             <GlobeIcon class="nav-icon" />
             <span class="nav-label">Gateways</span>

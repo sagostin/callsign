@@ -291,6 +291,49 @@ func (m *Manager) IsRunning() bool {
 	return m.running
 }
 
+// IsConnected returns whether the ESL client is connected
+func (m *Manager) IsConnected() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.Client != nil && m.Client.IsConnected()
+}
+
+// API sends an API command to FreeSWITCH and returns the result
+func (m *Manager) API(command string) (string, error) {
+	m.mu.RLock()
+	client := m.Client
+	m.mu.RUnlock()
+
+	if client == nil {
+		return "", fmt.Errorf("not connected")
+	}
+	return client.API(command)
+}
+
+// SubscribeEvents subscribes to additional FreeSWITCH events
+func (m *Manager) SubscribeEvents(events ...string) error {
+	m.mu.RLock()
+	client := m.Client
+	m.mu.RUnlock()
+
+	if client == nil {
+		return fmt.Errorf("not connected")
+	}
+	return client.Subscribe(events...)
+}
+
+// Events returns the event channel from the client
+func (m *Manager) Events() <-chan *eventsocket.Event {
+	m.mu.RLock()
+	client := m.Client
+	m.mu.RUnlock()
+
+	if client == nil {
+		return nil
+	}
+	return client.Events()
+}
+
 // handleQueue handles call center queue calls
 func (m *Manager) handleQueue(conn *eventsocket.Connection) {
 	defer conn.Close()

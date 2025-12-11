@@ -7,6 +7,7 @@ require (
 	github.com/fiorix/go-eventsocket v0.0.0-20240904143901-40effc2c18a7
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.1
 	github.com/joho/godotenv v1.5.1
 	github.com/kataras/iris/v12 v12.2.11
 	github.com/kataras/neffos v0.0.24-0.20240408172741-99c879ba0ede

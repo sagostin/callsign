@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/kataras/iris/v12"
+	"gorm.io/gorm"
 )
 
 // =====================
@@ -911,6 +912,205 @@ func (h *Handler) DeleteGlobalDialplan(ctx iris.Context) {
 	if err := h.DB.Delete(&dialplan).Error; err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
 		ctx.JSON(iris.Map{"error": "Failed to delete dial plan"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusNoContent)
+}
+
+// =====================
+// Access Control Lists (ACLs)
+// =====================
+
+func (h *Handler) ListACLs(ctx iris.Context) {
+	var acls []models.ACL
+	if err := h.DB.Preload("Nodes", func(db *gorm.DB) *gorm.DB {
+		return db.Order("priority ASC")
+	}).Find(&acls).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to retrieve ACLs"})
+		return
+	}
+	ctx.JSON(iris.Map{"data": acls})
+}
+
+func (h *Handler) CreateACL(ctx iris.Context) {
+	var acl models.ACL
+	if err := ctx.ReadJSON(&acl); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	if err := h.DB.Create(&acl).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create ACL"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(acl)
+}
+
+func (h *Handler) GetACL(ctx iris.Context) {
+	id, err := strconv.Atoi(ctx.Params().Get("id"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid ACL ID"})
+		return
+	}
+
+	var acl models.ACL
+	if err := h.DB.Preload("Nodes", func(db *gorm.DB) *gorm.DB {
+		return db.Order("priority ASC")
+	}).First(&acl, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "ACL not found"})
+		return
+	}
+
+	ctx.JSON(acl)
+}
+
+func (h *Handler) UpdateACL(ctx iris.Context) {
+	id, err := strconv.Atoi(ctx.Params().Get("id"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid ACL ID"})
+		return
+	}
+
+	var acl models.ACL
+	if err := h.DB.First(&acl, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "ACL not found"})
+		return
+	}
+
+	if err := ctx.ReadJSON(&acl); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	if err := h.DB.Save(&acl).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to update ACL"})
+		return
+	}
+
+	ctx.JSON(acl)
+}
+
+func (h *Handler) DeleteACL(ctx iris.Context) {
+	id, err := strconv.Atoi(ctx.Params().Get("id"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid ACL ID"})
+		return
+	}
+
+	var acl models.ACL
+	if err := h.DB.First(&acl, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "ACL not found"})
+		return
+	}
+
+	// Delete associated nodes
+	h.DB.Where("acl_uuid = ?", acl.UUID).Delete(&models.ACLNode{})
+
+	if err := h.DB.Delete(&acl).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to delete ACL"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusNoContent)
+}
+
+func (h *Handler) CreateACLNode(ctx iris.Context) {
+	id, err := strconv.Atoi(ctx.Params().Get("id"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid ACL ID"})
+		return
+	}
+
+	var acl models.ACL
+	if err := h.DB.First(&acl, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "ACL not found"})
+		return
+	}
+
+	var node models.ACLNode
+	if err := ctx.ReadJSON(&node); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	node.ACLUUID = acl.UUID
+
+	if err := h.DB.Create(&node).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create ACL node"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(node)
+}
+
+func (h *Handler) UpdateACLNode(ctx iris.Context) {
+	nodeId, err := strconv.Atoi(ctx.Params().Get("nodeId"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid node ID"})
+		return
+	}
+
+	var node models.ACLNode
+	if err := h.DB.First(&node, nodeId).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "ACL node not found"})
+		return
+	}
+
+	if err := ctx.ReadJSON(&node); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	if err := h.DB.Save(&node).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to update ACL node"})
+		return
+	}
+
+	ctx.JSON(node)
+}
+
+func (h *Handler) DeleteACLNode(ctx iris.Context) {
+	nodeId, err := strconv.Atoi(ctx.Params().Get("nodeId"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid node ID"})
+		return
+	}
+
+	var node models.ACLNode
+	if err := h.DB.First(&node, nodeId).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "ACL node not found"})
+		return
+	}
+
+	if err := h.DB.Delete(&node).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to delete ACL node"})
 		return
 	}
 

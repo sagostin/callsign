@@ -75,6 +75,7 @@ func main() {
 	// Initialize router with ESL manager reference
 	r := router.NewRouter(db, cfg)
 	r.Init()
+	r.Handler.SetESLManager(eslManager)
 
 	// Graceful shutdown handling
 	quit := make(chan os.Signal, 1)

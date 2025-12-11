@@ -9,12 +9,22 @@
 }
 
 :80 {
+    # API WebSocket console (must be before general API handler)
+    @websocket {
+        header Connection *Upgrade*
+        header Upgrade websocket
+        path /api/system/console*
+    }
+    handle @websocket {
+        reverse_proxy 127.0.0.1:8080
+    }
+    
     # API routes
     handle /api/* {
         reverse_proxy 127.0.0.1:8080
     }
     
-    # WebSocket connections (API)
+    # Legacy WebSocket connections
     handle /ws/* {
         reverse_proxy 127.0.0.1:8080
     }

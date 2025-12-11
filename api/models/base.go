@@ -53,6 +53,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&SIPProfileDomain{},
 		&SofiaGlobalSetting{},
 		&Gateway{},
+		&ACL{},
+		&ACLNode{},
 
 		// Dialplan models
 		&Dialplan{},

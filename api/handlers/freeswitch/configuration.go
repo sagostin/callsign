@@ -235,23 +235,74 @@ func (h *FSHandler) buildSofiaConfig(hostname string) string {
 
 // buildACLConfig generates acl.conf XML for access control lists
 func (h *FSHandler) buildACLConfig() string {
-	// For now, return a basic ACL config
-	// TODO: Build from database
-	return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<document type="freeswitch/xml">
-  <section name="configuration">
-    <configuration name="acl.conf" description="Network Lists">
-      <network-lists>
-        <list name="lan" default="allow">
-          <node type="allow" cidr="192.168.0.0/16"/>
-          <node type="allow" cidr="10.0.0.0/8"/>
-          <node type="allow" cidr="172.16.0.0/12"/>
-        </list>
-        <list name="loopback.auto" default="allow"/>
-      </network-lists>
-    </configuration>
-  </section>
-</document>`
+	var b strings.Builder
+
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
+	b.WriteString("\n")
+	b.WriteString(`<document type="freeswitch/xml">`)
+	b.WriteString("\n")
+	b.WriteString(`  <section name="configuration">`)
+	b.WriteString("\n")
+	b.WriteString(`    <configuration name="acl.conf" description="Network Lists">`)
+	b.WriteString("\n")
+	b.WriteString(`      <network-lists>`)
+	b.WriteString("\n")
+
+	// Fetch all ACLs from database
+	var acls []models.ACL
+	h.DB.Where("enabled = ?", true).Preload("Nodes", "enabled = ?", true).Find(&acls)
+
+	for _, acl := range acls {
+		defaultAction := acl.Default
+		if defaultAction == "" {
+			defaultAction = "deny"
+		}
+		b.WriteString(fmt.Sprintf(`        <list name="%s" default="%s">`, xmlEscape(acl.Name), xmlEscape(defaultAction)))
+		b.WriteString("\n")
+
+		for _, node := range acl.Nodes {
+			nodeType := node.Type
+			if nodeType == "" {
+				nodeType = "allow"
+			}
+			if node.CIDR != "" {
+				b.WriteString(fmt.Sprintf(`          <node type="%s" cidr="%s"/>`, xmlEscape(nodeType), xmlEscape(node.CIDR)))
+				b.WriteString("\n")
+			} else if node.Domain != "" {
+				b.WriteString(fmt.Sprintf(`          <node type="%s" domain="%s"/>`, xmlEscape(nodeType), xmlEscape(node.Domain)))
+				b.WriteString("\n")
+			}
+		}
+
+		b.WriteString(`        </list>`)
+		b.WriteString("\n")
+	}
+
+	// If no ACLs in database, provide sensible defaults
+	if len(acls) == 0 {
+		b.WriteString(`        <list name="lan" default="allow">`)
+		b.WriteString("\n")
+		b.WriteString(`          <node type="allow" cidr="192.168.0.0/16"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <node type="allow" cidr="10.0.0.0/8"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <node type="allow" cidr="172.16.0.0/12"/>`)
+		b.WriteString("\n")
+		b.WriteString(`        </list>`)
+		b.WriteString("\n")
+		b.WriteString(`        <list name="loopback.auto" default="allow"/>`)
+		b.WriteString("\n")
+	}
+
+	b.WriteString(`      </network-lists>`)
+	b.WriteString("\n")
+	b.WriteString(`    </configuration>`)
+	b.WriteString("\n")
+	b.WriteString(`  </section>`)
+	b.WriteString("\n")
+	b.WriteString(`</document>`)
+
+	return b.String()
 }
 
 // buildIVRConfig generates ivr.conf XML for IVR menus

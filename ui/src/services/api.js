@@ -390,6 +390,17 @@ export const systemAPI = {
     updateDialplan: (id, data) => api.put(`/system/dialplans/${id}`, data),
     deleteDialplan: (id) => api.delete(`/system/dialplans/${id}`),
 
+    // Access Control Lists (ACLs)
+    listACLs: () => api.get('/system/acls'),
+    getACL: (id) => api.get(`/system/acls/${id}`),
+    createACL: (data) => api.post('/system/acls', data),
+    updateACL: (id, data) => api.put(`/system/acls/${id}`, data),
+    deleteACL: (id) => api.delete(`/system/acls/${id}`),
+    // ACL Nodes
+    createACLNode: (aclId, data) => api.post(`/system/acls/${aclId}/nodes`, data),
+    updateACLNode: (aclId, nodeId, data) => api.put(`/system/acls/${aclId}/nodes/${nodeId}`, data),
+    deleteACLNode: (aclId, nodeId) => api.delete(`/system/acls/${aclId}/nodes/${nodeId}`),
+
     // Settings
     getSettings: () => api.get('/system/settings'),
     updateSettings: (data) => api.put('/system/settings', data),

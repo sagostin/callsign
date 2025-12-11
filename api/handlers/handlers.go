@@ -4,6 +4,7 @@ import (
 	"callsign/config"
 	"callsign/middleware"
 	"callsign/models"
+	"callsign/services/esl"
 	"net/http"
 	"time"
 
@@ -13,9 +14,11 @@ import (
 
 // Handler holds all HTTP handlers and their dependencies
 type Handler struct {
-	DB     *gorm.DB
-	Config *config.Config
-	Auth   *middleware.AuthMiddleware
+	DB             *gorm.DB
+	Config         *config.Config
+	Auth           *middleware.AuthMiddleware
+	ESLManager     *esl.Manager
+	ConsoleManager *ConsoleManager
 }
 
 // NewHandler creates a new Handler instance
@@ -25,6 +28,11 @@ func NewHandler(db *gorm.DB, cfg *config.Config) *Handler {
 		Config: cfg,
 		Auth:   middleware.NewAuthMiddleware(cfg, db),
 	}
+}
+
+// SetESLManager sets the ESL manager reference
+func (h *Handler) SetESLManager(m *esl.Manager) {
+	h.ESLManager = m
 }
 
 // =====================

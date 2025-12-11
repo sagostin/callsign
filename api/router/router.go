@@ -417,9 +417,26 @@ func (r *Router) Init() {
 					dialplans.Delete("/{id}", r.Handler.DeleteGlobalDialplan)
 				}
 
+				// Access Control Lists (ACLs)
+				acls := system.Party("/acls")
+				{
+					acls.Get("/", r.Handler.ListACLs)
+					acls.Post("/", r.Handler.CreateACL)
+					acls.Get("/{id}", r.Handler.GetACL)
+					acls.Put("/{id}", r.Handler.UpdateACL)
+					acls.Delete("/{id}", r.Handler.DeleteACL)
+					// ACL nodes (entries)
+					acls.Post("/{id}/nodes", r.Handler.CreateACLNode)
+					acls.Put("/{id}/nodes/{nodeId}", r.Handler.UpdateACLNode)
+					acls.Delete("/{id}/nodes/{nodeId}", r.Handler.DeleteACLNode)
+				}
+
 				// System status
 				system.Get("/status", r.Handler.GetSystemStatus)
 				system.Get("/stats", r.Handler.GetSystemStats)
+
+				// WebSocket console (live FreeSWITCH logs)
+				system.Get("/console", r.Handler.FreeSwitchConsole)
 			}
 
 			// User portal routes

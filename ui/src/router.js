@@ -150,6 +150,7 @@ const routes = [
       { path: 'infrastructure', component: () => import('./views/Infrastructure.vue'), name: 'Infrastructure' },
       { path: 'gateways', component: () => import('./views/system/SystemGateways.vue'), name: 'SystemGateways' },
       { path: 'sip-profiles', component: () => import('./views/admin/SipProfiles.vue'), name: 'SipProfiles' },
+      { path: 'acls', component: () => import('./views/system/ACLProfiles.vue'), name: 'ACLProfiles' },
       { path: 'dial-plans', component: () => import('./views/admin/GlobalDialPlans.vue'), name: 'GlobalDialPlans' },
       { path: 'phrases', component: () => import('./views/Phrases.vue'), name: 'SystemPhrases' },
       { path: 'phrases/new', component: () => import('./views/admin/PhraseForm.vue'), name: 'SystemPhraseFormNew' },
