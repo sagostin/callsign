@@ -125,12 +125,16 @@ const saving = ref(false)
 const defaultProfile = () => ({
   name: '',
   code: '',
-  max_extensions: 10,
-  max_disk_gb: 5,
-  max_channels: 5,
-  hospitality_enabled: false,
-  recording_enabled: false,
-  fax_enabled: false
+  limits: {
+    extensions: 10,
+    disk: 5,
+    channels: 5
+  },
+  features: {
+    hospitality: false,
+    recording: false,
+    fax: false
+  }
 })
 
 const activeProfile = ref(defaultProfile())

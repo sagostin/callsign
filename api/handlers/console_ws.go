@@ -186,23 +186,23 @@ func (h *Handler) FreeSwitchConsole(ctx iris.Context) {
 
 // startLogStreaming subscribes to FS log events and broadcasts them
 // Falls back to reading the log file directly if ESL is not connected
+// startLogStreaming subscribes to FS log events and broadcasts them
+// Always streams from log file for text logs, uses ESL for events
 func (h *Handler) startLogStreaming() {
-	// Try ESL first
+	// Always tail the log file for text logs
+	go h.tailLogFile("/var/log/freeswitch/freeswitch.log")
+
+	// If ESL connected, stream events (but not LOGs to avoid duplication)
 	if h.ESLManager != nil && h.ESLManager.IsConnected() {
-		// Subscribe to log events
-		err := h.ESLManager.SubscribeEvents("LOG", "CUSTOM", "CHANNEL_CREATE", "CHANNEL_DESTROY")
+		// Subscribe to events (removed LOG to avoid duplicates)
+		err := h.ESLManager.SubscribeEvents("CUSTOM", "CHANNEL_CREATE", "CHANNEL_DESTROY")
 		if err != nil {
 			log.Errorf("Failed to subscribe to log events: %v", err)
 		} else {
-			log.Info("Started FreeSWITCH log streaming via ESL")
+			log.Info("Started FreeSWITCH event streaming via ESL")
 			go h.streamESLEvents()
-			return
 		}
 	}
-
-	// Fallback: tail the log file directly
-	log.Info("ESL not available, falling back to log file streaming")
-	go h.tailLogFile("/var/log/freeswitch/freeswitch.log")
 }
 
 // streamESLEvents processes ESL events and broadcasts them
