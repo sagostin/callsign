@@ -67,8 +67,7 @@ services:
     volumes:
       - storage_data:/var/lib/callsign
       # FreeSWITCH shared paths - bind mount from host system
-      - /usr/share/freeswitch/sounds:/usr/share/freeswitch/sounds:ro
-      - /usr/share/freeswitch/music:/usr/share/freeswitch/music
+      - /usr/share/freeswitch:/usr/share/freeswitch
       - /var/lib/freeswitch:/var/lib/freeswitch
       - /var/log/freeswitch:/var/log/freeswitch:ro
     healthcheck:
