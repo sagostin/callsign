@@ -1,0 +1,99 @@
+:root {
+   /* =========================================
+     Color Palette: Modern SaaS (Quo-inspired)
+     ========================================= */
+
+   /* Chrome / Structure */
+   --bg-app: #f8fafc;
+   /* Very light cool gray */
+   --bg-sidebar: #ffffff;
+   /* Clean White Sidebar */
+   --bg-header: #ffffff;
+   --bg-card: #ffffff;
+
+   /* Text Colors - High Contrast but Soft */
+   --text-primary: #1e293b;
+   /* Slate 800 - Deep, almost black */
+   --text-main: #475569;
+   /* Slate 600 - Perfect body text */
+   --text-muted: #94a3b8;
+   /* Slate 400 - Subtitles */
+   --text-on-dark: #f8fafc;
+   /* While unlikely to be used with white sidebar, keeping for buttons */
+
+   /* Brand Colors - Sophisticated Blue */
+   --primary-color: #3b82f6;
+   /* Bright, accessible Blue */
+   --primary-hover: #2563eb;
+   --primary-light: #eff6ff;
+   /* Very subtle blue bg for active states */
+   --primary-text: #1d4ed8;
+   /* Darker blue for text on light bg */
+
+   /* Status Indicators - Vibrant but clean */
+   --status-good: #10b981;
+   /* Emerald 500 */
+   --status-good-bg: #ecfdf5;
+   --status-warn: #f59e0b;
+   /* Amber 500 */
+   --status-warn-bg: #fffbeb;
+   --status-bad: #ef4444;
+   /* Red 500 */
+   --status-bad-bg: #fef2f2;
+   --status-neutral: #64748b;
+   /* Slate 500 */
+   --status-neutral-bg: #f1f5f9;
+
+   /* Borders & Dividers */
+   --border-color: #e2e8f0;
+   /* Slate 200 */
+   --border-hover: #cbd5e1;
+   /* Slate 300 */
+
+   /* =========================================
+     Typography: Modern Geometric
+     ========================================= */
+
+   /* Using system font stack that prioritizes modern sans-serifs */
+   --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+   /* Scale */
+   --text-xs: 0.75rem;
+   /* 12px */
+   --text-sm: 0.875rem;
+   /* 14px - Slightly larger base for "Modern" feel */
+   --text-base: 1rem;
+   /* 16px */
+   --text-lg: 1.125rem;
+   /* 18px */
+   --text-xl: 1.25rem;
+   /* 20px */
+   --text-2xl: 1.5rem;
+   /* 24px */
+
+   /* Spacing */
+   --header-height: 64px;
+   /* Breathing room */
+   --sidebar-width: 260px;
+   /* Wider, more comfortable */
+
+   --spacing-xs: 4px;
+   --spacing-sm: 8px;
+   --spacing-md: 16px;
+   --spacing-lg: 24px;
+   --spacing-xl: 32px;
+
+   --radius-sm: 6px;
+   --radius-md: 10px;
+   /* Modern, softer corners */
+   --radius-lg: 16px;
+
+   /* Shadows - Diffused Layering */
+   --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.05);
+   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+
+   /* Transitions */
+   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}

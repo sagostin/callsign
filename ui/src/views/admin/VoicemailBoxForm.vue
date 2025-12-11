@@ -1,0 +1,121 @@
+<template>
+  <div class="form-container">
+    <div class="form-header">
+      <h2>{{ isNew ? 'New Voicemail Box' : 'Edit Voicemail Box' }}</h2>
+      <button class="btn-secondary" @click="$router.back()">Cancel</button>
+    </div>
+
+    <div class="form-card">
+      <div class="form-group">
+        <label>Box Type</label>
+        <select v-model="form.type" class="input-field">
+          <option value="standard">Standard User</option>
+          <option value="room">Hotel/Guest Room</option>
+          <option value="shared">Shared Mailbox</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Voicemail ID / Extension</label>
+        <input v-model="form.id" type="text" class="input-field" placeholder="e.g. 101">
+      </div>
+
+       <div class="form-group">
+        <label>Password (PIN)</label>
+        <input v-model="form.password" type="text" class="input-field" placeholder="e.g. 1234">
+      </div>
+
+      <!-- Hospitality / Auto Greeting Section -->
+      <div v-if="form.type === 'room'" class="p-4 bg-slate-50 border border-slate-200 rounded-lg mb-4">
+        <h3 class="text-sm font-bold text-slate-700 mb-3 uppercase">Hospitality Settings</h3>
+        <div class="form-group mb-3">
+          <label>Current Guest Name</label>
+          <input v-model="form.guestName" type="text" class="input-field" placeholder="Auto-injected by PMS or Manual">
+        </div>
+        <div class="form-group">
+          <label>Greeting Mode</label>
+          <select v-model="form.greetingMode" class="input-field">
+            <option value="standard">Standard Default</option>
+            <option value="auto_guest">Auto-Generate (Guest Name)</option>
+            <option value="custom">Custom Upload</option>
+          </select> 
+        </div>
+        <div v-if="form.greetingMode === 'auto_guest'" class="mt-2 text-xs text-slate-500 italic">
+          System will say: "You have reached the voicemail of {{ form.guestName || '[Guest Name]' }}. Please leave a message."
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Email Notification</label>
+        <input v-model="form.email" type="email" class="input-field" placeholder="user@company.com">
+      </div>
+      
+       <div class="form-row">
+        <div class="form-group">
+          <label>Attach File to Email</label>
+          <select v-model="form.attach_file" class="input-field">
+             <option :value="true">Yes</option>
+             <option :value="false">No</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Transcription</label>
+           <select v-model="form.transcription" class="input-field">
+             <option :value="true">Enabled</option>
+             <option :value="false">Disabled</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Webhook URL (Notification)</label>
+        <input v-model="form.webhook_url" type="text" class="input-field" placeholder="https://api.example.com/notify">
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-primary" @click="save">Save Voicemail Box</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+
+const route = useRoute()
+const router = useRouter()
+const isNew = computed(() => !route.params.id)
+
+const form = ref({
+  id: '',
+  type: 'standard',
+  password: '',
+  guestName: '',
+  greetingMode: 'standard',
+  email: '',
+  attach_file: true,
+  transcription: false
+})
+
+const save = () => {
+  console.log('Saving voicemail box:', form.value)
+  router.back()
+}
+</script>
+
+<style scoped>
+.form-container { max-width: 600px; margin: 0 auto; }
+.form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.form-card { background: white; padding: 24px; border-radius: var(--radius-md); border: 1px solid var(--border-color); }
+.form-group { margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); }
+.input-field { padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 14px; outline: none; }
+.input-field:focus { border-color: var(--primary-color); }
+
+.btn-primary { background: var(--primary-color); color: white; border: none; padding: 10px 24px; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; }
+.btn-secondary { background: white; border: 1px solid var(--border-color); color: var(--text-main); padding: 8px 16px; border-radius: var(--radius-sm); font-weight: 500; cursor: pointer; }
+.form-actions { margin-top: 24px; display: flex; justify-content: flex-end; }
+</style>

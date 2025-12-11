@@ -1,0 +1,454 @@
+<template>
+  <header class="topbar" :class="mode">
+    <!-- Left Section: Breadcrumb / Context -->
+    <div class="topbar-left">
+      <!-- Search Bar -->
+      <div class="search-bar" :class="{ expanded: searchExpanded }">
+        <SearchIcon class="search-icon" />
+        <input 
+          type="text" 
+          v-model="searchQuery" 
+          :placeholder="searchPlaceholder"
+          @focus="searchExpanded = true"
+          @blur="searchExpanded = false"
+        >
+        <span class="search-shortcut" v-if="!searchExpanded">⌘K</span>
+      </div>
+    </div>
+
+    <!-- Center Section: Tenant Selector (Admin/System only) -->
+    <div class="topbar-center" v-if="mode !== 'user'">
+      <div class="tenant-selector">
+        <div class="tenant-badge" :class="{ system: selectedContext === 'system' }">
+          <GlobeIcon v-if="selectedContext === 'system'" class="tenant-icon" />
+          <BuildingIcon v-else class="tenant-icon" />
+        </div>
+        <select v-model="selectedContext" @change="handleContextChange" class="tenant-select">
+          <optgroup label="System">
+            <option value="system">System Admin (Global)</option>
+          </optgroup>
+          <optgroup label="Tenants">
+            <option value="tenant-1">Acme Corporation</option>
+            <option value="tenant-2">Globex Industries</option>
+            <option value="tenant-3">Initech Solutions</option>
+          </optgroup>
+        </select>
+        <ChevronDownIcon class="select-chevron" />
+      </div>
+    </div>
+
+    <!-- Right Section: Quick Actions & User -->
+    <div class="topbar-right">
+      <!-- Quick Actions -->
+      <div class="quick-actions">
+        <button class="action-btn" @click="showHelp" title="Help & Docs">
+          <HelpCircleIcon class="action-icon" />
+        </button>
+        
+        <button class="action-btn has-badge" @click="showNotifications" title="Notifications">
+          <BellIcon class="action-icon" />
+          <span class="badge-dot" v-if="unreadNotifications > 0"></span>
+        </button>
+
+        <button class="action-btn" v-if="mode !== 'user'" @click="showQuickAdd" title="Quick Add">
+          <PlusCircleIcon class="action-icon" />
+        </button>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Portal Links -->
+      <div class="portal-links">
+        <button 
+          class="portal-btn" 
+          :class="{ active: mode === 'user' }"
+          @click="$router.push('/')"
+          title="User Portal"
+        >
+          <PhoneIcon class="portal-icon" />
+        </button>
+        <button 
+          class="portal-btn" 
+          :class="{ active: mode === 'admin' }"
+          @click="$router.push('/admin')"
+          title="Tenant Admin"
+        >
+          <LayoutDashboardIcon class="portal-icon" />
+        </button>
+        <button 
+          class="portal-btn system" 
+          :class="{ active: mode === 'system' }"
+          @click="$router.push('/system')"
+          title="System Admin"
+        >
+          <ServerCogIcon class="portal-icon" />
+        </button>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- User Menu -->
+      <div class="user-menu" @click="showUserDropdown = !showUserDropdown">
+        <div class="user-avatar">
+          <span>{{ userInitials }}</span>
+          <span class="status-indicator online"></span>
+        </div>
+        <div class="user-info">
+          <span class="user-name">{{ userName }}</span>
+          <span class="user-role">{{ userRole }}</span>
+        </div>
+        <ChevronDownIcon class="menu-chevron" />
+      </div>
+
+      <!-- User Dropdown -->
+      <div class="user-dropdown" v-if="showUserDropdown" @click.stop>
+        <div class="dropdown-header">
+          <div class="user-avatar large">
+            <span>{{ userInitials }}</span>
+          </div>
+          <div class="dropdown-user-info">
+            <span class="name">{{ userName }}</span>
+            <span class="email">admin@callsign.io</span>
+          </div>
+        </div>
+        <div class="dropdown-divider"></div>
+        <router-link to="/settings" class="dropdown-item">
+          <UserIcon class="dropdown-icon" />
+          <span>My Account</span>
+        </router-link>
+        <router-link to="/settings" class="dropdown-item">
+          <SettingsIcon class="dropdown-icon" />
+          <span>Preferences</span>
+        </router-link>
+        <div class="dropdown-divider"></div>
+        <button class="dropdown-item logout" @click="logout">
+          <LogOutIcon class="dropdown-icon" />
+          <span>Sign Out</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Backdrop for dropdown -->
+    <div class="dropdown-backdrop" v-if="showUserDropdown" @click="showUserDropdown = false"></div>
+  </header>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { 
+  Search as SearchIcon, Globe as GlobeIcon, Building2 as BuildingIcon,
+  ChevronDown as ChevronDownIcon, HelpCircle as HelpCircleIcon,
+  Bell as BellIcon, PlusCircle as PlusCircleIcon, Phone as PhoneIcon,
+  LayoutDashboard as LayoutDashboardIcon, ServerCog as ServerCogIcon,
+  User as UserIcon, Settings as SettingsIcon, LogOut as LogOutIcon
+} from 'lucide-vue-next'
+
+const route = useRoute()
+const router = useRouter()
+
+const searchQuery = ref('')
+const searchExpanded = ref(false)
+const selectedContext = ref('tenant-1')
+const showUserDropdown = ref(false)
+const unreadNotifications = ref(3)
+
+const mode = computed(() => {
+  if (route.path.startsWith('/system')) return 'system'
+  if (route.path.startsWith('/admin')) return 'admin'
+  return 'user'
+})
+
+const searchPlaceholder = computed(() => {
+  if (mode.value === 'system') return 'Search tenants, users, settings...'
+  if (mode.value === 'admin') return 'Search extensions, devices, routes...'
+  return 'Search contacts, messages...'
+})
+
+const userName = ref('Admin User')
+const userInitials = computed(() => userName.value.split(' ').map(n => n[0]).join(''))
+const userRole = computed(() => {
+  if (mode.value === 'system') return 'System Owner'
+  if (mode.value === 'admin') return 'Tenant Admin'
+  return 'User'
+})
+
+const handleContextChange = () => {
+  if (selectedContext.value === 'system') {
+    router.push('/system')
+  } else {
+    router.push('/admin')
+  }
+}
+
+const showHelp = () => alert('Help & Documentation')
+const showNotifications = () => alert('Notifications Panel')
+const showQuickAdd = () => alert('Quick Add Menu')
+const logout = () => {
+  showUserDropdown.value = false
+  alert('Logging out...')
+}
+</script>
+
+<style scoped>
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+  padding: 0 20px;
+  background: white;
+  border-bottom: 1px solid var(--border-color);
+  position: relative;
+}
+
+.topbar.system { background: linear-gradient(90deg, #fffbeb 0%, white 50%); }
+.topbar.admin { background: linear-gradient(90deg, #f0fdf4 0%, white 50%); }
+
+/* Left Section */
+.topbar-left { display: flex; align-items: center; gap: 16px; flex: 1; }
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-app);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 12px;
+  width: 280px;
+  transition: all 0.2s ease;
+}
+
+.search-bar:focus-within,
+.search-bar.expanded {
+  background: white;
+  border-color: var(--border-color);
+  width: 360px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.search-icon { width: 16px; height: 16px; color: var(--text-muted); }
+.search-bar input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  outline: none;
+}
+.search-bar input::placeholder { color: var(--text-muted); }
+.search-shortcut {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+/* Center Section */
+.topbar-center { display: flex; align-items: center; }
+
+.tenant-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  position: relative;
+  min-width: 220px;
+}
+
+.tenant-badge {
+  width: 28px;
+  height: 28px;
+  background: #dcfce7;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #16a34a;
+}
+.tenant-badge.system { background: #fef3c7; color: #b45309; }
+.tenant-icon { width: 14px; height: 14px; }
+
+.tenant-select {
+  flex: 1;
+  appearance: none;
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+  padding-right: 20px;
+}
+
+.select-chevron {
+  position: absolute;
+  right: 10px;
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* Right Section */
+.topbar-right { display: flex; align-items: center; gap: 8px; }
+
+.quick-actions { display: flex; align-items: center; gap: 4px; }
+
+.action-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+  position: relative;
+  transition: all 0.15s ease;
+}
+.action-btn:hover { background: var(--bg-app); color: var(--text-primary); }
+.action-icon { width: 18px; height: 18px; }
+
+.badge-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  background: #ef4444;
+  border: 2px solid white;
+  border-radius: 50%;
+}
+
+.divider { width: 1px; height: 28px; background: var(--border-color); margin: 0 8px; }
+
+/* Portal Links */
+.portal-links { display: flex; gap: 2px; background: var(--bg-app); border-radius: 8px; padding: 3px; }
+
+.portal-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+}
+.portal-btn:hover { color: var(--text-primary); }
+.portal-btn.active { background: white; color: var(--primary-color); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.portal-btn.system:hover { color: #b45309; }
+.portal-btn.system.active { color: #b45309; }
+.portal-icon { width: 16px; height: 16px; }
+
+/* User Menu */
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.user-menu:hover { background: var(--bg-app); }
+
+.user-avatar {
+  width: 34px;
+  height: 34px;
+  background: linear-gradient(135deg, var(--primary-color), #818cf8);
+  color: white;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  position: relative;
+}
+.user-avatar.large { width: 48px; height: 48px; font-size: 16px; border-radius: 12px; }
+
+.status-indicator {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid white;
+  border-radius: 50%;
+}
+.status-indicator.online { background: #22c55e; }
+.status-indicator.away { background: #f59e0b; }
+.status-indicator.busy { background: #ef4444; }
+
+.user-info { display: flex; flex-direction: column; }
+.user-name { font-size: 13px; font-weight: 600; color: var(--text-primary); line-height: 1.2; }
+.user-role { font-size: 10px; color: var(--text-muted); }
+.menu-chevron { width: 14px; height: 14px; color: var(--text-muted); }
+
+/* User Dropdown */
+.user-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 20px;
+  width: 260px;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.dropdown-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-app);
+}
+
+.dropdown-user-info { display: flex; flex-direction: column; }
+.dropdown-user-info .name { font-size: 14px; font-weight: 600; }
+.dropdown-user-info .email { font-size: 12px; color: var(--text-muted); }
+
+.dropdown-divider { height: 1px; background: var(--border-color); }
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-main);
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+}
+.dropdown-item:hover { background: var(--bg-app); }
+.dropdown-item.logout { color: #dc2626; }
+.dropdown-icon { width: 16px; height: 16px; }
+
+.dropdown-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+</style>

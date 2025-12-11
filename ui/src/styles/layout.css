@@ -1,0 +1,42 @@
+/* Main App Grid Layout */
+
+.app-layout {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr;
+    grid-template-rows: var(--header-height) 1fr;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
+/* Areas */
+.layout-sidebar {
+    grid-row: 1 / -1;
+    grid-column: 1;
+    background-color: var(--bg-sidebar);
+    color: var(--text-on-dark);
+    overflow-y: auto;
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.layout-topbar {
+    grid-row: 1;
+    grid-column: 2;
+    background-color: var(--bg-header);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--spacing-md);
+    z-index: 10;
+}
+
+.layout-content {
+    grid-row: 2;
+    grid-column: 2;
+    overflow-y: auto;
+    padding: var(--spacing-lg);
+    background-color: var(--bg-app);
+}
+
+/* Responsive collapse for smaller screens could go here, 
+   but for now we enforce the Desktop PBX view */

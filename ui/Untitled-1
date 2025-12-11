@@ -1,0 +1,361 @@
+[FusionPBX Docs](https://docs.fusionpbx.com/en/latest/index.html)
+- [Getting Started](https://docs.fusionpbx.com/en/latest/getting_started.html)
+- [Home](https://docs.fusionpbx.com/en/latest/home.html)
+- [Accounts](https://docs.fusionpbx.com/en/latest/accounts.html)
+- [Dialplans](https://docs.fusionpbx.com/en/latest/dialplans.html)
+- [Applications](https://docs.fusionpbx.com/en/latest/applications.html)
+- [Status](https://docs.fusionpbx.com/en/latest/status.html)
+- [Advanced](https://docs.fusionpbx.com/en/latest/advanced.html)
+- [Hardware](https://docs.fusionpbx.com/en/latest/hardware.html)
+- [Software](https://docs.fusionpbx.com/en/latest/software.html)
+- [Additional Information](https://docs.fusionpbx.com/en/latest/additional_information.html)
+[Voip Quality](https://docs.fusionpbx.com/en/latest/additional_information/voip_quality.html)
+[Freeswitch install](https://docs.fusionpbx.com/en/latest/additional_information/freeswitch.html)
+[SSL/TLS Setup](https://docs.fusionpbx.com/en/latest/additional_information/sip_tls.html)
+[Testimonials](https://docs.fusionpbx.com/en/latest/additional_information/testimonials.html)
+[Password Reset](https://docs.fusionpbx.com/en/latest/additional_information/password_reset.html)
+[Feature Codes](https://docs.fusionpbx.com/en/latest/additional_information/feature_codes.html)
+[Features](https://docs.fusionpbx.com/en/latest/features/features.html)
+[Call Management](https://docs.fusionpbx.com/en/latest/features/features.html#call-management)
+[Conferencing](https://docs.fusionpbx.com/en/latest/features/features.html#conferencing)
+[Reports & Tools](https://docs.fusionpbx.com/en/latest/features/features.html#reports-tools)
+[System Config](https://docs.fusionpbx.com/en/latest/features/features.html#system-config)
+[Advanced Features](https://docs.fusionpbx.com/en/latest/features/features.html#advanced-features)
+[Additional Features](https://docs.fusionpbx.com/en/latest/features/features.html#additional-features)
+
+
+[Dial By Name](https://docs.fusionpbx.com/en/latest/additional_information/dial_by_name.html)
+[Email](https://docs.fusionpbx.com/en/latest/additional_information/email.html)
+[Toll Allow](https://docs.fusionpbx.com/en/latest/additional_information/toll_allow.html)
+[Network Address Translation](https://docs.fusionpbx.com/en/latest/additional_information/nat.html)
+[Version Upgrade](https://docs.fusionpbx.com/en/latest/advanced/version_upgrade.html)
+[Releases](https://docs.fusionpbx.com/en/latest/additional_information/releases.html)
+[Regular Expressions](https://docs.fusionpbx.com/en/latest/additional_information/regex.html)
+[PostgreSQL](https://docs.fusionpbx.com/en/latest/additional_information/postgresql.html)
+[Shared Line Appearance](https://docs.fusionpbx.com/en/latest/additional_information/shared_line_appearance.html)
+[CDR Archive Server](https://docs.fusionpbx.com/en/latest/additional_information/cdr_archive.html)
+[Government Regulations](https://docs.fusionpbx.com/en/latest/additional_information/government_regulations.html)
+
+
+- [Voip Quality](https://docs.fusionpbx.com/en/latest/additional_information/voip_quality.html)
+- [Freeswitch install](https://docs.fusionpbx.com/en/latest/additional_information/freeswitch.html)
+- [SSL/TLS Setup](https://docs.fusionpbx.com/en/latest/additional_information/sip_tls.html)
+- [Testimonials](https://docs.fusionpbx.com/en/latest/additional_information/testimonials.html)
+- [Password Reset](https://docs.fusionpbx.com/en/latest/additional_information/password_reset.html)
+- [Feature Codes](https://docs.fusionpbx.com/en/latest/additional_information/feature_codes.html)
+- [Features](https://docs.fusionpbx.com/en/latest/features/features.html)
+[Call Management](https://docs.fusionpbx.com/en/latest/features/features.html#call-management)
+[Conferencing](https://docs.fusionpbx.com/en/latest/features/features.html#conferencing)
+[Reports & Tools](https://docs.fusionpbx.com/en/latest/features/features.html#reports-tools)
+[System Config](https://docs.fusionpbx.com/en/latest/features/features.html#system-config)
+[Advanced Features](https://docs.fusionpbx.com/en/latest/features/features.html#advanced-features)
+[Additional Features](https://docs.fusionpbx.com/en/latest/features/features.html#additional-features)
+
+
+- [Call Management](https://docs.fusionpbx.com/en/latest/features/features.html#call-management)
+- [Conferencing](https://docs.fusionpbx.com/en/latest/features/features.html#conferencing)
+
+- [Reports & Tools](https://docs.fusionpbx.com/en/latest/features/features.html#reports-tools)
+- [System Config](https://docs.fusionpbx.com/en/latest/features/features.html#system-config)
+- [Advanced Features](https://docs.fusionpbx.com/en/latest/features/features.html#advanced-features)
+- [Additional Features](https://docs.fusionpbx.com/en/latest/features/features.html#additional-features)
+- [Dial By Name](https://docs.fusionpbx.com/en/latest/additional_information/dial_by_name.html)
+- [Email](https://docs.fusionpbx.com/en/latest/additional_information/email.html)
+- [Toll Allow](https://docs.fusionpbx.com/en/latest/additional_information/toll_allow.html)
+- [Network Address Translation](https://docs.fusionpbx.com/en/latest/additional_information/nat.html)
+- [Version Upgrade](https://docs.fusionpbx.com/en/latest/advanced/version_upgrade.html)
+- [Releases](https://docs.fusionpbx.com/en/latest/additional_information/releases.html)
+- [Regular Expressions](https://docs.fusionpbx.com/en/latest/additional_information/regex.html)
+- [PostgreSQL](https://docs.fusionpbx.com/en/latest/additional_information/postgresql.html)
+- [Shared Line Appearance](https://docs.fusionpbx.com/en/latest/additional_information/shared_line_appearance.html)
+- [CDR Archive Server](https://docs.fusionpbx.com/en/latest/additional_information/cdr_archive.html)
+- [Government Regulations](https://docs.fusionpbx.com/en/latest/additional_information/government_regulations.html)
+- [Contributing](https://docs.fusionpbx.com/en/latest/contributing.html)
+- [Introduction](https://docs.fusionpbx.com/en/latest/doc_guide.html)
+- [Other](https://docs.fusionpbx.com/en/latest/other.html)
+[Getting Started](https://docs.fusionpbx.com/en/latest/getting_started.html)
+[Home](https://docs.fusionpbx.com/en/latest/home.html)
+[Accounts](https://docs.fusionpbx.com/en/latest/accounts.html)
+[Dialplans](https://docs.fusionpbx.com/en/latest/dialplans.html)
+[Applications](https://docs.fusionpbx.com/en/latest/applications.html)
+[Status](https://docs.fusionpbx.com/en/latest/status.html)
+[Advanced](https://docs.fusionpbx.com/en/latest/advanced.html)
+[Hardware](https://docs.fusionpbx.com/en/latest/hardware.html)
+[Software](https://docs.fusionpbx.com/en/latest/software.html)
+[Additional Information](https://docs.fusionpbx.com/en/latest/additional_information.html)
+- [Voip Quality](https://docs.fusionpbx.com/en/latest/additional_information/voip_quality.html)
+- [Freeswitch install](https://docs.fusionpbx.com/en/latest/additional_information/freeswitch.html)
+- [SSL/TLS Setup](https://docs.fusionpbx.com/en/latest/additional_information/sip_tls.html)
+- [Testimonials](https://docs.fusionpbx.com/en/latest/additional_information/testimonials.html)
+- [Password Reset](https://docs.fusionpbx.com/en/latest/additional_information/password_reset.html)
+- [Feature Codes](https://docs.fusionpbx.com/en/latest/additional_information/feature_codes.html)
+- [Features](https://docs.fusionpbx.com/en/latest/features/features.html)
+[Call Management](https://docs.fusionpbx.com/en/latest/features/features.html#call-management)
+[Conferencing](https://docs.fusionpbx.com/en/latest/features/features.html#conferencing)
+[Reports & Tools](https://docs.fusionpbx.com/en/latest/features/features.html#reports-tools)
+[System Config](https://docs.fusionpbx.com/en/latest/features/features.html#system-config)
+[Advanced Features](https://docs.fusionpbx.com/en/latest/features/features.html#advanced-features)
+[Additional Features](https://docs.fusionpbx.com/en/latest/features/features.html#additional-features)
+
+
+- [Call Management](https://docs.fusionpbx.com/en/latest/features/features.html#call-management)
+- [Conferencing](https://docs.fusionpbx.com/en/latest/features/features.html#conferencing)
+- [Reports & Tools](https://docs.fusionpbx.com/en/latest/features/features.html#reports-tools)
+- [System Config](https://docs.fusionpbx.com/en/latest/features/features.html#system-config)
+- [Advanced Features](https://docs.fusionpbx.com/en/latest/features/features.html#advanced-features)
+- [Additional Features](https://docs.fusionpbx.com/en/latest/features/features.html#additional-features)
+- [Dial By Name](https://docs.fusionpbx.com/en/latest/additional_information/dial_by_name.html)
+- [Email](https://docs.fusionpbx.com/en/latest/additional_information/email.html)
+- [Toll Allow](https://docs.fusionpbx.com/en/latest/additional_information/toll_allow.html)
+
+- [Network Address Translation](https://docs.fusionpbx.com/en/latest/additional_information/nat.html)
+- [Version Upgrade](https://docs.fusionpbx.com/en/latest/advanced/version_upgrade.html)
+- [Releases](https://docs.fusionpbx.com/en/latest/additional_information/releases.html)
+- [Regular Expressions](https://docs.fusionpbx.com/en/latest/additional_information/regex.html)
+- [PostgreSQL](https://docs.fusionpbx.com/en/latest/additional_information/postgresql.html)
+- [Shared Line Appearance](https://docs.fusionpbx.com/en/latest/additional_information/shared_line_appearance.html)
+- [CDR Archive Server](https://docs.fusionpbx.com/en/latest/additional_information/cdr_archive.html)
+- [Government Regulations](https://docs.fusionpbx.com/en/latest/additional_information/government_regulations.html)
+[Voip Quality](https://docs.fusionpbx.com/en/latest/additional_information/voip_quality.html)
+[Freeswitch install](https://docs.fusionpbx.com/en/latest/additional_information/freeswitch.html)
+[SSL/TLS Setup](https://docs.fusionpbx.com/en/latest/additional_information/sip_tls.html)
+[Testimonials](https://docs.fusionpbx.com/en/latest/additional_information/testimonials.html)
+[Password Reset](https://docs.fusionpbx.com/en/latest/additional_information/password_reset.html)
+[Feature Codes](https://docs.fusionpbx.com/en/latest/additional_information/feature_codes.html)
+[Features](https://docs.fusionpbx.com/en/latest/features/features.html)
+- [Call Management](https://docs.fusionpbx.com/en/latest/features/features.html#call-management)
+- [Conferencing](https://docs.fusionpbx.com/en/latest/features/features.html#conferencing)
+- [Reports & Tools](https://docs.fusionpbx.com/en/latest/features/features.html#reports-tools)
+- [System Config](https://docs.fusionpbx.com/en/latest/features/features.html#system-config)
+- [Advanced Features](https://docs.fusionpbx.com/en/latest/features/features.html#advanced-features)
+- [Additional Features](https://docs.fusionpbx.com/en/latest/features/features.html#additional-features)
+[Call Management](https://docs.fusionpbx.com/en/latest/features/features.html#call-management)
+[Conferencing](https://docs.fusionpbx.com/en/latest/features/features.html#conferencing)
+[Reports & Tools](https://docs.fusionpbx.com/en/latest/features/features.html#reports-tools)
+[System Config](https://docs.fusionpbx.com/en/latest/features/features.html#system-config)
+[Advanced Features](https://docs.fusionpbx.com/en/latest/features/features.html#advanced-features)
+[Additional Features](https://docs.fusionpbx.com/en/latest/features/features.html#additional-features)
+[Dial By Name](https://docs.fusionpbx.com/en/latest/additional_information/dial_by_name.html)
+[Email](https://docs.fusionpbx.com/en/latest/additional_information/email.html)
+[Toll Allow](https://docs.fusionpbx.com/en/latest/additional_information/toll_allow.html)
+[Network Address Translation](https://docs.fusionpbx.com/en/latest/additional_information/nat.html)
+[Version Upgrade](https://docs.fusionpbx.com/en/latest/advanced/version_upgrade.html)
+[Releases](https://docs.fusionpbx.com/en/latest/additional_information/releases.html)
+[Regular Expressions](https://docs.fusionpbx.com/en/latest/additional_information/regex.html)
+[PostgreSQL](https://docs.fusionpbx.com/en/latest/additional_information/postgresql.html)
+[Shared Line Appearance](https://docs.fusionpbx.com/en/latest/additional_information/shared_line_appearance.html)
+[CDR Archive Server](https://docs.fusionpbx.com/en/latest/additional_information/cdr_archive.html)
+[Government Regulations](https://docs.fusionpbx.com/en/latest/additional_information/government_regulations.html)
+[Contributing](https://docs.fusionpbx.com/en/latest/contributing.html)
+[Introduction](https://docs.fusionpbx.com/en/latest/doc_guide.html)
+[Other](https://docs.fusionpbx.com/en/latest/other.html)
+[FusionPBX Docs](https://docs.fusionpbx.com/en/latest/index.html)
+- https://docs.fusionpbx.com/en/latest/index.html
+- [Additional Information](https://docs.fusionpbx.com/en/latest/additional_information.html)
+- Features
+- 
+              [Edit on GitHub](https://github.com/fusionpbx/fusionpbx-docs/blob/master/source/features/features.md)
+
+[Additional Information](https://docs.fusionpbx.com/en/latest/additional_information.html)
+[Edit on GitHub](https://github.com/fusionpbx/fusionpbx-docs/blob/master/source/features/features.md)
+
+# Features[](https://docs.fusionpbx.com/en/latest/features/features.html#features)
+
+[](https://docs.fusionpbx.com/en/latest/features/features.html#features)
+Explore the powerful capabilities of FusionPBX, organized into categories below. Each feature links to detailed documentation where available.
+
+## Call Management[](https://docs.fusionpbx.com/en/latest/features/features.html#call-management)
+[](https://docs.fusionpbx.com/en/latest/features/features.html#call-management)
+Feature
+Description
+Documentation
+Announcements
+Set up auto attendant recordings for caller announcements
+[IVR Menus](https://docs.fusionpbx.com/en/latest/applications/ivr.html)
+Barge/Eavesdrop/Intercept
+Listen into active calls from another extension
+[Feature Codes](https://docs.fusionpbx.com/en/latest/additional_information/feature_codes.html)
+Call Block
+Block inbound calls by caller ID
+[Call Block](https://docs.fusionpbx.com/en/latest/applications/call_block.html)
+Call Broadcast
+Create a recording and select one or more groupsto have the system call and play the recording
+[Call Broadcast](https://docs.fusionpbx.com/en/latest/applications/call_broadcast.html)
+Call Forward
+Forward calls to extensions or external numbers
+[Call Routing](https://docs.fusionpbx.com/en/latest/applications/call_routing.html)
+Call Monitoring
+View which extensions are currently in a call(see [Active Extensions](https://docs.fusionpbx.com/en/latest/features/features.html#../status/active_extensions.md))
+Call Pickup
+Answer an extension that is currently ringing
+Call Recordings
+Record all calls, some calls or parts of the call
+[Call Recordings](https://docs.fusionpbx.com/en/latest/applications/call_recordings.html)
+Call Routing
+Send the call to multiple directions or performactions based on caller id and other information (see [Dialplan Manager](https://docs.fusionpbx.com/en/latest/dialplan/dialplan_manager.html))
+[Call Routing](https://docs.fusionpbx.com/en/latest/applications/call_routing.html)
+Call Announced Transfer
+Transfer the active call to another internalor external call. Also known as a warm transfer
+Call Blind Transfer
+Transfer calls like a queue or IVR handoff
+[Feature Codes](https://docs.fusionpbx.com/en/latest/additional_information/feature_codes.html)
+Call Transfer
+General call transfer functionality
+[Feature Codes](https://docs.fusionpbx.com/en/latest/additional_information/feature_codes.html)
+Call Waiting
+Toggle between calls with a beep notification
+[Feature Codes](https://docs.fusionpbx.com/en/latest/additional_information/feature_codes.html)
+Do Not Disturb (DND)
+Direct calls to voicemail by defaultor send to an alternate destination
+[Call Routing](https://docs.fusionpbx.com/en/latest/applications/call_routing.html)
+Follow Me
+Ring multiple extensions or external numbers
+[Follow Me](https://docs.fusionpbx.com/en/latest/applications/follow_me.html)
+Parking
+Park calls on hold for pickup by another extension
+[Parking](https://docs.fusionpbx.com/en/latest/features/parking.html)
+Queues
+Load calls into queues to answer in join order
+[Queues](https://docs.fusionpbx.com/en/latest/applications/queues.html)
+Ring Groups
+Ring multiple extensions from one extensionwith an option to receive emails on missed calls
+[Ring Groups](https://docs.fusionpbx.com/en/latest/applications/ring_group.html)
+
+## Conferencing[](https://docs.fusionpbx.com/en/latest/features/features.html#conferencing)
+[](https://docs.fusionpbx.com/en/latest/features/features.html#conferencing)
+Feature
+Description
+Documentation
+Conference
+Voice/video conference calls, optionally PIN-securedTransfer calls in with interactive conference controlsShow callers, manage volume, see talking status,options to kick/mute/unmute/deaf/undeaf members
+[Conference](https://docs.fusionpbx.com/en/latest/applications/conference.html)
+Conference Center
+Unlimited rooms with moderation, PINs, and recording
+[Conference Center](https://docs.fusionpbx.com/en/latest/applications/conference_center.html)
+
+## Reports & Tools[](https://docs.fusionpbx.com/en/latest/features/features.html#reports-tools)
+[](https://docs.fusionpbx.com/en/latest/features/features.html#reports-tools)
+Feature
+Description
+Documentation
+Call Detail Records
+Detailed call reports, exportable to CSV
+[Call Detail Records](https://docs.fusionpbx.com/en/latest/applications/call_detail_record.html)
+Command
+Execute commands and SQL queries via GUI
+[Command](https://docs.fusionpbx.com/en/latest/advanced/command.html)
+Editor
+Edit PHP, XML, and provisioning files
+[Editor](https://docs.fusionpbx.com/en/latest/advanced/editors.html)
+Extension Summary
+Show activity per domain, such as misssed callsanswered calls, no answer, inbound duration,outbound duration, amount of outbound/inbound callsand Average length of Conversation (ALOC)Export Summarized information as an CSV file
+[Extension Summary](https://docs.fusionpbx.com/en/latest/status/extension_summary.html)
+
+## System Config[](https://docs.fusionpbx.com/en/latest/features/features.html#system-config)
+[](https://docs.fusionpbx.com/en/latest/features/features.html#system-config)
+Feature
+Description
+Documentation
+Authentication
+Web interface with plugin support (LDAP, AD)
+Configuration
+While the admin configures the system in the webinterface. The data is saved to the database andcan optionally be deliverd to FreeSWITCH via XML files, or on demand from the database
+[Contacts](https://docs.fusionpbx.com/en/latest/applications/contacts.html)
+Contacts
+Manage your contacts. Import from Outlook CSV Export contacts to your cell phone with QR Codes Additional features such as time cards andinvoices that can be related to the contacts
+Device Provisioning
+Provision devices with contacts as phone directoriesEnable and disable vendors, Set memory,expansion (sidecars), and programmable keysSetup endpoints for Yealink, Polycom, Cisco, etc
+[Device Provision](https://docs.fusionpbx.com/en/latest/applications/provision.html)
+Dialplan Manager
+The dialplan is used to setup call destinations basedon conditions and context. You can use thedialplan to send calls to gateways, auto attendants,external numbers, to scripts, or any destination
+[Dialplan Manager](https://docs.fusionpbx.com/en/latest/dialplan/dialplan_manager.html)
+Gateways
+Gateways provide access into other voice networksThese can be voice providers or other systemsthat require SIP registration. [See Video](https://youtu.be/YKOTACDYQ3A)
+[Gateways](https://docs.fusionpbx.com/en/latest/accounts/gateways.html)
+Multi-Tenant
+Domain based multi-tenant using subdomainse.g. red.pbxhosting.tld or blue.pbxhosting.tld
+[Multi-Tenant](https://docs.fusionpbx.com/en/latest/advanced/domains.html)
+Scalable and Redundant
+Configurable for multi-master database replication,file replication, FusionPBX, and FreeSWITCHMulti-server distribution for enterprise scalability
+[Training](https://fusionpbx.com/training)
+Manage Users/Groups
+Manage permissions levels and users
+[Group Manager](https://docs.fusionpbx.com/en/latest/advanced/group_manager.html)
+
+## Advanced Features[](https://docs.fusionpbx.com/en/latest/features/features.html#advanced-features)
+[](https://docs.fusionpbx.com/en/latest/features/features.html#advanced-features)
+Feature
+Description
+Documentation
+Call Flows (Day/Night Mode)
+To direct calls between two destinations.Direction can be displayed on phones BLF
+Caller ID
+Customize and support provider caller ID
+Call Center
+Create a robust call center environment
+[Call Centers](https://docs.fusionpbx.com/en/latest/applications/call_center.html)
+Dial by Name (*411)
+Search extensions by first or last name
+[Dial by Name](https://docs.fusionpbx.com/en/latest/additional_information/dial_by_name.html)
+Direct Inward System Access
+Gives ability to call into the system, putin a pin code, and then call back outbound
+[Dialplan Details](https://docs.fusionpbx.com/en/latest/dialplan/dialplan_details.html#disa)
+Extensions
+Create extensions for phone registrationand options to send an email on missed calls to one or multiple contacts
+[Extensions](https://docs.fusionpbx.com/en/latest/accounts/extensions.html)
+Fax Server
+Send/receive faxes with advanced features
+[Fax Server](https://docs.fusionpbx.com/en/latest/applications/fax_server.html)
+Hot Desking
+Login to another phone device to becomean extension temporarily or permanentlyAlso know as hoteling or extension mobility
+Inbound/Outbound Call Routing
+Routes to receive or send calls in or out
+[Dialplans](https://docs.fusionpbx.com/en/latest/dialplans.html)
+IVR Menus (Auto Attendant)
+Interactive voice prompts with TTS support
+[IVR Menus](https://docs.fusionpbx.com/en/latest/applications/ivr.html)
+Music on Hold
+Allows multiple categories of music on hold that can be set globally or per domain. Caninject additional audio on intervals such as‘Your call is very important to usplease stand by’
+[Music on Hold](https://docs.fusionpbx.com/en/latest/applications/music_on_hold.html)
+Operator Panel
+A virtual panel that agents can drag anddrop transfer calls. Set agents to available,on break, do not disturb and logged out
+[Operator Panel](https://docs.fusionpbx.com/en/latest/applications/operator_panel.html)
+Paging
+Page extensions with optional password
+[Dialplan Details](https://docs.fusionpbx.com/en/latest/dialplan/dialplan_details.html#page)
+Phrases
+Use xml handler and xml from file systemyou can string together multiple voice files
+[Phrases](https://docs.fusionpbx.com/en/latest/applications/phrases.html)
+Provider Setup
+Configure voice providers
+Re-branding and Customize
+With unprecedented customizability youcan meet your needs or the needs of yourcustomers. Customize themes, menus,and hundreds of theme adjustments
+[Support](http://fusionpbx.com/support.php)
+Recordings
+Create and manage personalized recordings
+[Recordings](https://docs.fusionpbx.com/en/latest/applications/recordings.html)
+Time Conditions
+Time-based call routing with domain,global options and holiday presets
+[Time Conditions](https://docs.fusionpbx.com/en/latest/applications/time_conditions.html)
+Voicemail
+Advanced voicemail with email and IVR
+[Voicemail](https://docs.fusionpbx.com/en/latest/applications/voicemail.html)
+Voicemail to Email
+Have voicemails sent to email
+[Voicemail to Email](https://docs.fusionpbx.com/en/latest/features/features.html#../getting_started/voicemail_to_email.md)
+Voicemail Transcription
+Convert voicemails to text
+[Voicemail](https://docs.fusionpbx.com/en/latest/applications/voicemail.html#voicemail-transcription)
+WebRTC
+Make/Receive video calls in a web browser
+[WebRTC](https://docs.fusionpbx.com/en/latest/applications_optional/webrtc.html)
+
+## Additional Features[](https://docs.fusionpbx.com/en/latest/features/features.html#additional-features)
+[](https://docs.fusionpbx.com/en/latest/features/features.html#additional-features)
+This list is not exhaustive—FusionPBX offers many more capabilities. Stay tuned as we expand this documentation!
+[Previous](https://docs.fusionpbx.com/en/latest/additional_information/feature_codes.html)
+[Next](https://docs.fusionpbx.com/en/latest/additional_information/dial_by_name.html)
+© Copyright 2008-2022, Mark J Crane. Last updated on Nov 18, 2025.
+[Sphinx](https://www.sphinx-doc.org/)
+[theme](https://github.com/readthedocs/sphinx_rtd_theme)
+[Read the Docs](https://readthedocs.org)
