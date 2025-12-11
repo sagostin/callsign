@@ -10,7 +10,8 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build production bundle
+# Build production bundle - API URL uses relative path which works with reverse proxy
+ENV VITE_API_URL=/api
 RUN npm run build
 
 # -----------------------------------

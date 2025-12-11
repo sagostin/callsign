@@ -89,10 +89,10 @@ func AutoMigrate(db *gorm.DB) error {
 		&Recording{},
 		&Contact{},
 
-		// SMS & Chatplan
+		// SMS & Chatplan - Conversation MUST come before Message
+		&Conversation{},
 		&Message{},
 		&MessageMedia{},
-		&Conversation{},
 		&MessagingProvider{},
 		&Chatplan{},
 		&Phrase{},
