@@ -1,5 +1,5 @@
 # API Dockerfile for CallSign
-FROM golang:1.23-alpine AS builder
+FROM golang:alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git gcc musl-dev
@@ -19,10 +19,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o callsign-api .
 # -----------------------------------
 # Runtime image
 # -----------------------------------
-FROM alpine:3.18
+FROM alpine:latest
 
 # Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata wget
 
 WORKDIR /app
 
