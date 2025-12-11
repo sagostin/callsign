@@ -79,21 +79,38 @@ const filteredLogs = computed(() => {
 
 const connect = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const token = localStorage.getItem('token')
-  const wsUrl = `${protocol}//${window.location.host}/api/system/console?token=${token}`
+  // No token in URL - auth handled via first message (secure)
+  const wsUrl = `${protocol}//${window.location.host}/api/system/console`
   
   ws = new WebSocket(wsUrl)
   
   ws.onopen = () => {
-    connected.value = true
-    addLog({ type: 'status', level: 'INFO', message: 'Connected to FreeSWITCH console', timestamp: new Date().toISOString() })
+    // Send auth token as first message (secure - not in URL)
+    const token = localStorage.getItem('token')
+    ws.send(JSON.stringify({ type: 'auth', token: token }))
+    addLog({ type: 'status', level: 'INFO', message: 'Authenticating...', timestamp: new Date().toISOString() })
   }
   
   ws.onmessage = (event) => {
-    if (paused.value) return
-    
     try {
       const msg = JSON.parse(event.data)
+      
+      // Handle auth responses
+      if (msg.type === 'auth_required') {
+        return // Wait for our auth message to be processed
+      }
+      if (msg.type === 'auth_success') {
+        connected.value = true
+        addLog({ type: 'status', level: 'INFO', message: 'Connected to FreeSWITCH console', timestamp: new Date().toISOString() })
+        return
+      }
+      if (msg.type === 'auth_error') {
+        addLog({ type: 'error', level: 'ERROR', message: msg.message || 'Authentication failed', timestamp: new Date().toISOString() })
+        connected.value = false
+        return
+      }
+      
+      if (paused.value) return
       addLog(msg)
     } catch (e) {
       addLog({ level: 'DEBUG', message: event.data, timestamp: new Date().toISOString() })

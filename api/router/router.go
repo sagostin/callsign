@@ -57,6 +57,9 @@ func (r *Router) Init() {
 			auth.Post("/password/reset", r.Handler.RequestPasswordReset)
 		}
 
+		// Public WebSocket routes (auth handled inside handler via first message)
+		api.Get("/system/console", r.Handler.FreeSwitchConsole)
+
 		// Protected routes (require authentication)
 		protected := api.Party("")
 		protected.Use(r.Auth.RequireAuth())
@@ -434,9 +437,6 @@ func (r *Router) Init() {
 				// System status
 				system.Get("/status", r.Handler.GetSystemStatus)
 				system.Get("/stats", r.Handler.GetSystemStats)
-
-				// WebSocket console (live FreeSWITCH logs)
-				system.Get("/console", r.Handler.FreeSwitchConsole)
 			}
 
 			// User portal routes

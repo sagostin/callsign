@@ -6,9 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"callsign/config"
 	"callsign/middleware"
 	"callsign/services/esl"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/kataras/iris/v12"
 	log "github.com/sirupsen/logrus"
@@ -18,27 +20,29 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for now (secured by JWT)
+		return true // Allow all origins - auth handled via first message
 	},
 }
 
 // ConsoleMessage represents a message to/from the console WebSocket
 type ConsoleMessage struct {
-	Type      string `json:"type"`  // "log", "command", "response", "error", "status"
+	Type      string `json:"type"`  // "auth", "log", "command", "response", "error", "status"
 	Level     string `json:"level"` // DEBUG, INFO, WARNING, ERROR
 	Timestamp string `json:"timestamp"`
 	Module    string `json:"module"`
 	Message   string `json:"message"`
 	Command   string `json:"command"`
 	Body      string `json:"body"`
+	Token     string `json:"token,omitempty"` // For auth message
 }
 
 // ConsoleClient represents a connected WebSocket client
 type ConsoleClient struct {
-	conn    *websocket.Conn
-	send    chan ConsoleMessage
-	manager *ConsoleManager
-	mu      sync.Mutex
+	conn          *websocket.Conn
+	send          chan ConsoleMessage
+	manager       *ConsoleManager
+	authenticated bool
+	mu            sync.Mutex
 }
 
 // ConsoleManager manages WebSocket connections for the FS console
@@ -48,17 +52,19 @@ type ConsoleManager struct {
 	register   chan *ConsoleClient
 	unregister chan *ConsoleClient
 	eslManager *esl.Manager
+	config     *config.Config
 	mu         sync.RWMutex
 }
 
 // NewConsoleManager creates a new console manager
-func NewConsoleManager(eslManager *esl.Manager) *ConsoleManager {
+func NewConsoleManager(eslManager *esl.Manager, cfg *config.Config) *ConsoleManager {
 	return &ConsoleManager{
 		clients:    make(map[*ConsoleClient]bool),
 		broadcast:  make(chan ConsoleMessage, 100),
 		register:   make(chan *ConsoleClient),
 		unregister: make(chan *ConsoleClient),
 		eslManager: eslManager,
+		config:     cfg,
 	}
 }
 
@@ -70,7 +76,7 @@ func (m *ConsoleManager) Run() {
 			m.mu.Lock()
 			m.clients[client] = true
 			m.mu.Unlock()
-			log.Infof("Console client connected. Total: %d", len(m.clients))
+			log.Infof("Console client connected (pending auth). Total: %d", len(m.clients))
 
 		case client := <-m.unregister:
 			m.mu.Lock()
@@ -84,6 +90,10 @@ func (m *ConsoleManager) Run() {
 		case msg := <-m.broadcast:
 			m.mu.RLock()
 			for client := range m.clients {
+				// Only send to authenticated clients
+				if !client.authenticated {
+					continue
+				}
 				select {
 				case client.send <- msg:
 				default:
@@ -96,7 +106,7 @@ func (m *ConsoleManager) Run() {
 	}
 }
 
-// Broadcast sends a message to all connected clients
+// Broadcast sends a message to all connected authenticated clients
 func (m *ConsoleManager) Broadcast(msg ConsoleMessage) {
 	select {
 	case m.broadcast <- msg:
@@ -113,21 +123,28 @@ func (m *ConsoleManager) ExecuteCommand(command string) (string, error) {
 	return m.eslManager.API(command)
 }
 
-// FreeSwitchConsole handles WebSocket connections for live FS console
-func (h *Handler) FreeSwitchConsole(ctx iris.Context) {
-	// Verify user is system admin
-	claims := ctx.Values().Get("claims").(*middleware.Claims)
-	if claims.Role != "system_admin" {
-		ctx.StatusCode(http.StatusForbidden)
-		ctx.JSON(iris.Map{"error": "System admin access required"})
-		return
+// ValidateToken validates a JWT token and returns claims
+func (m *ConsoleManager) ValidateToken(tokenString string) (*middleware.Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &middleware.Claims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(m.config.JWTSecret), nil
+	})
+	if err != nil {
+		return nil, err
 	}
+	if claims, ok := token.Claims.(*middleware.Claims); ok && token.Valid {
+		return claims, nil
+	}
+	return nil, jwt.ErrSignatureInvalid
+}
 
+// FreeSwitchConsole handles WebSocket connections for live FS console
+// Auth is done via first message after connection (not query param)
+func (h *Handler) FreeSwitchConsole(ctx iris.Context) {
 	// Get the underlying http.ResponseWriter and *http.Request
 	w := ctx.ResponseWriter()
 	r := ctx.Request()
 
-	// Upgrade to WebSocket
+	// Upgrade to WebSocket (unauthenticated - auth via first message)
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Errorf("WebSocket upgrade failed: %v", err)
@@ -136,25 +153,28 @@ func (h *Handler) FreeSwitchConsole(ctx iris.Context) {
 
 	// Create console manager if not exists
 	if h.ConsoleManager == nil {
-		h.ConsoleManager = NewConsoleManager(h.ESLManager)
+		h.ConsoleManager = NewConsoleManager(h.ESLManager, h.Config)
 		go h.ConsoleManager.Run()
 		go h.startLogStreaming()
 	}
 
 	client := &ConsoleClient{
-		conn:    conn,
-		send:    make(chan ConsoleMessage, 256),
-		manager: h.ConsoleManager,
+		conn:          conn,
+		send:          make(chan ConsoleMessage, 256),
+		manager:       h.ConsoleManager,
+		authenticated: false,
 	}
 
 	h.ConsoleManager.register <- client
 
-	// Send connection status
-	client.send <- ConsoleMessage{
-		Type:      "status",
+	// Send auth required message
+	authMsg := ConsoleMessage{
+		Type:      "auth_required",
 		Timestamp: time.Now().Format(time.RFC3339),
-		Message:   "Connected to FreeSWITCH console",
+		Message:   "Send auth message with token to authenticate",
 	}
+	data, _ := json.Marshal(authMsg)
+	conn.WriteMessage(websocket.TextMessage, data)
 
 	// Start read/write goroutines
 	go client.writePump()
@@ -277,8 +297,54 @@ func (c *ConsoleClient) readPump() {
 			continue
 		}
 
+		// Handle authentication
+		if msg.Type == "auth" && msg.Token != "" {
+			claims, err := c.manager.ValidateToken(msg.Token)
+			if err != nil {
+				c.send <- ConsoleMessage{
+					Type:      "auth_error",
+					Timestamp: time.Now().Format(time.RFC3339),
+					Message:   "Invalid or expired token",
+				}
+				c.conn.Close()
+				return
+			}
+
+			if claims.Role != "system_admin" {
+				c.send <- ConsoleMessage{
+					Type:      "auth_error",
+					Timestamp: time.Now().Format(time.RFC3339),
+					Message:   "System admin access required",
+				}
+				c.conn.Close()
+				return
+			}
+
+			c.mu.Lock()
+			c.authenticated = true
+			c.mu.Unlock()
+
+			c.send <- ConsoleMessage{
+				Type:      "auth_success",
+				Timestamp: time.Now().Format(time.RFC3339),
+				Message:   "Connected to FreeSWITCH console",
+			}
+			log.Infof("Console client authenticated: %s", claims.Username)
+			continue
+		}
+
+		// Require authentication for all other messages
+		if !c.authenticated {
+			c.send <- ConsoleMessage{
+				Type:      "error",
+				Timestamp: time.Now().Format(time.RFC3339),
+				Message:   "Authentication required",
+			}
+			continue
+		}
+
+		// Handle commands
 		if msg.Type == "command" && msg.Command != "" {
-			// Execute the command
 			result, err := c.manager.ExecuteCommand(msg.Command)
 
 			response := ConsoleMessage{
