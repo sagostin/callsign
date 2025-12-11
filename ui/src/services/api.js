@@ -409,6 +409,16 @@ export const systemAPI = {
     getStatus: () => api.get('/system/status'),
     getStats: () => api.get('/system/stats'),
     getLogs: (params) => api.get('/system/logs', { params }),
+
+    // System Media
+    listSounds: () => api.get('/system/media/sounds'),
+    uploadSound: (formData) => api.post('/system/media/sounds', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    listMusic: () => api.get('/system/media/music'),
+    uploadMusic: (formData) => api.post('/system/media/music', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
 }
 
 // =====================
@@ -420,6 +430,17 @@ export const usersAPI = {
     create: (data) => api.post('/users', data),
     update: (id, data) => api.put(`/users/${id}`, data),
     delete: (id) => api.delete(`/users/${id}`),
+}
+
+// =====================
+// Tenant Media API
+// =====================
+export const tenantMediaAPI = {
+    listSounds: () => api.get('/media/sounds'),
+    uploadSound: (formData) => api.post('/media/sounds', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    deleteSound: (path) => api.delete('/media/sounds', { params: { path } }),
 }
 
 // =====================

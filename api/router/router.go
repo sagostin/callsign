@@ -315,6 +315,14 @@ func (r *Router) Init() {
 					provisioning.Put("/{id}", r.Handler.UpdateProvisioningTemplate)
 					provisioning.Delete("/{id}", r.Handler.DeleteProvisioningTemplate)
 				}
+
+				// Tenant Media (Sounds & Music Overrides)
+				media := tenantScoped.Party("/media")
+				{
+					media.Get("/sounds", r.Handler.ListTenantSounds)
+					media.Post("/sounds", r.Handler.UploadTenantSound)
+					media.Delete("/sounds", r.Handler.DeleteTenantSound)
+				}
 			}
 
 			// Tenant admin routes
@@ -437,6 +445,15 @@ func (r *Router) Init() {
 				// System status
 				system.Get("/status", r.Handler.GetSystemStatus)
 				system.Get("/stats", r.Handler.GetSystemStats)
+
+				// System Media (Filesystem)
+				media := system.Party("/media")
+				{
+					media.Get("/sounds", r.Handler.ListSystemSounds)
+					media.Post("/sounds", r.Handler.UploadSystemSound)
+					media.Get("/music", r.Handler.ListSystemMusic)
+					media.Post("/music", r.Handler.UploadSystemMusic)
+				}
 			}
 
 			// User portal routes

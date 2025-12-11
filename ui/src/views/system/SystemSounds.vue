@@ -75,6 +75,7 @@
                 <tr v-for="sound in getSoundsForCategory(category.id)" :key="sound.id">
                   <td>
                     <span class="sound-name">{{ sound.name }}</span>
+                    <span v-if="sound.isOverride" class="override-badge">Override</span>
                   </td>
                   <td class="desc-cell">{{ sound.description }}</td>
                   <td>
@@ -92,10 +93,11 @@
                       <PlayIcon v-if="currentlyPlaying !== sound.id" />
                       <PauseIcon v-else class="playing" />
                     </button>
-                    <button class="btn-icon" @click="editSound(sound)" title="Edit">
-                      <EditIcon />
+                    <!-- Show revert if override, otherwise show upload for replacement -->
+                    <button v-if="sound.isOverride" class="btn-icon" @click="deleteOverride(sound)" title="Revert to System Default">
+                       <XIcon class="text-bad" />
                     </button>
-                    <button class="btn-icon" @click="uploadForLang(sound)" title="Upload for this language">
+                    <button v-else class="btn-icon" @click="uploadForLang(sound)" :title="isTenant ? 'Override this sound' : 'Replace sound'">
                       <UploadIcon />
                     </button>
                   </td>
@@ -140,17 +142,18 @@
           <div class="form-group">
             <label>Audio File</label>
             <div class="file-upload">
-              <input type="file" id="sound-file" accept=".wav,.mp3,.ogg">
+              <input type="file" id="sound-file" accept=".wav,.mp3,.ogg" @change="handleFileUpload">
               <label for="sound-file" class="file-label">
                 <UploadIcon class="upload-icon" />
-                <span>Choose file or drag & drop</span>
+                <span v-if="uploadForm.file">{{ uploadForm.file.name }}</span>
+                <span v-else>Choose file or drag & drop</span>
               </label>
             </div>
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="showUploadModal = false">Cancel</button>
-          <button class="btn-primary">Upload</button>
+          <button class="btn-primary" @click="submitUpload">Upload</button>
         </div>
       </div>
     </div>
@@ -158,76 +161,146 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { 
+import { ref, computed, onMounted } from 'vue'
+import {
   Upload as UploadIcon, Download as DownloadIcon, ChevronDown as ChevronDownIcon,
   Play as PlayIcon, Pause as PauseIcon, Edit as EditIcon, Check as CheckIcon, X as XIcon,
   Phone, Bell, VolumeX, Volume2, Music, MessageSquare, AlertCircle, Clock
 } from 'lucide-vue-next'
+import { systemAPI, tenantMediaAPI } from '../../services/api'
 
-const selectedLanguage = ref('en-us')
-const expandedCategories = ref(['ivr', 'voicemail'])
+const selectedLanguage = ref('en/us') // changed to path format
+const expandedCategories = ref([])
 const showUploadModal = ref(false)
 const showImportModal = ref(false)
 const currentlyPlaying = ref(null)
+const isLoading = ref(false)
+const rawData = ref([]) // The full tree from API
 
-const uploadForm = ref({ name: '', description: '', category: 'ivr', language: 'en-us' })
+const uploadForm = ref({ name: '', description: '', category: 'ivr', language: 'en/us', file: null })
 
-const languages = ref([
-  { code: 'en-us', name: 'English (US)', flag: '🇺🇸' },
-  { code: 'en-gb', name: 'English (UK)', flag: '🇬🇧' },
-  { code: 'es-mx', name: 'Spanish (MX)', flag: '🇲🇽' },
-  { code: 'es-es', name: 'Spanish (ES)', flag: '🇪🇸' },
-  { code: 'fr-ca', name: 'French (CA)', flag: '🇨🇦' },
-  { code: 'fr-fr', name: 'French (FR)', flag: '🇫🇷' },
-  { code: 'de-de', name: 'German', flag: '🇩🇪' },
-  { code: 'pt-br', name: 'Portuguese (BR)', flag: '🇧🇷' },
-])
+// Computed languages based on available folders in rawData
+const languages = computed(() => {
+  if (!rawData.value.length) return []
+  const langs = []
+  
+  // Expecting structure: lang/region
+  rawData.value.forEach(langNode => {
+    if (langNode.type !== 'directory') return
+    const langCode = langNode.name
+    
+    if (langNode.children) {
+      langNode.children.forEach(regionNode => {
+        if (regionNode.type !== 'directory') return
+        const regionCode = regionNode.name
+        const code = `${langCode}/${regionCode}`
+        
+        // Form human readable name
+        let name = code
+        let flag = '🏳️'
+        if (code === 'en/us') { name = 'English (US)'; flag = '🇺🇸' }
+        else if (code === 'en/gb') { name = 'English (UK)'; flag = '🇬🇧' }
+        else if (code === 'fr/ca') { name = 'French (CA)'; flag = '🇨🇦' }
+        else if (code === 'es/mx') { name = 'Spanish (MX)'; flag = '🇲🇽' }
+        
+        langs.push({ code, name, flag })
+      })
+    }
+  })
+  
+  return langs.length ? langs : [{ code: 'en/us', name: 'English (US)', flag: '🇺🇸' }]
+})
 
-const categories = ref([
-  { id: 'ivr', name: 'IVR Prompts', icon: 'Phone' },
-  { id: 'voicemail', name: 'Voicemail', icon: 'MessageSquare' },
-  { id: 'tones', name: 'Tones & Signals', icon: 'Bell' },
-  { id: 'errors', name: 'Error Messages', icon: 'AlertCircle' },
-  { id: 'queue', name: 'Queue Announcements', icon: 'Clock' },
-  { id: 'conference', name: 'Conference', icon: 'Volume2' },
-])
+// Dynamically generate categories based on modules found in the selected language
+const categories = computed(() => {
+  const cats = new Set()
+  // Default categories to ensure order/existence of common ones
+  const defaults = [
+    { id: 'ivr', name: 'IVR Prompts', icon: 'Phone' },
+    { id: 'voicemail', name: 'Voicemail', icon: 'MessageSquare' },
+    { id: 'conference', name: 'Conference', icon: 'Volume2' },
+    { id: 'digits', name: 'Digits', icon: 'Clock' },
+    { id: 'misc', name: 'Misc', icon: 'Bell' },
+  ]
+  
+  // Scan sounds to find other categories
+  sounds.value.forEach(s => cats.add(s.category))
+  
+  const result = defaults.filter(d => cats.has(d.id))
+  cats.forEach(c => {
+    if (!result.find(r => r.id === c)) {
+      result.push({ id: c, name: c.charAt(0).toUpperCase() + c.slice(1), icon: 'Volume2' })
+    }
+  })
+  return result
+})
 
-const sounds = ref([
-  { id: 1, category: 'ivr', name: 'ivr_welcome', description: 'Welcome greeting', languages: ['en-us', 'es-mx', 'fr-ca'] },
-  { id: 2, category: 'ivr', name: 'ivr_goodbye', description: 'Goodbye message', languages: ['en-us', 'es-mx'] },
-  { id: 3, category: 'ivr', name: 'ivr_invalid_option', description: 'Invalid option selected', languages: ['en-us'] },
-  { id: 4, category: 'ivr', name: 'ivr_timeout', description: 'Timeout - no input', languages: ['en-us', 'es-mx', 'fr-ca', 'de-de'] },
-  { id: 5, category: 'voicemail', name: 'vm_greeting', description: 'Default voicemail greeting', languages: ['en-us', 'es-mx'] },
-  { id: 6, category: 'voicemail', name: 'vm_unavailable', description: 'User unavailable', languages: ['en-us'] },
-  { id: 7, category: 'voicemail', name: 'vm_mailbox_full', description: 'Mailbox full notification', languages: ['en-us', 'es-mx', 'fr-ca'] },
-  { id: 8, category: 'tones', name: 'tone_beep', description: 'Standard beep tone', languages: ['en-us'] },
-  { id: 9, category: 'tones', name: 'tone_busy', description: 'Busy signal', languages: ['en-us'] },
-  { id: 10, category: 'errors', name: 'err_number_invalid', description: 'Number not in service', languages: ['en-us', 'es-mx'] },
-  { id: 11, category: 'queue', name: 'queue_position', description: 'Queue position announcement', languages: ['en-us', 'es-mx', 'fr-ca'] },
-  { id: 12, category: 'queue', name: 'queue_estimated_wait', description: 'Estimated wait time', languages: ['en-us'] },
-])
+const sounds = computed(() => {
+  if (!selectedLanguage.value || !rawData.value.length) return []
+  
+  const parts = selectedLanguage.value.split('/')
+  if (parts.length !== 2) return []
+  
+  const langNode = rawData.value.find(n => n.name === parts[0])
+  if (!langNode || !langNode.children) return []
+  
+  const regionNode = langNode.children.find(n => n.name === parts[1])
+  if (!regionNode || !regionNode.children) return []
+  
+  // Ideally there is a 'voice' folder next, e.g. 'callie'
+  // We will aggregate sounds from all voices or just pick the first one?
+  // Let's flatten all sounds found under this language/region
+  const flatSounds = []
+  
+  const traverse = (node, pathStr, category) => {
+    if (node.type === 'file') {
+      flatSounds.push({
+        id: node.path,
+        name: node.name,
+        path: node.path,
+        category: category || 'misc',
+        description: node.path,
+        languages: [selectedLanguage.value], // Simplification
+        isOverride: node.is_override
+      })
+    } else if (node.children) {
+      // If we are deep enough, the folder name is the category
+      // structure: lang/region/voice/category/file
+      // path parts: [0]=lang, [1]=region, [2]=voice, [3]=category
+      const currentParts = node.path.split('/')
+      // Remove root prefix if present (api returns relative to root usually, but let's check node.path)
+      // Node.path is relative to sounds root. e.g. "en/us/callie/ivr"
+      // parts: "en", "us", "callie", "ivr"
+      
+      let nextCat = category
+      if (!category && currentParts.length >= 4) {
+        nextCat = currentParts[3]
+      }
+      
+      node.children.forEach(child => traverse(child, child.path, nextCat))
+    }
+  }
+  
+  regionNode.children.forEach(voiceNode => {
+      if (voiceNode.children) {
+          voiceNode.children.forEach(child => traverse(child, child.path, null))
+      }
+  })
+  
+  return flatSounds
+})
 
 const selectedLanguageName = computed(() => languages.value.find(l => l.code === selectedLanguage.value)?.name || '')
 const totalSounds = computed(() => sounds.value.length)
 
 const getSoundsForCategory = (catId) => sounds.value.filter(s => s.category === catId)
-const hasLanguage = (sound, langCode) => sound.languages.includes(langCode)
+const hasLanguage = (sound, langCode) => sound.languages.includes(langCode) // logic simplified for FS files
 
 const getLanguageCoverage = (catId) => {
-  const catSounds = getSoundsForCategory(catId)
-  const covered = catSounds.filter(s => hasLanguage(s, selectedLanguage.value)).length
-  return `${covered}/${catSounds.length}`
+    return `${getSoundsForCategory(catId).length} files`
 }
 
-const getCoverageClass = (catId) => {
-  const catSounds = getSoundsForCategory(catId)
-  const covered = catSounds.filter(s => hasLanguage(s, selectedLanguage.value)).length
-  const ratio = covered / catSounds.length
-  if (ratio === 1) return 'full'
-  if (ratio >= 0.5) return 'partial'
-  return 'low'
-}
+const getCoverageClass = (catId) => 'full'
 
 const getCategoryIcon = (icon) => {
   const icons = { Phone, MessageSquare, Bell, AlertCircle, Clock, Volume2 }
@@ -241,16 +314,92 @@ const toggleCategory = (catId) => {
 }
 
 const playSound = (sound) => {
-  currentlyPlaying.value = currentlyPlaying.value === sound.id ? null : sound.id
+    // Requires a playback endpoint, not implemented yet.
+    // Ideally we'd have a /system/media/play?path=...
+    console.log('Play not implemented yet for', sound.path)
+    currentlyPlaying.value = currentlyPlaying.value === sound.id ? null : sound.id
 }
 
 const editSound = (sound) => { console.log('Edit', sound.name) }
-const uploadForLang = (sound) => { 
+
+const isTenant = computed(() => !!localStorage.getItem('tenantId'))
+
+const uploadForLang = (sound) => {
   uploadForm.value.name = sound.name
-  uploadForm.value.description = sound.description
+  uploadForm.value.description = ''
   uploadForm.value.category = sound.category
   showUploadModal.value = true
 }
+
+const handleFileUpload = (event) => {
+    uploadForm.value.file = event.target.files[0]
+}
+
+const submitUpload = async () => {
+    if (!uploadForm.value.file) return
+    
+    // Construct path: lang/region/voice/category
+    // We need to know the voice. For now, default to first voice found or 'callie'?
+    // Let's assume 'callie' for en/us if not found.
+    // Actually, we can just put it in the category folder under the current language's first voice.
+    
+    // Find voice folder
+    const parts = uploadForm.value.language.split('/')
+    const langNode = rawData.value.find(n => n.name === parts[0])
+    const regionNode = langNode?.children?.find(n => n.name === parts[1])
+    let voice = 'callie' // default
+    if (regionNode?.children?.length) {
+        voice = regionNode.children[0].name
+    }
+    
+    const targetPath = `${uploadForm.value.language}/${voice}/${uploadForm.value.category}`
+    
+    const formData = new FormData()
+    formData.append('file', uploadForm.value.file)
+    formData.append('path', targetPath)
+    
+    try {
+        if (isTenant.value) {
+            await tenantMediaAPI.uploadSound(formData)
+        } else {
+            await systemAPI.uploadSound(formData)
+        }
+        showUploadModal.value = false
+        loadSounds() // Refresh
+    } catch (e) {
+        console.error('Upload failed', e)
+        alert('Upload failed: ' + (e.response?.data?.error || e.message))
+    }
+}
+
+const deleteOverride = async (sound) => {
+    if (!confirm(`Revert override for ${sound.name}?`)) return
+    
+    try {
+        await tenantMediaAPI.deleteSound(sound.path)
+        loadSounds()
+    } catch (e) {
+         console.error('Delete failed', e)
+         alert('Failed to delete override')
+    }
+}
+
+const loadSounds = async () => {
+  isLoading.value = true
+  try {
+    const apiCall = isTenant.value ? tenantMediaAPI.listSounds : systemAPI.listSounds
+    const response = await apiCall()
+    rawData.value = response.data.data
+  } catch (e) {
+    console.error('Failed to load sounds', e)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+onMounted(() => {
+  loadSounds()
+})
 </script>
 
 <style scoped>
@@ -262,6 +411,7 @@ const uploadForLang = (sound) => {
 .btn-primary { background: var(--primary-color); color: white; }
 .btn-secondary { background: white; border: 1px solid var(--border-color); }
 .btn-icon { width: 14px; height: 14px; }
+.btn-link { background: none; border: none; color: var(--primary-color); cursor: pointer; font-size: 11px; padding: 0; }
 
 .top-bar { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; gap: 20px; }
 .stats-row { display: flex; gap: 16px; flex: 1; }
@@ -307,6 +457,12 @@ const uploadForLang = (sound) => {
 .actions-cell .btn-icon:hover { color: var(--primary-color); border-color: var(--primary-color); }
 .actions-cell .btn-icon svg { width: 14px; height: 14px; }
 .actions-cell .btn-icon .playing { color: var(--primary-color); }
+
+.override-badge { 
+    font-size: 10px; font-weight: 700; color: #d97706; background: #fef3c7; 
+    padding: 2px 6px; border-radius: 4px; border: 1px solid #fcd34d; margin-left: 8px;
+    text-transform: uppercase;
+}
 
 /* Modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; }

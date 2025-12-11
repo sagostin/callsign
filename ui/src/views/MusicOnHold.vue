@@ -10,98 +10,145 @@
   </div>
 
   <div class="tabs">
-    <button class="tab" :class="{ active: activeTab === 'streams' }" @click="activeTab = 'streams'">Streams</button>
-    <button class="tab" :class="{ active: activeTab === 'playlists' }" @click="activeTab = 'playlists'">Playlists</button>
+    <button 
+        v-for="rate in rates" 
+        :key="rate"
+        class="tab" 
+        :class="{ active: activeTab === rate }" 
+        @click="activeTab = rate"
+    >
+        {{ rate }} Hz
+    </button>
   </div>
 
-  <!-- STREAMS TAB -->
-  <div class="tab-content" v-if="activeTab === 'streams'">
-      <DataTable :columns="columns" :data="streams" actions>
-        <template #rate="{ value }">
-          <span class="font-mono text-xs">{{ value }}Hz</span>
+  <div class="tab-content">
+      <div class="action-bar" style="margin-bottom: 16px;">
+          <p class="text-xs text-muted">Files in <code>/usr/share/freeswitch/sounds/music/{{ activeTab }}</code></p>
+          <button class="btn-primary small" @click="showUploadModal = true">
+             <UploadIcon class="icon-small" style="width:12px; margin-right:4px;" /> Upload Music
+          </button>
+      </div>
+
+      <DataTable :columns="columns" :data="currentFiles" actions>
+        <template #size="{ value }">
+            <span class="font-mono text-xs">{{ (value / 1024).toFixed(1) }} KB</span>
         </template>
-        <template #actions>
-          <button class="btn-link" @click="$router.push('/admin/music-on-hold/1')">Edit</button>
-          <button class="btn-link text-bad">Delete</button>
+        <template #actions="{ item }">
+          <button class="btn-link text-bad" @click="deleteFile(item)">Delete</button>
         </template>
       </DataTable>
   </div>
 
-  <!-- PLAYLISTS TAB -->
-  <div class="tab-content" v-else-if="activeTab === 'playlists'">
-      <div class="action-bar">
-         <p class="text-sm text-muted">Manage custom playlists for hold music.</p>
-         <button class="btn-primary small" @click="addPlaylist">+ New Playlist</button>
-      </div>
-
-      <div class="playlist-grid">
-         <div v-for="(list, idx) in playlists" :key="idx" class="playlist-card">
-            <div class="playlist-header">
-              <div class="pl-info">
-                 <span class="pl-name">{{ list.name }}</span>
-                 <span class="pl-count">{{ list.tracks.length }} Tracks</span>
-              </div>
-              <div class="pl-more">...</div>
-            </div>
-            
-            <div class="track-list">
-               <div v-for="(track, tIdx) in list.tracks" :key="tIdx" class="track">
-                  <div class="track-icon">🎵</div>
-                  <div class="track-details">
-                     <div class="track-name">{{ track.name }}</div>
-                     <div class="track-dur">{{ track.duration }}</div>
-                  </div>
-               </div>
-            </div>
-
-            <div class="pl-footer">
-               <button class="btn-secondary full-width">Manage Tracks</button>
-            </div>
-         </div>
+  <!-- Upload Modal -->
+  <div v-if="showUploadModal" class="modal-overlay" @click.self="showUploadModal = false">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>Upload Music ({{ activeTab }} Hz)</h3>
+          <button class="close-btn" @click="showUploadModal = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Audio File (WAV/MP3)</label>
+            <input type="file" @change="handleFileUpload" accept=".wav,.mp3,.ogg" class="input-field">
+          </div>
+        </div>
+        <div class="modal-footer">
+           <button class="btn-secondary" @click="showUploadModal = false">Cancel</button>
+           <button class="btn-primary" @click="submitUpload">Upload</button>
+        </div>
       </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { systemAPI } from '../services/api'
 import DataTable from '../components/common/DataTable.vue'
+import { Upload as UploadIcon, Download as DownloadIcon } from 'lucide-vue-next'
 
-const activeTab = ref('streams')
+const activeTab = ref('8000') // Default rate
+const musicData = ref([])
+const isLoading = ref(false)
+const showUploadModal = ref(false)
+const uploadForm = ref({ file: null })
+
+// Computed rates available in the FS
+const rates = computed(() => {
+    if (!musicData.value.length) return ['8000', '16000', '32000', '48000']
+    
+    // Extract folder names that are numbers
+    const folders = musicData.value
+        .filter(n => n.type === 'directory' && !isNaN(parseInt(n.name)))
+        .map(n => n.name)
+        .sort((a, b) => parseInt(a) - parseInt(b))
+        
+    return folders.length ? folders : ['8000', '16000', '32000', '48000']
+})
+
+// Get files for active tab
+const currentFiles = computed(() => {
+    const rateNode = musicData.value.find(n => n.name === activeTab.value)
+    if (!rateNode || !rateNode.children) return []
+    
+    return rateNode.children.filter(n => n.type === 'file').map(f => ({
+        name: f.name,
+        path: f.path,
+        size: f.size,
+        rate: activeTab.value
+    }))
+})
 
 const columns = [
-  { key: 'name', label: 'Category Name', width: '200px' },
-  { key: 'path', label: 'Path / URL' },
-  { key: 'rate', label: 'Sample Rate' },
-  { key: 'channels', label: 'Channels' }
+  { key: 'name', label: 'Filename', width: '300px' },
+  { key: 'size', label: 'Size (bytes)' },
+  { key: 'path', label: 'Full Path' }
 ]
 
-const streams = ref([
-  { name: 'default', path: 'local_stream://default', rate: '48000', channels: 'Mono' },
-  { name: 'rock', path: '/var/lib/sounds/rock', rate: '48000', channels: 'Stereo' },
-  { name: 'sales_stream', path: 'shout://stream.example.com/sales', rate: '32000', channels: 'Mono' },
-])
-
-const playlists = ref([
-   { 
-     name: 'Default Hold', 
-     tracks: [
-        { name: 'Classical_Guitar.mp3', duration: '3:42' },
-        { name: 'Jazz_Piano.mp3', duration: '4:15' },
-        { name: 'Smooth_Synth.wav', duration: '2:30' }
-     ]
-   },
-   {
-     name: 'Holiday Promotions',
-     tracks: [
-        { name: 'Jingle_Bell_Rock.mp3', duration: '2:10' },
-        { name: 'Promo_Spot_2024.wav', duration: '0:30' }
-     ]
-   }
-])
-
-const addPlaylist = () => {
-   playlists.value.push({ name: 'New Playlist', tracks: [] })
+const loadMusic = async () => {
+    isLoading.value = true
+    try {
+        const response = await systemAPI.listMusic()
+        musicData.value = response.data.data
+        // Set active tab to first available if not set or invalid
+        if (rates.value.length && !rates.value.includes(activeTab.value)) {
+            activeTab.value = rates.value[0]
+        }
+    } catch (e) {
+        console.error('Failed to load music', e)
+    } finally {
+        isLoading.value = false
+    }
 }
+
+const handleFileUpload = (event) => {
+    uploadForm.value.file = event.target.files[0]
+}
+
+const submitUpload = async () => {
+    if (!uploadForm.value.file) return
+    
+    const formData = new FormData()
+    formData.append('file', uploadForm.value.file)
+    formData.append('rate', activeTab.value)
+    
+    try {
+        await systemAPI.uploadMusic(formData)
+        showUploadModal.value = false
+        loadMusic()
+    } catch (e) {
+        console.error('Upload failed', e)
+        alert('Upload failed: ' + (e.response?.data?.error || e.message))
+    }
+}
+
+const deleteFile = (file) => {
+    // Implement delete if API supports it
+    console.log('Delete not implemented', file)
+}
+
+onMounted(() => {
+    loadMusic()
+})
 </script>
 
 <style scoped>
@@ -169,4 +216,16 @@ const addPlaylist = () => {
 .pl-footer { padding: 12px; border-top: 1px solid var(--border-color); background: #f8fafc; }
 .btn-secondary { background: white; border: 1px solid var(--border-color); color: var(--text-main); font-size: 12px; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: 500; }
 .full-width { width: 100%; }
+
+/* Modal Styles */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; }
+.modal-card { background: white; border-radius: 12px; width: 90%; max-width: 400px; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-color); }
+.modal-header h3 { margin: 0; font-size: 16px; }
+.close-btn { width: 28px; height: 28px; border: none; background: #f1f5f9; border-radius: 6px; font-size: 18px; cursor: pointer; }
+.modal-body { padding: 20px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--border-color); }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+.input-field { width: 100%; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; box-sizing: border-box; }
 </style>
