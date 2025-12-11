@@ -17,20 +17,20 @@
     </div>
 
     <!-- Center Section: Tenant Selector (Admin/System only) -->
-    <div class="topbar-center" v-if="mode !== 'user'">
+    <div class="topbar-center" v-if="auth.permissions.isSystemAdmin() || auth.permissions.isTenantAdmin()">
       <div class="tenant-selector">
         <div class="tenant-badge" :class="{ system: selectedContext === 'system' }">
           <GlobeIcon v-if="selectedContext === 'system'" class="tenant-icon" />
           <BuildingIcon v-else class="tenant-icon" />
         </div>
         <select v-model="selectedContext" @change="handleContextChange" class="tenant-select">
-          <optgroup label="System">
+          <optgroup label="System" v-if="auth.permissions.isSystemAdmin()">
             <option value="system">System Admin (Global)</option>
           </optgroup>
           <optgroup label="Tenants">
-            <option value="tenant-1">Acme Corporation</option>
-            <option value="tenant-2">Globex Industries</option>
-            <option value="tenant-3">Initech Solutions</option>
+            <option v-for="tenant in auth.state.tenants" :key="tenant.id" :value="tenant.id">
+              {{ tenant.name }}
+            </option>
           </optgroup>
         </select>
         <ChevronDownIcon class="select-chevron" />
@@ -50,7 +50,7 @@
           <span class="badge-dot" v-if="unreadNotifications > 0"></span>
         </button>
 
-        <button class="action-btn" v-if="mode !== 'user'" @click="showQuickAdd" title="Quick Add">
+      <button class="action-btn" v-if="auth.permissions.isSystemAdmin() || auth.permissions.isTenantAdmin()" @click="showQuickAdd" title="Quick Add">
           <PlusCircleIcon class="action-icon" />
         </button>
       </div>
@@ -108,7 +108,7 @@
           </div>
           <div class="dropdown-user-info">
             <span class="name">{{ userName }}</span>
-            <span class="email">admin@callsign.io</span>
+            <span class="email">{{ auth.state.user?.email }}</span>
           </div>
         </div>
         <div class="dropdown-divider"></div>
@@ -134,8 +134,9 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAuth } from '../../services/auth'
 import { 
   Search as SearchIcon, Globe as GlobeIcon, Building2 as BuildingIcon,
   ChevronDown as ChevronDownIcon, HelpCircle as HelpCircleIcon,
@@ -146,12 +147,27 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuth()
 
 const searchQuery = ref('')
 const searchExpanded = ref(false)
-const selectedContext = ref('tenant-1')
 const showUserDropdown = ref(false)
 const unreadNotifications = ref(3)
+
+// Initialize selectedContext based on current tenant or system
+const selectedContext = ref('system')
+
+// Update selectedContext based on auth state
+onMounted(async () => {
+    await auth.fetchAvailableTenants()
+    
+    const tenantId = localStorage.getItem('tenantId')
+    if (tenantId) {
+        selectedContext.value = tenantId
+    } else {
+        selectedContext.value = 'system'
+    }
+})
 
 const mode = computed(() => {
   if (route.path.startsWith('/system')) return 'system'
@@ -165,28 +181,30 @@ const searchPlaceholder = computed(() => {
   return 'Search contacts, messages...'
 })
 
-const userName = ref('Admin User')
-const userInitials = computed(() => userName.value.split(' ').map(n => n[0]).join(''))
+const userName = computed(() => auth.state.user?.name || auth.state.user?.username || 'User')
+const userInitials = computed(() => {
+    const name = userName.value
+    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+})
+
 const userRole = computed(() => {
-  if (mode.value === 'system') return 'System Owner'
-  if (mode.value === 'admin') return 'Tenant Admin'
+  const role = auth.state.user?.role
+  if (role === 'system_admin') return 'System Admin'
+  if (role === 'tenant_admin') return 'Tenant Admin'
   return 'User'
 })
 
 const handleContextChange = () => {
-  if (selectedContext.value === 'system') {
-    router.push('/system')
-  } else {
-    router.push('/admin')
-  }
+  auth.switchTenant(selectedContext.value)
 }
 
 const showHelp = () => alert('Help & Documentation')
 const showNotifications = () => alert('Notifications Panel')
 const showQuickAdd = () => alert('Quick Add Menu')
-const logout = () => {
+const logout = async () => {
   showUserDropdown.value = false
-  alert('Logging out...')
+  await auth.logout()
+  router.push('/login')
 }
 </script>
 

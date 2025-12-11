@@ -1,11 +1,13 @@
 import { reactive, readonly } from 'vue'
-import { authAPI } from './api'
+import { authAPI, systemAPI } from './api'
 
+// Auth state
 // Auth state
 const state = reactive({
     user: JSON.parse(localStorage.getItem('user') || 'null'),
     token: localStorage.getItem('token') || null,
     isAuthenticated: !!localStorage.getItem('token'),
+    tenants: [],
     isLoading: false,
     error: null,
 })
@@ -140,6 +142,43 @@ function hasRole(role) {
     return state.user?.role === role
 }
 
+// Tenant Management
+async function fetchAvailableTenants() {
+    if (!permissions.isSystemAdmin() && !permissions.isTenantAdmin()) return
+
+    try {
+        // For system admins, fetch all tenants
+        if (permissions.isSystemAdmin()) {
+            const response = await systemAPI.listTenants()
+            state.tenants = response.data.data || response.data
+        }
+        // For tenant admins, we might rely on a different endpoint or just the current user's tenant
+        // Assuming systemAPI.listTenants handles context or returns appropriate list
+        else {
+            // If the API supports listing available tenants for the user context
+            // state.tenants = [state.user.tenant] // Fallback
+        }
+    } catch (e) {
+        console.error('Failed to fetch tenants', e)
+    }
+}
+
+function switchTenant(tenantId) {
+    if (tenantId === 'system') {
+        localStorage.removeItem('tenantId')
+        // Refresh page or trigger reload to clear headers
+        window.location.href = '/system'
+        return
+    }
+
+    const tenant = state.tenants.find(t => t.id === tenantId)
+    if (tenant) {
+        localStorage.setItem('tenantId', tenant.id)
+        // Refresh page to apply new tenant header
+        window.location.href = '/admin'
+    }
+}
+
 // Export store
 export const useAuth = () => ({
     state: readonly(state),
@@ -152,6 +191,8 @@ export const useAuth = () => ({
     hasPermission,
     hasRole,
     clearAuth,
+    fetchAvailableTenants,
+    switchTenant,
 })
 
 export default useAuth

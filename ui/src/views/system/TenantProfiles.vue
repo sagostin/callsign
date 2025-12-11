@@ -57,7 +57,7 @@
 
       <div class="divider"></div>
 
-      <div class="form-section">
+      <div class="form-section" v-if="activeProfile.limits">
         <h4>Resource Limits</h4>
         <div class="form-row three">
           <div class="form-group">
@@ -77,7 +77,7 @@
 
       <div class="divider"></div>
 
-      <div class="form-section">
+      <div class="form-section" v-if="activeProfile.features">
         <h4>Features Included</h4>
         <div class="feature-checkboxes">
           <label class="checkbox-label">
