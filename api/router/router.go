@@ -188,10 +188,10 @@ func (r *Router) Init() {
 				// Audio Library
 				audioLibrary := tenantScoped.Party("/audio-library")
 				{
-					audioLibrary.Get("/", r.Handler.ListAudioFiles)
-					audioLibrary.Post("/", r.Handler.UploadAudioFile)
-					audioLibrary.Get("/{id}", r.Handler.GetAudioFile)
-					audioLibrary.Delete("/{id}", r.Handler.DeleteAudioFile)
+					audioLibrary.Get("/", r.Handler.ListMediaFiles)
+					audioLibrary.Post("/", r.Handler.UploadMediaFile)
+					audioLibrary.Put("/{id}", r.Handler.UpdateMediaFile)
+					audioLibrary.Delete("/{id}", r.Handler.DeleteMediaFile)
 				}
 
 				// Music on Hold
@@ -446,11 +446,7 @@ func (r *Router) Init() {
 					acls.Delete("/{id}/nodes/{nodeId}", r.Handler.DeleteACLNode)
 				}
 
-				// System status
-				system.Get("/status", r.Handler.GetSystemStatus)
-				system.Get("/stats", r.Handler.GetSystemStats)
-
-				// System Media (Filesystem)
+				// System Media
 				media := system.Party("/media")
 				{
 					media.Get("/sounds", r.Handler.ListSystemSounds)
@@ -458,6 +454,11 @@ func (r *Router) Init() {
 					media.Get("/music", r.Handler.ListSystemMusic)
 					media.Post("/music", r.Handler.UploadSystemMusic)
 				}
+
+				// System status
+				system.Get("/status", r.Handler.GetSystemStatus)
+				system.Get("/stats", r.Handler.GetSystemStats)
+
 			}
 
 			// User portal routes

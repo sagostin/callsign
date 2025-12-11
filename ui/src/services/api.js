@@ -299,6 +299,7 @@ export const audioLibraryAPI = {
     upload: (formData) => api.post('/audio-library', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
+    update: (id, data) => api.put(`/audio-library/${id}`, data),
     delete: (id) => api.delete(`/audio-library/${id}`),
 }
 

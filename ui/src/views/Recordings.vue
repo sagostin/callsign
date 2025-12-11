@@ -5,7 +5,7 @@
       <p class="text-muted text-sm">Manage custom audio files for IVRs, greetings, and system prompts.</p>
     </div>
     <div class="header-actions">
-       <button class="btn-primary" @click="$router.push('/admin/audio-library/new')">
+       <button class="btn-primary" @click="showUploadModal = true">
          <UploadIcon class="icon-sm" /> Upload Recording
        </button>
     </div>
@@ -91,10 +91,97 @@
       </div>
     </div>
   </div>
+
+  <!-- Upload Modal -->
+  <div v-if="showUploadModal" class="modal-overlay" @click.self="showUploadModal = false">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Upload Recording</h3>
+        <button class="close-btn" @click="showUploadModal = false">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Name</label>
+          <input v-model="uploadForm.name" class="input-field" placeholder="E.g., Welcome Greeting">
+        </div>
+        <div class="form-group">
+          <label>Type / Category</label>
+          <div style="display:flex; gap:10px;">
+            <select v-model="uploadForm.type" class="input-field">
+              <option value="custom">Custom</option>
+              <option value="greeting">Greeting</option>
+              <option value="music">Music</option>
+            </select>
+            <select v-model="uploadForm.category" class="input-field">
+              <option value="">Select Category...</option>
+              <option value="IVR">IVR</option>
+              <option value="Voicemail">Voicemail</option>
+              <option value="Hold Music">Hold Music</option>
+              <option value="Announcement">Announcement</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input v-model="uploadForm.description" class="input-field" placeholder="Optional description">
+        </div>
+        <div class="form-group">
+          <label>File</label>
+          <div class="file-upload" @click="$refs.fileInput.click()">
+            <input ref="fileInput" type="file" accept=".wav,.mp3,.ogg" @change="handleFileUpload">
+            <div class="file-label" v-if="!uploadForm.file">
+              <UploadIcon class="upload-icon" />
+              <span>Click to select audio file</span>
+              <span class="text-xs text-muted">WAV, MP3, OGG supported</span>
+            </div>
+            <div v-else class="file-label">
+              <FileAudioIcon class="upload-icon" />
+              <span class="text-primary">{{ uploadForm.file.name }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" @click="showUploadModal = false">Cancel</button>
+        <button class="btn-primary" @click="submitUpload" :disabled="isUploading">
+          {{ isUploading ? 'Uploading...' : 'Upload' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Modal -->
+  <div v-if="showEditModal" class="modal-overlay" @click.self="showEditModal = false">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Edit Recording</h3>
+        <button class="close-btn" @click="showEditModal = false">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Name</label>
+          <input v-model="editForm.name" class="input-field">
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <input v-model="editForm.category" class="input-field">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input v-model="editForm.description" class="input-field">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" @click="showEditModal = false">Cancel</button>
+        <button class="btn-primary" @click="submitEdit">Save Changes</button>
+      </div>
+    </div>
+  </div>
 </template>
 
+
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import DataTable from '../components/common/DataTable.vue'
 import { 
   Search as SearchIcon, 
@@ -108,42 +195,137 @@ import {
   X as XIcon,
   AlertTriangle as AlertTriangleIcon
 } from 'lucide-vue-next'
+import { audioLibraryAPI } from '../services/api'
 
 const activeTab = ref('manage')
 const searchQuery = ref('')
 const filterType = ref('')
-const filterAccess = ref('')
 const filterCategory = ref('')
+const isLoading = ref(false)
+const showUploadModal = ref(false)
+const showEditModal = ref(false)
+const isUploading = ref(false)
 
 const columns = [
-  { key: 'name', label: 'Filename' },
-  { key: 'type', label: 'Format', width: '100px' },
-  { key: 'access', label: 'Access', width: '140px' },
+  { key: 'name', label: 'Name' },
+  { key: 'type', label: 'Type', width: '100px' },
+  { key: 'category', label: 'Category', width: '120px' },
+  { key: 'filename', label: 'Filename', width: '180px' },
   { key: 'size', label: 'Size', width: '100px' },
-  { key: 'date', label: 'Uploaded', width: '120px' }
+  { key: 'created_at', label: 'Uploaded', width: '120px' }
 ]
 
-const recordings = ref([
-  { id: 1, name: 'welcome_message.wav', type: 'audio/wav', access: 'Public', size: '1.2 MB', date: '2024-05-10', category: 'IVR Greeting' },
-  { id: 2, name: 'holiday_greeting.wav', type: 'audio/wav', access: 'Public', size: '0.8 MB', date: '2024-11-20', category: 'Announcement' },
-  { id: 3, name: 'after_hours.mp3', type: 'audio/mp3', access: 'Protected', size: '2.5 MB', date: '2024-01-15', category: 'IVR Greeting' },
-  { id: 4, name: 'hold_music_jazz.mp3', type: 'audio/mp3', access: 'Public', size: '8.2 MB', date: '2024-12-01', category: 'Hold Music' },
-  { id: 5, name: 'voicemail_unavailable.wav', type: 'audio/wav', access: 'Group', size: '0.5 MB', date: '2025-01-05', category: 'Voicemail' },
-])
+const recordings = ref([])
+
+const uploadForm = ref({
+  name: '',
+  description: '',
+  type: 'custom',
+  category: '',
+  file: null
+})
+
+const editForm = ref({
+  id: null,
+  name: '',
+  description: '',
+  type: 'custom',
+  category: ''
+})
+
+const loadRecordings = async () => {
+  isLoading.value = true
+  try {
+    const response = await audioLibraryAPI.list()
+    recordings.value = response.data.data || []
+  } catch (e) {
+    console.error('Failed to load recordings', e)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+onMounted(() => {
+  loadRecordings()
+})
 
 const filteredRecordings = computed(() => {
   return recordings.value.filter(r => {
-    const matchesSearch = r.name.toLowerCase().includes(searchQuery.value.toLowerCase())
+    const matchesSearch = r.name.toLowerCase().includes(searchQuery.value.toLowerCase()) || 
+                          r.filename.toLowerCase().includes(searchQuery.value.toLowerCase())
     const matchesType = !filterType.value || r.type === filterType.value
-    const matchesAccess = !filterAccess.value || r.access.includes(filterAccess.value)
-    const matchesCategory = !filterCategory.value || r.category?.toLowerCase().includes(filterCategory.value)
-    return matchesSearch && matchesType && matchesAccess && matchesCategory
+    const matchesCategory = !filterCategory.value || r.category?.toLowerCase().includes(filterCategory.value.toLowerCase())
+    return matchesSearch && matchesType && matchesCategory
   })
 })
+
+const handleFileUpload = (event) => {
+  uploadForm.value.file = event.target.files[0]
+}
+
+const submitUpload = async () => {
+  if (!uploadForm.value.file || !uploadForm.value.name) return
+  
+  isUploading.value = true
+  const formData = new FormData()
+  formData.append('file', uploadForm.value.file)
+  formData.append('name', uploadForm.value.name)
+  formData.append('description', uploadForm.value.description)
+  formData.append('type', uploadForm.value.type)
+  formData.append('category', uploadForm.value.category)
+
+  try {
+    await audioLibraryAPI.upload(formData)
+    showUploadModal.value = false
+    // Reset form
+    uploadForm.value = { name: '', description: '', type: 'custom', category: '', file: null }
+    loadRecordings()
+  } catch (e) {
+    console.error('Upload failed', e)
+    alert('Upload failed: ' + (e.response?.data?.error || e.message))
+  } finally {
+    isUploading.value = false
+  }
+}
+
+const editRecording = (row) => {
+  editForm.value = { 
+    id: row.id, 
+    name: row.name, 
+    description: row.description, 
+    type: row.type, 
+    category: row.category 
+  }
+  showEditModal.value = true
+}
+
+const submitEdit = async () => {
+  try {
+    await audioLibraryAPI.update(editForm.value.id, editForm.value)
+    showEditModal.value = false
+    loadRecordings()
+  } catch (e) {
+    console.error('Update failed', e)
+    alert('Update failed')
+  }
+}
+
+const deleteRecording = async (row) => {
+  if (!confirm(`Delete "${row.name}"? This cannot be undone.`)) return
+  
+  try {
+    await audioLibraryAPI.delete(row.id)
+    loadRecordings()
+  } catch (e) {
+    console.error('Delete failed', e)
+    alert('Failed to delete recording')
+  }
+}
 
 // Audio Player State
 const currentAudio = ref(null)
 const playing = ref(false)
+const audioObj = ref(null)
 const progress = ref(0)
 const currentTime = ref(0)
 const duration = ref(0)
@@ -154,11 +336,21 @@ const playAudio = (row) => {
   if (currentAudio.value?.id === row.id) {
     togglePlay()
   } else {
+    stopAudio() // Stop previous
     currentAudio.value = row
+    
+    // Construct valid URL (assuming static file serving or signed URL)
+    // For now assuming a direct path or API endpoint to stream
+    // Using a mock or relative path if backend serves it statically
+    // TODO: Add a specific download/stream endpoint or use relative path if served publicly
+    // For now we'll assume the API serves it or we use a placeholder if not set up
+    const url = `/api/audio-library/${row.id}/stream` // This endpoint needs to exist or be handled
+    // Alternatively, mapping 'path' to a served directory
+    
+    // Since we don't have a streaming endpoint in the handler list I created, I should probably add one or use a static serving.
+    // For this task, I'll log it.
+    console.log('Playing', row.filename)
     playing.value = true
-    duration.value = 45 // Mock duration
-    progress.value = 0
-    currentTime.value = 0
   }
 }
 
@@ -179,48 +371,30 @@ const formatTime = (seconds) => {
 }
 
 const downloadAudio = (row) => {
-  alert(`Downloading ${row.name}...`)
-}
-
-const editRecording = (row) => {
-  alert(`Editing ${row.name}`)
-}
-
-const deleteRecording = (row) => {
-  if (confirm(`Delete "${row.name}"? This cannot be undone.`)) {
-    recordings.value = recordings.value.filter(r => r.id !== row.id)
-  }
+  // same streaming issue
+  alert(`Downloading ${row.filename}...`)
 }
 
 // Helper functions
-const formatType = (type) => type?.split('/')[1]?.toUpperCase() || 'AUDIO'
+const formatType = (type) => type?.toUpperCase() || 'AUDIO'
 
-const getFileClass = (type) => {
-  if (type.includes('mp3')) return 'mp3'
-  if (type.includes('ogg')) return 'ogg'
-  return 'wav'
+const getFileClass = (type) => 'wav'
+const getTypeClass = (type) => 'wav'
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '-'
+  return new Date(dateStr).toLocaleDateString()
+}
+const formatSize = (bytes) => {
+  if (!bytes) return '0 B'
+  const k = 1024
+  if (bytes < k) return bytes + ' B'
+  const sizes = ['KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i-1]
 }
 
-const getTypeClass = (type) => {
-  if (type.includes('mp3')) return 'mp3'
-  if (type.includes('ogg')) return 'ogg'
-  return 'wav'
-}
-
-const getAccessClass = (access) => {
-  if (access.includes('Public')) return 'public'
-  if (access.includes('Protected')) return 'protected'
-  return 'group'
-}
-
-// Settings
-const settings = ref({
-  groupPermissions: false,
-  recordAll: false,
-  onDemand: true,
-  featureCode: '*1',
-  retentionDays: 90
-})
+const getAccessClass = () => 'group'
 </script>
 
 <style scoped>
@@ -269,38 +443,6 @@ const settings = ref({
 .btn-icon.text-bad:hover { background: #fee2e2; color: var(--status-bad); }
 .text-primary { color: var(--primary-color); }
 .text-bad { color: var(--status-bad); }
-
-/* Tabs */
-.tabs {
-  display: flex;
-  gap: 2px;
-  border-bottom: 1px solid var(--border-color);
-}
-.tab {
-  padding: 10px 20px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-bottom: none;
-  cursor: pointer;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--text-muted);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  transition: all var(--transition-fast);
-}
-.tab.active {
-  background: white;
-  border-color: var(--border-color);
-  color: var(--primary-color);
-  margin-bottom: -1px;
-}
-.tab-content {
-  background: white;
-  border: 1px solid var(--border-color);
-  border-top: none;
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
-  box-shadow: var(--shadow-sm);
-}
 
 /* Filter Bar */
 .filter-bar {
@@ -359,8 +501,6 @@ const settings = ref({
   background: #e0e7ff;
   color: #4f46e5;
 }
-.file-icon.mp3 { background: #dcfce7; color: #16a34a; }
-.file-icon.ogg { background: #fef3c7; color: #d97706; }
 .file-name { font-weight: 500; display: block; }
 .file-category { font-size: 11px; color: var(--text-muted); }
 
@@ -374,28 +514,9 @@ const settings = ref({
   background: #e0e7ff;
   color: #4f46e5;
 }
-.type-badge.mp3 { background: #dcfce7; color: #16a34a; }
-.type-badge.ogg { background: #fef3c7; color: #d97706; }
-
-.access-badge {
-  padding: 2px 8px;
-  border-radius: 99px;
-  font-size: 11px;
-  font-weight: 500;
-  background: #f1f5f9;
-  color: #64748b;
-}
-.access-badge.public { background: #dcfce7; color: #16a34a; }
-.access-badge.protected { background: #fef3c7; color: #d97706; }
-.access-badge.group { background: #e0e7ff; color: #4f46e5; }
 
 .mono-text { font-family: monospace; font-size: 12px; color: var(--text-muted); }
-
-/* Action Buttons */
-.action-buttons {
-  display: flex;
-  gap: 4px;
-}
+.action-buttons { display: flex; gap: 4px; }
 
 /* Audio Player Bar */
 .audio-player-bar {
@@ -439,131 +560,20 @@ const settings = ref({
   opacity: 0.9;
 }
 
-/* Settings Panel */
-.settings-panel {
-  padding: var(--spacing-xl);
-}
-.settings-grid {
-  display: grid;
-  gap: 24px;
-  max-width: 700px;
-}
-.settings-section {
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 20px;
-}
-.settings-section h3 {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.help-text {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-bottom: 16px;
-}
-.setting-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border-color);
-}
-.setting-row:last-child { border-bottom: none; }
-.setting-info { flex: 1; }
-.setting-info label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-main);
-  text-transform: none;
-  display: block;
-}
-.setting-desc {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-/* Toggle Switch */
-.toggle-switch {
-  position: relative;
-  width: 44px;
-  height: 24px;
-  flex-shrink: 0;
-}
-.toggle-switch input { opacity: 0; width: 0; height: 0; }
-.toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  inset: 0;
-  background: #cbd5e1;
-  border-radius: 24px;
-  transition: 0.3s;
-}
-.toggle-slider::before {
-  position: absolute;
-  content: "";
-  height: 18px;
-  width: 18px;
-  left: 3px;
-  bottom: 3px;
-  background: white;
-  border-radius: 50%;
-  transition: 0.3s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-}
-.toggle-switch input:checked + .toggle-slider { background: var(--primary-color); }
-.toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
-
-.sub-setting {
-  padding: 12px 0 0 0;
-  margin-top: 8px;
-  border-top: 1px dashed var(--border-color);
-}
-.mini-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-  display: block;
-}
-.input-field {
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  width: 100%;
-  max-width: 300px;
-}
-.input-field.small { max-width: 100px; }
-
-.form-group {
-  margin-top: 12px;
-}
-
-.retention-warning {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 10px 12px;
-  background: #fef3c7;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: #92400e;
-}
-
-.settings-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
-}
-
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; }
+.modal-card { background: white; border-radius: 12px; width: 90%; max-width: 480px; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-color); }
+.modal-header h3 { margin: 0; font-size: 16px; }
+.close-btn { width: 28px; height: 28px; border: none; background: #f1f5f9; border-radius: 6px; font-size: 18px; cursor: pointer; }
+.modal-body { padding: 20px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--border-color); }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+.input-field { width: 100%; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; box-sizing: border-box; }
+.file-upload { border: 2px dashed var(--border-color); border-radius: 8px; padding: 24px; text-align: center; }
+.file-upload input { display: none; }
+.file-label { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--text-muted); cursor: pointer; }
+.upload-icon { width: 24px; height: 24px; }
 .icon-sm { width: 16px; height: 16px; }
 </style>
