@@ -66,12 +66,11 @@ services:
       - TTS_PROVIDER=${TTS_PROVIDER:-edge}
     volumes:
       - storage_data:/var/lib/callsign
-      # FreeSWITCH shared paths (mount from FS container or host)
-      - freeswitch_sounds:/usr/share/freeswitch/sounds:ro
-      - freeswitch_music:/usr/share/freeswitch/music
-      - freeswitch_recordings:/var/lib/freeswitch/recordings
-      - freeswitch_storage:/var/lib/freeswitch/storage
-      - freeswitch_logs:/var/log/freeswitch:ro
+      # FreeSWITCH shared paths - bind mount from host system
+      - /usr/share/freeswitch/sounds:/usr/share/freeswitch/sounds:ro
+      - /usr/share/freeswitch/music:/usr/share/freeswitch/music
+      - /var/lib/freeswitch:/var/lib/freeswitch
+      - /var/log/freeswitch:/var/log/freeswitch:ro
     healthcheck:
       test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:${API_PORT:-8080}/api/health" ]
       interval: 30s
@@ -177,10 +176,4 @@ volumes:
   grafana_data:
   storage_data:
   caddy_data:
-  caddy_config: # FreeSWITCH shared volumes
-
-  freeswitch_sounds:
-  freeswitch_music:
-  freeswitch_recordings:
-  freeswitch_storage:
-  freeswitch_logs:
+  caddy_config:

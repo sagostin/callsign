@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"bufio"
 	"encoding/json"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -182,22 +185,28 @@ func (h *Handler) FreeSwitchConsole(ctx iris.Context) {
 }
 
 // startLogStreaming subscribes to FS log events and broadcasts them
+// Falls back to reading the log file directly if ESL is not connected
 func (h *Handler) startLogStreaming() {
-	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		log.Warn("ESL not connected, log streaming not available")
-		return
+	// Try ESL first
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		// Subscribe to log events
+		err := h.ESLManager.SubscribeEvents("LOG", "CUSTOM", "CHANNEL_CREATE", "CHANNEL_DESTROY")
+		if err != nil {
+			log.Errorf("Failed to subscribe to log events: %v", err)
+		} else {
+			log.Info("Started FreeSWITCH log streaming via ESL")
+			go h.streamESLEvents()
+			return
+		}
 	}
 
-	// Subscribe to log events
-	err := h.ESLManager.SubscribeEvents("LOG", "CUSTOM", "CHANNEL_CREATE", "CHANNEL_DESTROY")
-	if err != nil {
-		log.Errorf("Failed to subscribe to log events: %v", err)
-		return
-	}
+	// Fallback: tail the log file directly
+	log.Info("ESL not available, falling back to log file streaming")
+	go h.tailLogFile("/var/log/freeswitch/freeswitch.log")
+}
 
-	log.Info("Started FreeSWITCH log streaming")
-
-	// Process events
+// streamESLEvents processes ESL events and broadcasts them
+func (h *Handler) streamESLEvents() {
 	events := h.ESLManager.Events()
 	for ev := range events {
 		eventName := ev.Get("Event-Name")
@@ -228,6 +237,81 @@ func (h *Handler) startLogStreaming() {
 
 		if h.ConsoleManager != nil {
 			h.ConsoleManager.Broadcast(msg)
+		}
+	}
+}
+
+// tailLogFile reads new lines from the FreeSWITCH log file and broadcasts them
+func (h *Handler) tailLogFile(path string) {
+	file, err := os.Open(path)
+	if err != nil {
+		log.Warnf("Could not open log file %s: %v", path, err)
+		// Broadcast error message
+		if h.ConsoleManager != nil {
+			h.ConsoleManager.Broadcast(ConsoleMessage{
+				Type:      "log",
+				Level:     "WARNING",
+				Timestamp: time.Now().Format(time.RFC3339),
+				Module:    "logtail",
+				Message:   "Log file not available: " + path,
+			})
+		}
+		return
+	}
+	defer file.Close()
+
+	// Seek to end of file
+	file.Seek(0, 2)
+
+	reader := bufio.NewReader(file)
+	log.Infof("Started tailing log file: %s", path)
+
+	if h.ConsoleManager != nil {
+		h.ConsoleManager.Broadcast(ConsoleMessage{
+			Type:      "log",
+			Level:     "INFO",
+			Timestamp: time.Now().Format(time.RFC3339),
+			Module:    "logtail",
+			Message:   "Started streaming from " + path,
+		})
+	}
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Parse log level from FreeSWITCH log format
+		level := "INFO"
+		if strings.Contains(line, "[DEBUG]") {
+			level = "DEBUG"
+		} else if strings.Contains(line, "[INFO]") {
+			level = "INFO"
+		} else if strings.Contains(line, "[NOTICE]") {
+			level = "NOTICE"
+		} else if strings.Contains(line, "[WARNING]") || strings.Contains(line, "[WARN]") {
+			level = "WARNING"
+		} else if strings.Contains(line, "[ERR]") || strings.Contains(line, "[ERROR]") {
+			level = "ERROR"
+		} else if strings.Contains(line, "[CRIT]") || strings.Contains(line, "[ALERT]") {
+			level = "ERROR"
+		}
+
+		if h.ConsoleManager != nil {
+			h.ConsoleManager.Broadcast(ConsoleMessage{
+				Type:      "log",
+				Level:     level,
+				Timestamp: time.Now().Format(time.RFC3339),
+				Module:    "freeswitch",
+				Message:   line,
+			})
 		}
 	}
 }
