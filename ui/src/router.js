@@ -79,9 +79,10 @@ const routes = [
       { path: 'bridges/new', component: () => import('./views/admin/BridgeForm.vue'), name: 'BridgeFormNew' },
       { path: 'bridges/:id', component: () => import('./views/admin/BridgeForm.vue'), name: 'BridgeFormEdit' },
 
-      { path: 'gateways', component: () => import('./views/Gateways.vue'), name: 'Gateways' },
-      { path: 'gateways/new', component: () => import('./views/admin/GatewayForm.vue'), name: 'GatewayFormNew' },
-      { path: 'gateways/:id', component: () => import('./views/admin/GatewayForm.vue'), name: 'GatewayFormEdit' },
+      { path: 'trunks', component: () => import('./views/Gateways.vue'), name: 'Trunks' },
+      { path: 'trunks/new', component: () => import('./views/admin/GatewayForm.vue'), name: 'TrunkFormNew' },
+      { path: 'trunks/:id', component: () => import('./views/admin/GatewayForm.vue'), name: 'TrunkFormEdit' },
+      { path: 'gateways', redirect: '/admin/trunks' }, // legacy redirect
 
       { path: 'call-block', component: () => import('./views/CallBlock.vue'), name: 'CallBlock' },
       { path: 'call-block/new', component: () => import('./views/admin/CallBlockForm.vue'), name: 'CallBlockFormNew' },

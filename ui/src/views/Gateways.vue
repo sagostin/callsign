@@ -1,11 +1,11 @@
 <template>
   <div class="view-header">
     <div class="header-content">
-      <h2>Gateways (Trunks)</h2>
-      <p class="text-muted text-sm">Manage external SIP trunks and PSTN gateways.</p>
+      <h2>Trunks</h2>
+      <p class="text-muted text-sm">Manage SIP trunks and PSTN gateways for this tenant.</p>
     </div>
     <div class="header-actions">
-      <button class="btn-primary" @click="$router.push('/admin/gateways/new')">+ Add Gateway</button>
+      <button class="btn-primary" @click="$router.push('/admin/trunks/new')">+ Add Trunk</button>
     </div>
   </div>
 
@@ -18,32 +18,58 @@
         <span class="badge" :class="value.toLowerCase()">{{ value }}</span>
     </template>
 
-    <template #actions>
-      <button class="btn-link" @click="$router.push('/admin/gateways/1')">Edit</button>
-      <button class="btn-link text-bad" @click="deleteGateway">Delete</button>
+    <template #actions="{ row }">
+      <button class="btn-link" @click="$router.push(`/admin/trunks/${row.id}`)">Edit</button>
+      <button class="btn-link text-bad" @click="deleteTrunk(row)">Delete</button>
     </template>
   </DataTable>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import DataTable from '../components/common/DataTable.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
+import { systemAPI } from '../services/api'
 
 const columns = [
-  { key: 'name', label: 'Gateway Name' },
-  { key: 'hostname', label: 'Hostname / IP' },
-  { key: 'type', label: 'Type' },
+  { key: 'gateway_name', label: 'Trunk Name' },
+  { key: 'proxy', label: 'Hostname / IP' },
+  { key: 'gateway_type', label: 'Type' },
   { key: 'status', label: 'Status' }
 ]
 
-const gateways = ref([
-  { name: 'Flowroute Primary', hostname: 'sip.flowroute.com', type: 'Public', status: 'Registered' },
-  { name: 'Twilio Elastic SIP', hostname: 'callsign.pstn.twilio.com', type: 'Public', status: 'Registered' },
-  { name: 'Local PRI Gateway', hostname: '192.168.1.200', type: 'Local', status: 'Error' },
-])
+const gateways = ref([])
+const loading = ref(true)
 
-const deleteGateway = () => confirm('Delete this gateway?') && alert('Gateway deleted.')
+const loadTrunks = async () => {
+  loading.value = true
+  try {
+    const response = await systemAPI.listGateways()
+    const data = response.data?.data || response.data || []
+    gateways.value = data.map(g => ({
+      ...g,
+      status: g.enabled ? (g.register ? 'Registered' : 'Active') : 'Disabled',
+      gateway_type: g.gateway_type || 'Public'
+    }))
+  } catch (e) {
+    console.error('Failed to load trunks', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadTrunks)
+
+const deleteTrunk = async (trunk) => {
+  if (confirm(`Delete trunk "${trunk.gateway_name}"?`)) {
+    try {
+      await systemAPI.deleteGateway(trunk.id)
+      await loadTrunks()
+    } catch (e) {
+      alert('Failed to delete trunk: ' + e.message)
+    }
+  }
+}
 </script>
 
 <style scoped>

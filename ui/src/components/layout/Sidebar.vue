@@ -183,9 +183,9 @@
 
         <div class="nav-section">
           <div class="nav-header" v-if="!isCollapsed">SETTINGS</div>
-          <router-link to="/admin/gateways" class="nav-item" v-tooltip="isCollapsed ? 'Gateways' : ''">
+          <router-link to="/admin/trunks" class="nav-item" v-tooltip="isCollapsed ? 'Trunks' : ''">
             <Server class="nav-icon" />
-            <span class="nav-label">Gateways</span>
+            <span class="nav-label">Trunks</span>
           </router-link>
           <router-link to="/admin/bridges" class="nav-item" v-tooltip="isCollapsed ? 'Bridges' : ''">
             <NetworkIcon class="nav-icon" />
