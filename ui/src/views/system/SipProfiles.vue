@@ -13,7 +13,8 @@
         <ServerIcon class="btn-icon" />
         Reload XML
       </button>
-      <button class="btn-primary" @click="openNewProfile">+ New Profile</button>
+      <!-- Note: SIP profiles can only be edited, not created/deleted via UI.
+           To add a new profile, place an XML file in sip_profiles/ directory. -->
     </div>
   </div>
 
@@ -77,9 +78,7 @@
         <button class="btn-sm" @click.stop="editProfile(profile)">
           <EditIcon class="btn-icon-sm" /> Edit
         </button>
-        <button class="btn-sm btn-delete" @click.stop="deleteProfile(profile)">
-          <TrashIcon class="btn-icon-sm" /> Delete
-        </button>
+        <!-- Delete disabled - profiles are managed via backend files -->
       </div>
     </div>
   </div>
@@ -104,7 +103,7 @@
   <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
     <div class="modal-card large">
       <div class="modal-header">
-        <h3>{{ isEditing ? 'Edit SIP Profile' : 'New SIP Profile' }}</h3>
+        <h3>Edit SIP Profile</h3>
         <button class="btn-icon" @click="showModal = false"><XIcon class="icon-sm" /></button>
       </div>
       

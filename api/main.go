@@ -2,6 +2,7 @@ package main
 
 import (
 	"callsign/config"
+	"callsign/handlers/freeswitch"
 	"callsign/models"
 	"callsign/router"
 	"callsign/services/esl"
@@ -58,6 +59,14 @@ func main() {
 	if err := models.RunSeeds(db); err != nil {
 		logManager.Error("STARTUP", "Failed to run database seeds: "+err.Error(), nil)
 		log.Fatalf("Failed to run database seeds: %v", err)
+	}
+
+	// Import SIP profiles from disk on first boot (if DB is empty)
+	// After import, profiles are managed via DB and synced back to files
+	profileImporter := freeswitch.NewProfileImporter(cfg.SIPProfilesPath, db)
+	if err := profileImporter.ImportProfilesOnBoot(); err != nil {
+		logManager.Warn("STARTUP", "Failed to import SIP profiles: "+err.Error(), nil)
+		log.Warnf("Failed to import SIP profiles: %v", err)
 	}
 
 	// Initialize and start ESL Manager

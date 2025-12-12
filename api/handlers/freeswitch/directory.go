@@ -12,6 +12,13 @@ import (
 )
 
 // handleDirectory processes directory section requests (SIP auth, user lookup)
+// Per mod_xml_curl documentation, handles these scenarios:
+// - purpose=gateways: return gateway definitions for Sofia profiles
+// - purpose=network-list: return network list info
+// - action=sip_auth: SIP registration/authentication
+// - action=message-count: voicemail message count lookup
+// - action=reverse-auth-lookup: reverse authentication challenge
+// - default (no action/purpose): standard user lookup
 func (h *FSHandler) handleDirectory(req *XMLCurlRequest) string {
 	log.WithFields(log.Fields{
 		"user":    req.User,
@@ -21,14 +28,31 @@ func (h *FSHandler) handleDirectory(req *XMLCurlRequest) string {
 		"profile": req.SIPProfile,
 	}).Debug("Directory request received")
 
-	// Handle different purposes
+	// Handle different purposes first (higher priority)
 	switch req.Purpose {
 	case "gateways":
 		return h.handleDirectoryGateways(req)
 	case "network-list":
 		return h.handleDirectoryNetworkList(req)
+	}
+
+	// Handle different actions
+	switch req.Action {
+	case "sip_auth":
+		// SIP registration/authentication request
+		return h.handleDirectoryUser(req)
+	case "message-count":
+		// Voicemail message count lookup (from mod_voicemail)
+		// Returns same directory format as auth requests
+		log.WithField("user", req.User).Debug("Message count lookup for user")
+		return h.handleDirectoryUser(req)
+	case "reverse-auth-lookup":
+		// Reverse authentication lookup
+		// Used when FreeSWITCH needs to challenge an incoming request
+		log.WithField("user", req.User).Debug("Reverse auth lookup for user")
+		return h.handleDirectoryUser(req)
 	default:
-		// Default: user authentication or lookup
+		// Default: standard user lookup (no action means auth request)
 		return h.handleDirectoryUser(req)
 	}
 }
