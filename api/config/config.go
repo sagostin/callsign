@@ -56,6 +56,9 @@ type Config struct {
 	LokiUsername string
 	LokiPassword string
 	LokiJob      string
+
+	// Internal API settings
+	InternalAPIKey string // Key for internal service auth (fail2ban, etc.)
 }
 
 // Load reads configuration from environment variables
@@ -110,6 +113,9 @@ func Load() *Config {
 		LokiUsername: getEnv("LOKI_USERNAME", ""),
 		LokiPassword: getEnv("LOKI_PASSWORD", ""),
 		LokiJob:      getEnv("LOKI_JOB", "callsign-api"),
+
+		// Internal API
+		InternalAPIKey: getEnv("INTERNAL_API_KEY", "callsign-internal-key"),
 	}
 }
 

@@ -35,6 +35,27 @@ func NewRouter(db *gorm.DB, cfg *config.Config) *Router {
 	}
 }
 
+// internalKeyAuth validates the X-Internal-Key header for internal service access
+func (r *Router) internalKeyAuth() iris.Handler {
+	return func(ctx iris.Context) {
+		key := ctx.GetHeader("X-Internal-Key")
+
+		// Check against configured internal key
+		configuredKey := r.Config.InternalAPIKey
+		if configuredKey == "" {
+			configuredKey = "callsign-internal-key" // Default for development
+		}
+
+		if key == "" || key != configuredKey {
+			ctx.StatusCode(iris.StatusUnauthorized)
+			ctx.JSON(iris.Map{"error": "Invalid or missing internal API key"})
+			return
+		}
+
+		ctx.Next()
+	}
+}
+
 // Init sets up all routes and middleware
 func (r *Router) Init() {
 	// Global middleware
@@ -65,6 +86,14 @@ func (r *Router) Init() {
 		provision := api.Party("/provision")
 		{
 			provision.Get("/{tenant}/{secret}/{mac}", r.Handler.GetDeviceConfigSecure)
+		}
+
+		// Internal routes (authenticated via X-Internal-Key header)
+		// These are for internal services like fail2ban
+		internal := api.Party("/internal")
+		internal.Use(r.internalKeyAuth())
+		{
+			internal.Post("/fail2ban/report", r.Handler.ReportBannedIP)
 		}
 
 		// Protected routes (require authentication)

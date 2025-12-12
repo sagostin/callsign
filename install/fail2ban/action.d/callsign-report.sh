@@ -5,33 +5,31 @@
 
 # Action configuration
 CALLSIGN_API_URL="${CALLSIGN_API_URL:-http://localhost:8080/api}"
-CALLSIGN_API_KEY="${CALLSIGN_API_KEY:-}"
+CALLSIGN_INTERNAL_KEY="${CALLSIGN_INTERNAL_KEY:-callsign-internal-key}"
 
 # Called when an IP is banned
 actionban() {
     IP="$1"
     JAIL="$2"
-    FAILURES="$3"
+    FAILURES="${3:-1}"
     TIMESTAMP=$(date -Iseconds)
     
     echo "[$(date)] Banning IP: $IP from jail: $JAIL after $FAILURES failures"
     
     # Add to iptables
-    iptables -I INPUT -s "$IP" -j DROP
+    iptables -I INPUT -s "$IP" -j DROP 2>/dev/null || true
     
-    # Report to CallSign API if configured
-    if [ -n "$CALLSIGN_API_KEY" ]; then
-        curl -s -X POST "$CALLSIGN_API_URL/system/security/banned-ips" \
-            -H "Authorization: Bearer $CALLSIGN_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "{
-                \"ip\": \"$IP\",
-                \"jail\": \"$JAIL\",
-                \"failures\": $FAILURES,
-                \"banned_at\": \"$TIMESTAMP\",
-                \"action\": \"ban\"
-            }" || echo "Failed to report to CallSign API"
-    fi
+    # Report to CallSign API
+    curl -s -X POST "$CALLSIGN_API_URL/internal/fail2ban/report" \
+        -H "X-Internal-Key: $CALLSIGN_INTERNAL_KEY" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"ip\": \"$IP\",
+            \"jail\": \"$JAIL\",
+            \"failures\": $FAILURES,
+            \"banned_at\": \"$TIMESTAMP\",
+            \"action\": \"ban\"
+        }" 2>/dev/null || echo "[$(date)] Warning: Failed to report ban to CallSign API"
 }
 
 # Called when an IP is unbanned
@@ -44,17 +42,15 @@ actionunban() {
     # Remove from iptables
     iptables -D INPUT -s "$IP" -j DROP 2>/dev/null || true
     
-    # Report to CallSign API if configured
-    if [ -n "$CALLSIGN_API_KEY" ]; then
-        curl -s -X POST "$CALLSIGN_API_URL/system/security/banned-ips" \
-            -H "Authorization: Bearer $CALLSIGN_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "{
-                \"ip\": \"$IP\",
-                \"jail\": \"$JAIL\",
-                \"action\": \"unban\"
-            }" || echo "Failed to report to CallSign API"
-    fi
+    # Report to CallSign API
+    curl -s -X POST "$CALLSIGN_API_URL/internal/fail2ban/report" \
+        -H "X-Internal-Key: $CALLSIGN_INTERNAL_KEY" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"ip\": \"$IP\",
+            \"jail\": \"$JAIL\",
+            \"action\": \"unban\"
+        }" 2>/dev/null || echo "[$(date)] Warning: Failed to report unban to CallSign API"
 }
 
 # Handle command line args for fail2ban integration
@@ -70,3 +66,4 @@ case "$1" in
         exit 1
         ;;
 esac
+
