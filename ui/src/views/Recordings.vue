@@ -332,28 +332,47 @@ const duration = ref(0)
 
 const isPlaying = (row) => currentAudio.value?.id === row.id && playing.value
 
-const playAudio = (row) => {
+const playAudio = async (row) => {
   if (currentAudio.value?.id === row.id) {
     togglePlay()
   } else {
     stopAudio() // Stop previous
     currentAudio.value = row
     
-    // Use the stream endpoint
-    const url = `/api/audio-library/${row.id}/stream`
-    
-    audioObj.value = new Audio(url)
-    audioObj.value.addEventListener('timeupdate', () => {
-      currentTime.value = audioObj.value.currentTime
-      duration.value = audioObj.value.duration || 0
-      progress.value = duration.value ? (currentTime.value / duration.value) * 100 : 0
-    })
-    audioObj.value.addEventListener('ended', () => {
-      playing.value = false
-      progress.value = 0
-    })
-    audioObj.value.play()
-    playing.value = true
+    try {
+      // Fetch with auth credentials
+      const token = localStorage.getItem('token')
+      const response = await fetch(`/api/audio-library/${row.id}/stream`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load audio: ${response.status}`)
+      }
+      
+      // Create blob URL from response
+      const blob = await response.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      
+      audioObj.value = new Audio(blobUrl)
+      audioObj.value.addEventListener('timeupdate', () => {
+        currentTime.value = audioObj.value.currentTime
+        duration.value = audioObj.value.duration || 0
+        progress.value = duration.value ? (currentTime.value / duration.value) * 100 : 0
+      })
+      audioObj.value.addEventListener('ended', () => {
+        playing.value = false
+        progress.value = 0
+        URL.revokeObjectURL(blobUrl) // Clean up
+      })
+      audioObj.value.play()
+      playing.value = true
+    } catch (e) {
+      console.error('Failed to play audio', e)
+      alert('Failed to play audio: ' + e.message)
+    }
   }
 }
 
@@ -386,15 +405,34 @@ const formatTime = (seconds) => {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
-const downloadAudio = (row) => {
-  // Create a download link using the stream endpoint
-  const url = `/api/audio-library/${row.id}/stream`
-  const link = document.createElement('a')
-  link.href = url
-  link.download = row.filename || `${row.name}.wav`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+const downloadAudio = async (row) => {
+  try {
+    const token = localStorage.getItem('token')
+    const response = await fetch(`/api/audio-library/${row.id}/stream`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Download failed: ${response.status}`)
+    }
+    
+    const blob = await response.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    
+    const link = document.createElement('a')
+    link.href = blobUrl
+    link.download = row.filename || `${row.name}.wav`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    
+    URL.revokeObjectURL(blobUrl)
+  } catch (e) {
+    console.error('Download failed', e)
+    alert('Download failed: ' + e.message)
+  }
 }
 
 // Helper functions

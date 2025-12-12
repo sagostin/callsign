@@ -470,7 +470,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { 
   Search as SearchIcon, Info as InfoIcon, GripVertical as GripVerticalIcon,
   Clock as ClockIcon, ArrowRight as ArrowRightIcon, Edit as EditIcon,
