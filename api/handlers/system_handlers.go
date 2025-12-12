@@ -3,6 +3,7 @@ package handlers
 import (
 	"callsign/middleware"
 	"callsign/models"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -646,9 +647,32 @@ func (h *Handler) DeleteSIPProfile(ctx iris.Context) {
 		return
 	}
 
-	// Delete related settings and domains first
+	// Check for associated gateways
+	var gatewayCount int64
+	h.DB.Model(&models.Gateway{}).Where("sip_profile_uuid = ?", profile.UUID).Count(&gatewayCount)
+	if gatewayCount > 0 {
+		ctx.StatusCode(http.StatusConflict)
+		ctx.JSON(iris.Map{
+			"error":   "Cannot delete profile",
+			"message": fmt.Sprintf("Profile has %d associated gateway(s). Remove them first.", gatewayCount),
+		})
+		return
+	}
+
+	// Check for associated domains
+	var domainCount int64
+	h.DB.Model(&models.SIPProfileDomain{}).Where("sip_profile_uuid = ?", profile.UUID).Count(&domainCount)
+	if domainCount > 0 {
+		ctx.StatusCode(http.StatusConflict)
+		ctx.JSON(iris.Map{
+			"error":   "Cannot delete profile",
+			"message": fmt.Sprintf("Profile has %d associated domain(s). Remove them first.", domainCount),
+		})
+		return
+	}
+
+	// Delete related settings (safe to delete)
 	h.DB.Where("sip_profile_uuid = ?", profile.UUID).Delete(&models.SIPProfileSetting{})
-	h.DB.Where("sip_profile_uuid = ?", profile.UUID).Delete(&models.SIPProfileDomain{})
 
 	if err := h.DB.Delete(&profile).Error; err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)

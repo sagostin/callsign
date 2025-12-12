@@ -77,6 +77,9 @@
         <button class="btn-sm" @click.stop="editProfile(profile)">
           <EditIcon class="btn-icon-sm" /> Edit
         </button>
+        <button class="btn-sm btn-delete" @click.stop="deleteProfile(profile)">
+          <TrashIcon class="btn-icon-sm" /> Delete
+        </button>
       </div>
     </div>
   </div>
@@ -166,7 +169,7 @@
 import { ref, onMounted, inject } from 'vue'
 import { 
   RefreshCw as RefreshCwIcon, Server as ServerIcon, X as XIcon,
-  Edit as EditIcon, StopCircle as StopCircleIcon, PlayCircle as PlayCircleIcon
+  Edit as EditIcon, StopCircle as StopCircleIcon, PlayCircle as PlayCircleIcon, Trash2 as TrashIcon
 } from 'lucide-vue-next'
 import { systemAPI } from '@/services/api'
 
@@ -327,6 +330,32 @@ async function saveProfile() {
     toast?.error('Failed to save profile', error.message)
   }
 }
+
+async function deleteProfile(profile) {
+  // Check if profile has active registrations or is running
+  if (profile.liveStatus === 'RUNNING') {
+    toast?.error('Cannot delete', 'Profile is currently running. Stop it first.')
+    return
+  }
+  
+  if (profile.registrations > 0) {
+    toast?.error('Cannot delete', 'Profile has active registrations.')
+    return
+  }
+  
+  if (!confirm(`Delete SIP profile "${profile.profile_name}"? This cannot be undone.`)) {
+    return
+  }
+  
+  try {
+    await systemAPI.deleteSIPProfile(profile.id)
+    toast?.success(`Profile ${profile.profile_name} deleted`)
+    selectedProfile.value = null
+    await refreshAll()
+  } catch (error) {
+    toast?.error('Failed to delete profile', error.message)
+  }
+}
 </script>
 
 <style scoped>
@@ -375,6 +404,8 @@ async function saveProfile() {
 .btn-sm:hover { border-color: var(--primary-color); color: var(--primary-color); }
 .btn-sm.btn-danger { border-color: #fecaca; color: #dc2626; }
 .btn-sm.btn-success { border-color: #bbf7d0; color: #16a34a; }
+.btn-sm.btn-delete { border-color: #fecaca; color: #dc2626; }
+.btn-sm.btn-delete:hover { background: #fef2f2; }
 .btn-icon-sm { width: 12px; height: 12px; }
 
 .registrations-panel { background: white; border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; }
