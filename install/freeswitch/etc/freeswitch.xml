@@ -39,6 +39,76 @@
   <X-PRE-PROCESS cmd="include" data="vars.xml"/>
 
   <section name="configuration" description="Various Configuration">
+
+    <modules>
+
+      <!-- Applications -->
+      <load module="mod_commands"/>
+      <load module="mod_memcache"/>
+
+      <!-- Languages -->
+      <load module="mod_lua"/>
+
+      <!-- Endpoints -->
+      <load module="mod_sofia"/>
+
+      <!-- Loggers -->
+      <load module="mod_console"/>
+      <load module="mod_syslog"/>
+      <load module="mod_logfile"/>
+
+      <!-- Applications -->
+      <load module="mod_enum"/>
+      <load module="mod_callcenter"/>
+      <load module="mod_conference"/>
+      <load module="mod_fsv"/>
+      <load module="mod_fifo"/>
+      <load module="mod_curl"/>
+      <load module="mod_dptools"/>
+      <load module="mod_expr"/>
+      <load module="mod_hash"/>
+      <load module="mod_sms"/>
+      <load module="mod_esf"/>
+      <load module="mod_valet_parking"/>
+      <load module="mod_db"/>
+      <load module="mod_spandsp"/>
+
+      <!-- Auto -->
+
+      <!-- Codecs -->
+      <load module="mod_g723_1"/>
+      <load module="mod_g729"/>
+      <load module="mod_h26x"/>
+      <load module="mod_amr"/>
+
+      <!-- Dialplan Interfaces -->
+      <load module="mod_dialplan_xml"/>
+
+      <!-- Endpoints -->
+      <load module="mod_loopback"/>
+
+      <!-- Event Handlers -->
+      <load module="mod_event_socket"/>
+
+      <!-- File Format Interfaces -->
+      <load module="mod_native_file"/>
+      <load module="mod_sndfile"/>
+
+      <!-- Say -->
+      <load module="mod_say_fr"/>
+      <load module="mod_say_en"/>
+      <load module="mod_say_es"/>
+
+      <!-- Streams / Files -->
+      <load module="mod_local_stream"/>
+      <load module="mod_tone_stream"/>
+      <load module="mod_shout"/>
+
+      <!-- XML Interfaces -->
+      <load module="mod_xml_cdr"/>
+
+    </modules>
+
     <configuration name="event_socket.conf" description="Socket Client">
       <settings>
         <param name="nat-map" value="false"/>
@@ -73,7 +143,6 @@
         </binding>
       </bindings>
     </configuration>
-    <X-PRE-PROCESS cmd="include" data="autoload_configs/*.xml"/>
   </section>
 
   <section name="chatplan" description="Regex/XML Chatplan">
