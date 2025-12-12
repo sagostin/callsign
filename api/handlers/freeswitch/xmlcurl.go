@@ -13,6 +13,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// SystemProfiles are protected and cannot be deleted
+var SystemProfiles = map[string]bool{
+	"internal": true,
+	"external": true,
+}
+
+// IsSystemProfile checks if a profile name is a protected system profile
+func IsSystemProfile(name string) bool {
+	return SystemProfiles[strings.ToLower(name)]
+}
+
 // XMLCurlRequest represents the parsed request from FreeSWITCH mod_xml_curl
 type XMLCurlRequest struct {
 	// Common fields
@@ -174,7 +185,19 @@ func FreeSwitchAuthMiddleware(cfg *config.Config) iris.Handler {
 		// Check for API key in config
 		expectedKey := cfg.FreeSwitchAPIKey
 		if expectedKey == "" {
-			// No API key configured, allow request
+			// No API key configured, allow all requests
+			log.Debug("FreeSWITCH auth: No API key configured, allowing request")
+			ctx.Next()
+			return
+		}
+
+		// Allow localhost connections without auth for internal FreeSWITCH
+		remoteAddr := ctx.RemoteAddr()
+		if strings.HasPrefix(remoteAddr, "127.0.0.1") ||
+			strings.HasPrefix(remoteAddr, "::1") ||
+			strings.HasPrefix(remoteAddr, "localhost") ||
+			strings.HasPrefix(remoteAddr, "[::1]") {
+			log.WithField("remote", remoteAddr).Debug("FreeSWITCH auth: Localhost connection, allowing request")
 			ctx.Next()
 			return
 		}
@@ -182,6 +205,10 @@ func FreeSwitchAuthMiddleware(cfg *config.Config) iris.Handler {
 		// Get Authorization header
 		authHeader := ctx.GetHeader("Authorization")
 		if authHeader == "" {
+			log.WithFields(log.Fields{
+				"remote": remoteAddr,
+				"path":   ctx.Path(),
+			}).Warn("FreeSWITCH auth: Missing Authorization header")
 			unauthorized(ctx)
 			return
 		}
@@ -189,12 +216,14 @@ func FreeSwitchAuthMiddleware(cfg *config.Config) iris.Handler {
 		// Parse Basic Auth
 		const prefix = "Basic "
 		if !strings.HasPrefix(authHeader, prefix) {
+			log.Warn("FreeSWITCH auth: Invalid Authorization header format")
 			unauthorized(ctx)
 			return
 		}
 
 		decoded, err := base64.StdEncoding.DecodeString(authHeader[len(prefix):])
 		if err != nil {
+			log.Warn("FreeSWITCH auth: Failed to decode Authorization header")
 			unauthorized(ctx)
 			return
 		}
@@ -202,6 +231,7 @@ func FreeSwitchAuthMiddleware(cfg *config.Config) iris.Handler {
 		credentials := string(decoded)
 		colonIdx := strings.Index(credentials, ":")
 		if colonIdx < 0 {
+			log.Warn("FreeSWITCH auth: Invalid credentials format")
 			unauthorized(ctx)
 			return
 		}
@@ -209,10 +239,12 @@ func FreeSwitchAuthMiddleware(cfg *config.Config) iris.Handler {
 		// Password is the API key
 		password := credentials[colonIdx+1:]
 		if password != expectedKey {
+			log.WithField("remote", remoteAddr).Warn("FreeSWITCH auth: Invalid API key")
 			unauthorized(ctx)
 			return
 		}
 
+		log.Debug("FreeSWITCH auth: Authentication successful")
 		ctx.Next()
 	}
 }

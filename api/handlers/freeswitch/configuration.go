@@ -13,6 +13,13 @@ import (
 func (h *FSHandler) handleConfiguration(req *XMLCurlRequest, hostname string) string {
 	configName := req.KeyValue
 
+	log.WithFields(log.Fields{
+		"config":   configName,
+		"hostname": hostname,
+		"tag_name": req.TagName,
+		"key_name": req.KeyName,
+	}).Debug("Configuration request received")
+
 	// Check cache first
 	cacheKey := xmlcache.ConfigKey(hostname, configName)
 	if cached, ok := h.Cache.Get(cacheKey); ok {
@@ -36,18 +43,20 @@ func (h *FSHandler) handleConfiguration(req *XMLCurlRequest, hostname string) st
 		xml = h.buildLocalStreamConfig()
 	default:
 		// Unknown config, let FreeSWITCH fall back to static file
-		log.Debugf("Unknown configuration requested: %s", configName)
+		log.WithField("config", configName).Debug("Configuration not handled, falling back to static file")
 		return ""
 	}
 
 	if xml != "" {
+		log.WithField("config", configName).Debug("Configuration generated from database")
 		h.Cache.Set(cacheKey, xml, CacheTTL.Configuration)
 	}
 
 	return xml
 }
 
-// buildSofiaConfig generates sofia.conf XML with SIP profiles and gateways
+// buildSofiaConfig generates sofia.conf XML with global settings, SIP profiles and gateways
+// This is served via XML CURL when FreeSWITCH requests section=configuration&key_value=sofia.conf
 func (h *FSHandler) buildSofiaConfig(hostname string) string {
 	var b strings.Builder
 

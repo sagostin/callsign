@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"callsign/handlers/freeswitch"
 	"callsign/middleware"
 	"callsign/models"
 	"fmt"
@@ -570,6 +571,9 @@ func (h *Handler) DeleteBridge(ctx iris.Context) {
 // =====================
 // SIP Profiles
 // =====================
+// Note: SIP profiles are served dynamically via XML CURL (sofia.conf)
+// No need to write files to disk - the database is the source of truth
+// FreeSWITCH fetches the config via: section=configuration&key_value=sofia.conf
 
 func (h *Handler) ListSIPProfiles(ctx iris.Context) {
 	var profiles []models.SIPProfile
@@ -623,6 +627,9 @@ func (h *Handler) CreateSIPProfile(ctx iris.Context) {
 			profile.Settings = defaultSettings
 		}
 	}
+
+	// Note: Profile is served via XML CURL, no need to write to disk
+	// FreeSWITCH will fetch the updated config on next reloadxml
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(profile)
@@ -693,6 +700,9 @@ func (h *Handler) UpdateSIPProfile(ctx iris.Context) {
 		h.DB.Create(&profile.Domains)
 	}
 
+	// Note: Profile is served via XML CURL, no need to write to disk
+	// FreeSWITCH will fetch the updated config on next reloadxml
+
 	ctx.JSON(profile)
 }
 
@@ -708,6 +718,13 @@ func (h *Handler) DeleteSIPProfile(ctx iris.Context) {
 	if err := h.DB.First(&profile, id).Error; err != nil {
 		ctx.StatusCode(http.StatusNotFound)
 		ctx.JSON(iris.Map{"error": "SIP profile not found"})
+		return
+	}
+
+	// Prevent deletion of system profiles (internal/external)
+	if freeswitch.IsSystemProfile(profile.ProfileName) {
+		ctx.StatusCode(http.StatusForbidden)
+		ctx.JSON(iris.Map{"error": "Cannot delete system profile: " + profile.ProfileName})
 		return
 	}
 
@@ -743,6 +760,9 @@ func (h *Handler) DeleteSIPProfile(ctx iris.Context) {
 		ctx.JSON(iris.Map{"error": "Failed to delete SIP profile"})
 		return
 	}
+
+	// Note: Profile is served via XML CURL, no need to delete files
+	// FreeSWITCH will see the profile is gone on next reloadxml
 
 	ctx.JSON(iris.Map{"message": "SIP profile deleted successfully"})
 }

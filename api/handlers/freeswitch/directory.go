@@ -13,6 +13,14 @@ import (
 
 // handleDirectory processes directory section requests (SIP auth, user lookup)
 func (h *FSHandler) handleDirectory(req *XMLCurlRequest) string {
+	log.WithFields(log.Fields{
+		"user":    req.User,
+		"domain":  req.Domain,
+		"action":  req.Action,
+		"purpose": req.Purpose,
+		"profile": req.SIPProfile,
+	}).Debug("Directory request received")
+
 	// Handle different purposes
 	switch req.Purpose {
 	case "gateways":
