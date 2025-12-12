@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/kataras/iris/v12"
+	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -607,6 +608,36 @@ func (h *Handler) ListSIPProfiles(ctx iris.Context) {
 		return
 	}
 	ctx.JSON(iris.Map{"data": profiles})
+}
+
+// SyncSIPProfiles imports SIP profiles from disk XML files that don't exist in DB
+// This allows adding new profiles by placing XML files in sip_profiles folder
+func (h *Handler) SyncSIPProfiles(ctx iris.Context) {
+	profilesPath := h.Config.SIPProfilesPath
+	if profilesPath == "" {
+		profilesPath = "/etc/freeswitch/sip_profiles"
+	}
+
+	importer := freeswitch.NewProfileImporter(profilesPath, h.DB)
+
+	// Log what path we're looking at
+	log.WithField("path", profilesPath).Info("Syncing SIP profiles from disk")
+
+	if err := importer.ImportProfilesOnBoot(); err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to sync profiles: " + err.Error()})
+		return
+	}
+
+	// Return updated list
+	var profiles []models.SIPProfile
+	h.DB.Preload("Settings").Preload("Domains").Order("profile_name").Find(&profiles)
+
+	ctx.JSON(iris.Map{
+		"message": fmt.Sprintf("Sync complete. Found %d profiles in database.", len(profiles)),
+		"data":    profiles,
+		"path":    profilesPath,
+	})
 }
 
 func (h *Handler) CreateSIPProfile(ctx iris.Context) {

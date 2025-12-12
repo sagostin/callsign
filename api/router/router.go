@@ -484,6 +484,7 @@ func (r *Router) Init() {
 				{
 					sipProfiles.Get("/", r.Handler.ListSIPProfiles)
 					sipProfiles.Post("/", r.Handler.CreateSIPProfile)
+					sipProfiles.Post("/sync", r.Handler.SyncSIPProfiles) // Import from disk
 					sipProfiles.Get("/{id}", r.Handler.GetSIPProfile)
 					sipProfiles.Put("/{id}", r.Handler.UpdateSIPProfile)
 					sipProfiles.Delete("/{id}", r.Handler.DeleteSIPProfile)

@@ -442,6 +442,7 @@ export const systemAPI = {
     createSIPProfile: (data) => api.post('/system/sip-profiles', data),
     updateSIPProfile: (id, data) => api.put(`/system/sip-profiles/${id}`, data),
     deleteSIPProfile: (id) => api.delete(`/system/sip-profiles/${id}`),
+    syncSIPProfiles: () => api.post('/system/sip-profiles/sync'), // Import from disk
 
     // Sofia Control (live FreeSWITCH commands)
     getSofiaStatus: () => api.get('/system/sofia/status'),

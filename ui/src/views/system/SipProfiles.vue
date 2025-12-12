@@ -5,6 +5,10 @@
       <p class="text-muted text-sm">Manage SIP endpoints, ports, and view live registrations.</p>
     </div>
     <div class="header-actions">
+      <button class="btn-secondary" @click="syncFromDisk" :disabled="syncing">
+        <RefreshCwIcon class="btn-icon" :class="{ spinning: syncing }" />
+        Sync from Disk
+      </button>
       <button class="btn-secondary" @click="refreshAll" :disabled="refreshing">
         <RefreshCwIcon class="btn-icon" :class="{ spinning: refreshing }" />
         Refresh
@@ -310,6 +314,7 @@ const registrations = ref('')
 const eslConnected = ref(false)
 const refreshing = ref(false)
 const reloadingXML = ref(false)
+const syncing = ref(false)
 const loadingRegistrations = ref(false)
 const showModal = ref(false)
 const isEditing = ref(false)
@@ -492,6 +497,20 @@ async function reloadXML() {
     toast?.error('Failed to reload XML', error.message)
   } finally {
     reloadingXML.value = false
+  }
+}
+
+// Sync SIP profiles from disk - imports any XML files not already in database
+async function syncFromDisk() {
+  syncing.value = true
+  try {
+    const response = await systemAPI.syncSIPProfiles()
+    toast?.success(response.data?.message || 'Sync complete')
+    await refreshAll()
+  } catch (error) {
+    toast?.error('Failed to sync from disk', error.message)
+  } finally {
+    syncing.value = false
   }
 }
 
