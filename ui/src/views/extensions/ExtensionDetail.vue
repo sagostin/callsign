@@ -405,38 +405,38 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Check as CheckIcon, X as XIcon, Phone as PhoneIcon, PhoneCall as PhoneCallIcon, ListOrdered as ListOrderedIcon, GripVertical as GripVerticalIcon, Monitor as MonitorIcon, Smartphone as SmartphoneIcon, Headphones as HeadphonesIcon } from 'lucide-vue-next'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
+import { extensionsAPI, extensionProfilesAPI, usersAPI } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
+const toast = inject('toast')
+const isLoading = ref(false)
 const isNew = computed(() => route.params.id === 'new')
 const activeTab = ref('general')
 const showDeleteModal = ref(false)
 
-const profiles = ref([
-  { id: 1, name: 'Standard', color: '#6366f1', permissions: { outbound: true, international: false, recording: true, portal: true } },
-  { id: 2, name: 'Sales Team', color: '#22c55e', permissions: { outbound: true, international: true, recording: true, portal: true } },
-  { id: 3, name: 'Support Only', color: '#f59e0b', permissions: { outbound: true, international: false, recording: true, portal: false } },
-  { id: 4, name: 'Restricted', color: '#ef4444', permissions: { outbound: false, international: false, recording: false, portal: false } },
-])
+// Profiles from API
+const profiles = ref([])
 
+// Extension form data
 const extension = ref({
   ext: '',
   firstName: '',
   lastName: '',
   email: '',
   webPassword: '',
-  vmPin: '1234',
-  sipPassword: 'a8b7c6d5e4f3',
-  profileId: 1,
+  vmPin: '',
+  sipPassword: '',
+  profileId: null,
   permissions: { outbound: true, international: false, recording: true, portal: true },
-  status: 'Idle',
-  device: 'Yealink T54W',
-  lastCall: '2m ago'
+  status: 'Offline',
+  device: null,
+  lastCall: '—'
 })
 
 const currentProfile = computed(() => {
@@ -455,9 +455,7 @@ const forwarding = ref({
   noAnswer: { enabled: true, number: '', timeout: '20' }
 })
 
-const devices = ref([
-  { mac: '00:15:65:12:34:56', model: 'Yealink T54W', ip: '192.168.1.105', status: 'Online' }
-])
+const devices = ref([])
 
 // Call Handling
 const dragIndex = ref(null)
@@ -465,12 +463,7 @@ const callHandling = ref({
   strategy: 'simultaneous',
   noAnswerAction: 'voicemail',
   forwardNumber: '',
-  devices: [
-    { id: 1, type: 'softphone', name: 'Web Softphone', details: 'Browser / Desktop App', enabled: true, ringTime: '20' },
-    { id: 2, type: 'desk', name: 'Desk Phone', details: 'Yealink T54W - 192.168.1.105', enabled: true, ringTime: '20' },
-    { id: 3, type: 'mobile', name: 'Mobile Phone', details: '(415) 555-1234', enabled: false, ringTime: '30' },
-    { id: 4, type: 'softphone', name: 'Mobile App', details: 'iOS / Android App', enabled: true, ringTime: '20' },
-  ]
+  devices: []
 })
 
 const dragStart = (index) => { dragIndex.value = index }
@@ -488,44 +481,145 @@ const deviceColumns = [
   { key: 'status', label: 'Status' }
 ]
 
-onMounted(() => {
+// Fetch data on mount
+onMounted(async () => {
+  await fetchProfiles()
   if (!isNew.value) {
-    extension.value = {
-      ext: route.params.id,
-      firstName: 'Alice',
-      lastName: 'Smith',
-      email: 'alice@acme.com',
-      webPassword: '',
-      vmPin: '1234',
-      sipPassword: 'a8b7c6d5e4f3',
-      profileId: 1,
-      permissions: { outbound: true, international: false, recording: true, portal: true },
-      status: 'Idle',
-      device: 'Yealink T54W',
-      lastCall: '2m ago'
-    }
-    vm.value.email = 'alice@acme.com'
+    await fetchExtension()
+  } else {
+    // Generate random SIP password for new extension
+    extension.value.sipPassword = generatePassword(16)
   }
 })
 
-const saveExtension = () => {
-  alert('Extension saved!')
-  if (isNew.value) router.push('/admin/extensions')
+async function fetchProfiles() {
+  try {
+    const response = await extensionProfilesAPI.list()
+    profiles.value = (response.data.data || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      color: p.color || '#6366f1',
+      permissions: p.permissions || {}
+    }))
+  } catch (error) {
+    console.error('Failed to load profiles', error)
+  }
 }
 
-const saveVoicemail = () => alert('Voicemail settings saved!')
-const saveForwarding = () => alert('Forwarding rules saved!')
-const saveCallHandling = () => alert('Call handling saved!')
+async function fetchExtension() {
+  isLoading.value = true
+  try {
+    const response = await extensionsAPI.get(route.params.id)
+    const ext = response.data
+    extension.value = {
+      id: ext.id,
+      ext: ext.extension,
+      firstName: ext.display_name?.split(' ')[0] || '',
+      lastName: ext.display_name?.split(' ').slice(1).join(' ') || '',
+      email: ext.email || '',
+      webPassword: '',
+      vmPin: ext.voicemail_pin || '',
+      sipPassword: ext.password || '',
+      profileId: ext.profile_id,
+      permissions: {
+        outbound: ext.outbound_caller_id_name !== '',
+        international: ext.toll_allow?.includes('international') || false,
+        recording: ext.call_recording_enabled || false,
+        portal: true
+      },
+      status: ext.registered ? 'Online' : 'Offline',
+      device: ext.user_agent || null,
+      lastCall: formatLastCall(ext.last_call_at)
+    }
+    vm.value.email = ext.email || ''
+    vm.value.pin = ext.voicemail_pin || '1234'
+    vm.value.enabled = ext.voicemail_enabled !== false
+  } catch (error) {
+    toast?.error('Failed to load extension', error.message)
+    router.push('/admin/extensions')
+  } finally {
+    isLoading.value = false
+  }
+}
 
-const resetWebPassword = () => alert('Password reset email sent')
+function formatLastCall(dateStr) {
+  if (!dateStr) return '—'
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+  
+  if (diffMins < 1) return 'Now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  return `${diffDays}d ago`
+}
+
+function generatePassword(length = 16) {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  return Array.from({ length }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('')
+}
+
+async function saveExtension() {
+  isLoading.value = true
+  try {
+    const payload = {
+      extension: extension.value.ext,
+      display_name: `${extension.value.firstName} ${extension.value.lastName}`.trim(),
+      email: extension.value.email,
+      password: extension.value.sipPassword,
+      voicemail_pin: extension.value.vmPin,
+      profile_id: extension.value.profileId,
+      enabled: true
+    }
+    
+    if (isNew.value) {
+      await extensionsAPI.create(payload)
+      toast?.success('Extension created successfully')
+    } else {
+      await extensionsAPI.update(extension.value.id, payload)
+      toast?.success('Extension updated successfully')
+    }
+    router.push('/admin/extensions')
+  } catch (error) {
+    toast?.error(error.response?.data?.error || error.message, 'Failed to save extension')
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const saveVoicemail = async () => {
+  try {
+    await extensionsAPI.update(extension.value.id, {
+      voicemail_enabled: vm.value.enabled,
+      voicemail_pin: vm.value.pin
+    })
+    toast?.success('Voicemail settings saved')
+  } catch (error) {
+    toast?.error(error.message, 'Failed to save voicemail settings')
+  }
+}
+
+const saveForwarding = () => toast?.info('Forwarding rules would be saved here')
+const saveCallHandling = () => toast?.info('Call handling would be saved here')
+
+const resetWebPassword = () => toast?.info('Password reset email would be sent')
 const regenerateSipPassword = () => {
-  extension.value.sipPassword = Math.random().toString(36).substring(2, 14)
+  extension.value.sipPassword = generatePassword(16)
+  toast?.success('SIP password regenerated - remember to save changes')
 }
 
-const confirmDelete = () => {
-  alert('Extension deleted')
-  showDeleteModal.value = false
-  router.push('/admin/extensions')
+const confirmDelete = async () => {
+  try {
+    await extensionsAPI.delete(extension.value.id)
+    toast?.success('Extension deleted')
+    showDeleteModal.value = false
+    router.push('/admin/extensions')
+  } catch (error) {
+    toast?.error(error.message, 'Failed to delete extension')
+  }
 }
 </script>
 

@@ -65,6 +65,10 @@
       <option value="">All Models</option>
       <option v-for="m in models" :key="m" :value="m">{{ m }}</option>
     </select>
+    <select v-model="filterProfile" class="filter-select">
+      <option value="">All Profiles</option>
+      <option v-for="p in deviceProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+    </select>
   </div>
 
   <!-- Devices Table -->
@@ -85,11 +89,18 @@
       </template>
 
       <template #ext="{ value, row }">
-        <div class="ext-cell" v-if="value">
-          <span class="ext-number">{{ value }}</span>
+        <div class="ext-cell" v-if="row.userName">
+          <span class="ext-number">{{ value || '—' }}</span>
           <span class="ext-name">{{ row.userName }}</span>
         </div>
         <span class="unassigned" v-else>Unassigned</span>
+      </template>
+
+      <template #profile="{ value }">
+        <span class="profile-badge" v-if="value" :style="{ background: getProfileColor(value) }">
+          {{ getProfileName(value) }}
+        </span>
+        <span class="text-muted text-xs" v-else>—</span>
       </template>
 
       <template #status="{ value }">
@@ -281,30 +292,33 @@ import {
 } from 'lucide-vue-next'
 import DataTable from '../components/common/DataTable.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
-import { devicesAPI } from '@/services/api'
+import { devicesAPI, deviceProfilesAPI, usersAPI } from '@/services/api'
 
 const toast = inject('toast')
 const isLoading = ref(false)
 
 const columns = [
-  { key: 'mac', label: 'MAC Address', width: '160px' },
+  { key: 'mac', label: 'MAC Address', width: '150px' },
   { key: 'model', label: 'Model / Template' },
-  { key: 'ext', label: 'Extension' },
-  { key: 'location', label: 'Location', width: '120px' },
-  { key: 'ip', label: 'IP Address', width: '130px' },
-  { key: 'status', label: 'Status', width: '100px' },
-  { key: 'lastSeen', label: 'Last Seen', width: '100px' }
+  { key: 'ext', label: 'User / Extension', width: '150px' },
+  { key: 'profile', label: 'Profile', width: '120px' },
+  { key: 'location', label: 'Location', width: '100px' },
+  { key: 'ip', label: 'IP Address', width: '120px' },
+  { key: 'status', label: 'Status', width: '90px' },
+  { key: 'lastSeen', label: 'Last Seen', width: '90px' }
 ]
 
 const devices = ref([])
+const deviceProfiles = ref([])
 const searchQuery = ref('')
 const filterStatus = ref('')
 const filterLocation = ref('')
 const filterModel = ref('')
+const filterProfile = ref('')
 const activeDropdown = ref(null)
 
 onMounted(async () => {
-  await fetchDevices()
+  await Promise.all([fetchDevices(), fetchDeviceProfiles()])
   document.addEventListener('click', closeDropdown)
 })
 
@@ -322,27 +336,48 @@ async function fetchDevices() {
     const response = await devicesAPI.list()
     devices.value = (response.data || []).map(d => ({
       id: d.id,
-      mac: formatMac(d.mac_address),
+      mac: formatMac(d.mac),
       model: d.model || 'Unknown',
+      manufacturer: d.manufacturer || null,
       template: d.template_name || null,
-      ext: d.extension || null,
-      userName: d.user_name || null,
+      ext: d.lines?.[0]?.extension?.extension || null,
+      userName: d.user?.first_name ? `${d.user.first_name} ${d.user.last_name || ''}`.trim() : null,
+      userId: d.user_id || null,
+      profileId: d.profile_id || null,
+      profile: d.profile_id || null,
       location: d.location || null,
       ip: d.ip_address || '—',
       status: getDeviceStatus(d),
-      lastSeen: formatLastSeen(d.last_seen_at)
+      lastSeen: formatLastSeen(d.last_seen)
     }))
   } catch (error) {
     toast?.error(error.message, 'Failed to load devices')
     // Fallback to demo data
     devices.value = [
-      { mac: '00:15:65:12:34:56', model: 'Yealink T54W', template: 'Standard Yealink', ext: '101', userName: 'Alice Smith', location: 'HQ - SF', ip: '192.168.1.50', status: 'Registered', lastSeen: 'Now' },
-      { mac: '00:04:F2:AA:BB:CC', model: 'Poly VVX 450', template: 'Executive Poly', ext: '104', userName: 'Diana Lee', location: 'Warehouse', ip: '192.168.1.52', status: 'Offline', lastSeen: '2h ago' },
+      { mac: '00:15:65:12:34:56', model: 'Yealink T54W', template: 'Standard Yealink', ext: '101', userName: 'Alice Smith', profile: 1, location: 'HQ - SF', ip: '192.168.1.50', status: 'Registered', lastSeen: 'Now' },
+      { mac: '00:04:F2:AA:BB:CC', model: 'Poly VVX 450', template: 'Executive Poly', ext: '104', userName: 'Diana Lee', profile: 2, location: 'Warehouse', ip: '192.168.1.52', status: 'Offline', lastSeen: '2h ago' },
     ]
   } finally {
     isLoading.value = false
   }
 }
+
+async function fetchDeviceProfiles() {
+  try {
+    const response = await deviceProfilesAPI.list()
+    deviceProfiles.value = (response.data?.data || response.data || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      color: p.color || '#6366f1'
+    }))
+  } catch (error) {
+    console.error('Failed to load device profiles', error)
+    deviceProfiles.value = []
+  }
+}
+
+const getProfileName = (id) => deviceProfiles.value.find(p => p.id === id)?.name || 'Unknown'
+const getProfileColor = (id) => deviceProfiles.value.find(p => p.id === id)?.color || '#94a3b8'
 
 function formatMac(mac) {
   if (!mac) return '—'
@@ -384,7 +419,8 @@ const filteredDevices = computed(() => {
     const matchesStatus = !filterStatus.value || d.status === filterStatus.value
     const matchesLocation = !filterLocation.value || d.location === filterLocation.value
     const matchesModel = !filterModel.value || d.model === filterModel.value
-    return matchesSearch && matchesStatus && matchesLocation && matchesModel
+    const matchesProfile = !filterProfile.value || d.profileId === parseInt(filterProfile.value)
+    return matchesSearch && matchesStatus && matchesLocation && matchesModel && matchesProfile
   })
 })
 
@@ -642,6 +678,16 @@ const addDevice = async () => {
 .ext-name { font-size: 11px; color: var(--text-muted); }
 
 .unassigned { color: var(--text-muted); font-style: italic; font-size: 12px; }
+
+.profile-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+}
 
 /* Buttons */
 .btn-primary {
