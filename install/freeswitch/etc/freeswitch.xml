@@ -54,34 +54,30 @@
           <param name="gateway-url" value="http://127.0.0.1:8080/api/freeswitch/directory" bindings="directory"/>
           <param name="method" value="POST"/>
           <param name="timeout" value="10"/>
+          <param name="gateway-credentials" value="callsign:CallSign"/>
+          <param name="auth-scheme" value="basic"/>
         </binding>
         <binding name="dialplan">
           <param name="gateway-url" value="http://127.0.0.1:8080/api/freeswitch/dialplan" bindings="dialplan"/>
           <param name="method" value="POST"/>
           <param name="timeout" value="10"/>
+          <param name="gateway-credentials" value="callsign:CallSign"/>
+          <param name="auth-scheme" value="basic"/>
         </binding>
         <binding name="configuration">
           <param name="gateway-url" value="http://127.0.0.1:8080/api/freeswitch/configuration" bindings="configuration"/>
           <param name="method" value="POST"/>
           <param name="timeout" value="10"/>
+          <param name="gateway-credentials" value="callsign:CallSign"/>
+          <param name="auth-scheme" value="basic"/>
         </binding>
       </bindings>
     </configuration>
     <X-PRE-PROCESS cmd="include" data="autoload_configs/*.xml"/>
   </section>
 
-  <section name="dialplan" description="Regex/XML Dialplan">
-    <X-PRE-PROCESS cmd="include" data="dialplan/*.xml"/>
-  </section>
-
   <section name="chatplan" description="Regex/XML Chatplan">
     <X-PRE-PROCESS cmd="include" data="chatplan/*.xml"/>
-  </section>
-
-  <!-- mod_dingaling is reliant on the vcard data in the "directory" section. -->
-  <!-- mod_sofia is reliant on the user data for authorization -->
-  <section name="directory" description="User Directory">
-    <X-PRE-PROCESS cmd="include" data="directory/*.xml"/>
   </section>
 
   <!-- languages section -->
