@@ -484,6 +484,57 @@ func (h *Handler) DeleteGateway(ctx iris.Context) {
 	ctx.JSON(iris.Map{"message": "Gateway deleted successfully"})
 }
 
+// GetGatewayStatus returns live gateway status from FreeSWITCH
+func (h *Handler) GetGatewayStatus(ctx iris.Context) {
+	// Get all gateways from the database
+	var gateways []models.Gateway
+	if err := h.DB.Find(&gateways).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to retrieve gateways"})
+		return
+	}
+
+	// Get ESL client from context if available
+	eslClient := ctx.Values().Get("esl_client")
+	if eslClient == nil {
+		// Return basic status from database if ESL not available
+		statusMap := make(map[string]interface{})
+		for _, gw := range gateways {
+			statusMap[gw.GatewayName] = map[string]interface{}{
+				"state":   "UNKNOWN",
+				"enabled": gw.Enabled,
+			}
+		}
+		ctx.JSON(iris.Map{"data": statusMap, "esl_connected": false})
+		return
+	}
+
+	// TODO: Query FreeSWITCH for real-time gateway status
+	// This would use: sofia status gateway <gateway_name>
+	// For now, return database status with placeholder
+
+	statusMap := make(map[string]interface{})
+	for _, gw := range gateways {
+		state := "NOREG"
+		if gw.Enabled {
+			if gw.Register {
+				state = "TRYING"
+			} else {
+				state = "ACTIVE"
+			}
+		} else {
+			state = "DISABLED"
+		}
+		statusMap[gw.GatewayName] = map[string]interface{}{
+			"state":    state,
+			"enabled":  gw.Enabled,
+			"register": gw.Register,
+		}
+	}
+
+	ctx.JSON(iris.Map{"data": statusMap, "esl_connected": true})
+}
+
 // =====================
 // Bridges
 // =====================
@@ -532,6 +583,15 @@ func (h *Handler) CreateSIPProfile(ctx iris.Context) {
 		ctx.StatusCode(http.StatusBadRequest)
 		ctx.JSON(iris.Map{"error": "Invalid request payload"})
 		return
+	}
+
+	// Check for soft-deleted profile with same name and permanently delete it
+	var existingSoftDeleted models.SIPProfile
+	if err := h.DB.Unscoped().Where("profile_name = ? AND deleted_at IS NOT NULL", profile.ProfileName).First(&existingSoftDeleted).Error; err == nil {
+		// Found a soft-deleted profile with the same name - permanently delete it and its related records
+		h.DB.Unscoped().Where("sip_profile_uuid = ?", existingSoftDeleted.UUID).Delete(&models.SIPProfileSetting{})
+		h.DB.Unscoped().Where("sip_profile_uuid = ?", existingSoftDeleted.UUID).Delete(&models.SIPProfileDomain{})
+		h.DB.Unscoped().Delete(&existingSoftDeleted)
 	}
 
 	// Create profile first

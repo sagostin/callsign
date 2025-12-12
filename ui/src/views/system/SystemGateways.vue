@@ -5,6 +5,12 @@
       <p class="text-muted text-sm">Manage SIP trunks and PSTN gateways. Configure dial formats for outbound calling.</p>
     </div>
     <div class="header-actions">
+      <span v-if="eslConnected" class="status-pill connected">ESL Connected</span>
+      <span v-else class="status-pill disconnected">ESL Offline</span>
+      <button class="btn-secondary" @click="refreshStatus" :disabled="refreshing">
+        <RefreshCwIcon class="btn-icon" :class="{ spinning: refreshing }" />
+        Refresh
+      </button>
       <button class="btn-primary" @click="showModal = true">+ Add Trunk</button>
     </div>
   </div>
@@ -185,8 +191,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { X as XIcon } from 'lucide-vue-next'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { X as XIcon, RefreshCw as RefreshCwIcon } from 'lucide-vue-next'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import { systemAPI } from '../../services/api'
@@ -201,9 +207,12 @@ const columns = [
 
 const gateways = ref([])
 const loading = ref(true)
+const refreshing = ref(false)
+const eslConnected = ref(false)
 const showModal = ref(false)
 const isEditing = ref(false)
 const saving = ref(false)
+let statusInterval = null
 
 const defaultForm = () => ({
   id: null,
@@ -257,7 +266,46 @@ const loadGateways = async () => {
   }
 }
 
-onMounted(loadGateways)
+// Load live status from FreeSWITCH
+const loadGatewayStatus = async () => {
+  try {
+    const response = await systemAPI.getGatewayStatus()
+    eslConnected.value = true
+    const statusData = response.data?.data || {}
+    
+    // Update gateway statuses
+    gateways.value.forEach(gw => {
+      const status = statusData[gw.name] || statusData[gw.id]
+      if (status) {
+        gw.liveStatus = status.state // REGED, NOREG, TRYING, etc.
+        gw.status = status.state === 'REGED' ? 'Registered' : 
+                    status.state === 'NOREG' ? 'Not Registered' :
+                    status.state === 'TRYING' ? 'Connecting' : gw.status
+      }
+    })
+  } catch (e) {
+    eslConnected.value = false
+    console.log('Could not fetch live gateway status')
+  }
+}
+
+const refreshStatus = async () => {
+  refreshing.value = true
+  await loadGateways()
+  await loadGatewayStatus()
+  refreshing.value = false
+}
+
+onMounted(async () => {
+  await loadGateways()
+  await loadGatewayStatus()
+  // Auto-refresh every 30 seconds
+  statusInterval = setInterval(loadGatewayStatus, 30000)
+})
+
+onUnmounted(() => {
+  if (statusInterval) clearInterval(statusInterval)
+})
 
 const editGateway = (gw) => {
   form.value = { ...gw, password: '' }
@@ -503,4 +551,13 @@ label {
 }
 
 .icon-sm { width: 16px; height: 16px; }
+
+/* Status and Actions */
+.status-pill { font-size: 11px; padding: 4px 10px; border-radius: 99px; font-weight: 600; }
+.status-pill.connected { background: #dcfce7; color: #16a34a; }
+.status-pill.disconnected { background: #fef2f2; color: #dc2626; }
+
+.btn-icon { width: 14px; height: 14px; }
+.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>

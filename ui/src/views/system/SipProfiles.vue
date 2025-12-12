@@ -13,7 +13,7 @@
         <ServerIcon class="btn-icon" />
         Reload XML
       </button>
-      <button class="btn-primary" @click="showModal = true">+ New Profile</button>
+      <button class="btn-primary" @click="openNewProfile">+ New Profile</button>
     </div>
   </div>
 
@@ -102,58 +102,188 @@
 
   <!-- Edit Modal -->
   <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
-    <div class="modal-card">
+    <div class="modal-card large">
       <div class="modal-header">
         <h3>{{ isEditing ? 'Edit SIP Profile' : 'New SIP Profile' }}</h3>
         <button class="btn-icon" @click="showModal = false"><XIcon class="icon-sm" /></button>
       </div>
       
+      <!-- Tabs -->
+      <div class="modal-tabs">
+        <button 
+          v-for="tab in ['Basic', 'Settings', 'Domains']" 
+          :key="tab" 
+          class="tab-btn" 
+          :class="{ active: activeTab === tab }"
+          @click="activeTab = tab"
+        >
+          {{ tab }}
+          <span v-if="tab === 'Settings'" class="tab-count">{{ allSettings.length }}</span>
+        </button>
+      </div>
+      
       <div class="modal-body">
-        <div class="form-row">
+        <!-- Basic Tab -->
+        <div v-if="activeTab === 'Basic'" class="tab-content">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Profile Name</label>
+              <input v-model="activeProfile.profile_name" class="input-field" placeholder="e.g. internal-ipv4" />
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <input v-model="activeProfile.description" class="input-field" placeholder="Internal SIP profile" />
+            </div>
+          </div>
+
+          <div class="form-row three">
+            <div class="form-group">
+              <label>SIP IP</label>
+              <input v-model="quickSettings['sip-ip']" class="input-field" placeholder="$${local_ip_v4}" />
+            </div>
+            <div class="form-group">
+              <label>SIP Port</label>
+              <input v-model="quickSettings['sip-port']" class="input-field" placeholder="5060" />
+            </div>
+            <div class="form-group">
+              <label>RTP IP</label>
+              <input v-model="quickSettings['rtp-ip']" class="input-field" placeholder="$${local_ip_v4}" />
+            </div>
+          </div>
+
+          <div class="form-row three">
+            <div class="form-group">
+              <label>External SIP IP</label>
+              <input v-model="quickSettings['ext-sip-ip']" class="input-field" placeholder="auto-nat" />
+            </div>
+            <div class="form-group">
+              <label>External RTP IP</label>
+              <input v-model="quickSettings['ext-rtp-ip']" class="input-field" placeholder="auto-nat" />
+            </div>
+            <div class="form-group">
+              <label>Context</label>
+              <input v-model="quickSettings['context']" class="input-field" placeholder="public" />
+            </div>
+          </div>
+
           <div class="form-group">
-            <label>Profile Name</label>
-            <input v-model="activeProfile.profile_name" class="input-field" placeholder="e.g. internal-ipv4" />
+            <label>Inbound Codec Preferences</label>
+            <input v-model="quickSettings['inbound-codec-prefs']" class="input-field" placeholder="OPUS,G722,PCMU,PCMA" />
           </div>
           <div class="form-group">
-            <label>Description</label>
-            <input v-model="activeProfile.description" class="input-field" placeholder="Internal SIP profile" />
+            <label>Outbound Codec Preferences</label>
+            <input v-model="quickSettings['outbound-codec-prefs']" class="input-field" placeholder="OPUS,G722,PCMU,PCMA" />
           </div>
         </div>
 
-        <div class="form-row three">
-          <div class="form-group">
-            <label>SIP IP</label>
-            <input v-model="profileSettings['sip-ip']" class="input-field" placeholder="$${local_ip_v4}" />
+        <!-- Settings Tab -->
+        <div v-if="activeTab === 'Settings'" class="tab-content">
+          <div class="settings-toolbar">
+            <input 
+              v-model="settingsSearch" 
+              class="input-field search-input" 
+              placeholder="Search settings..."
+            />
+            <button class="btn-sm" @click="addNewSetting">
+              <PlusIcon class="btn-icon-sm" /> Add Setting
+            </button>
           </div>
-          <div class="form-group">
-            <label>SIP Port</label>
-            <input v-model="profileSettings['sip-port']" class="input-field" placeholder="5060" />
+
+          <div class="settings-table-container">
+            <table class="settings-table">
+              <thead>
+                <tr>
+                  <th style="width: 30%">Name</th>
+                  <th style="width: 35%">Value</th>
+                  <th style="width: 15%">Enabled</th>
+                  <th style="width: 15%">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(setting, idx) in filteredSettings" :key="idx" :class="{ disabled: !setting.enabled }">
+                  <td>
+                    <input 
+                      v-model="setting.name" 
+                      class="input-field setting-input"
+                      :placeholder="setting.name || 'setting-name'"
+                    />
+                  </td>
+                  <td>
+                    <input 
+                      v-model="setting.value" 
+                      class="input-field setting-input"
+                      :placeholder="setting.value || 'value'"
+                    />
+                  </td>
+                  <td class="center">
+                    <label class="toggle-switch">
+                      <input type="checkbox" v-model="setting.enabled" />
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </td>
+                  <td class="center">
+                    <button class="btn-icon-only btn-delete-row" @click="removeSetting(idx)">
+                      <TrashIcon class="icon-xs" />
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-          <div class="form-group">
-            <label>RTP IP</label>
-            <input v-model="profileSettings['rtp-ip']" class="input-field" placeholder="$${local_ip_v4}" />
-          </div>
+
+          <p class="settings-hint">
+            <strong>{{ allSettings.filter(s => s.enabled).length }}</strong> of <strong>{{ allSettings.length }}</strong> settings enabled. 
+            Only enabled settings are sent to FreeSWITCH.
+          </p>
         </div>
 
-        <div class="form-group">
-          <label>Context</label>
-          <input v-model="profileSettings['context']" class="input-field" placeholder="public" />
-        </div>
+        <!-- Domains Tab -->
+        <div v-if="activeTab === 'Domains'" class="tab-content">
+          <div class="domains-toolbar">
+            <button class="btn-sm" @click="addDomain">
+              <PlusIcon class="btn-icon-sm" /> Add Domain
+            </button>
+          </div>
 
-        <div class="form-group">
-          <label>Codec Preferences</label>
-          <input v-model="profileSettings['codec-prefs']" class="input-field" placeholder="OPUS,G722,PCMU,PCMA" />
-        </div>
+          <table class="settings-table" v-if="profileDomains.length > 0">
+            <thead>
+              <tr>
+                <th>Domain Name</th>
+                <th style="width: 15%">Alias</th>
+                <th style="width: 15%">Parse</th>
+                <th style="width: 15%">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(domain, idx) in profileDomains" :key="idx">
+                <td>
+                  <input v-model="domain.domain_name" class="input-field setting-input" placeholder="all" />
+                </td>
+                <td class="center">
+                  <label class="toggle-switch">
+                    <input type="checkbox" v-model="domain.alias" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </td>
+                <td class="center">
+                  <label class="toggle-switch">
+                    <input type="checkbox" v-model="domain.parse" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </td>
+                <td class="center">
+                  <button class="btn-icon-only btn-delete-row" @click="removeDomain(idx)">
+                    <TrashIcon class="icon-xs" />
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
-        <div class="form-row">
-          <label class="checkbox-label">
-            <input type="checkbox" v-model="profileSettings['auth-calls']" />
-            <span>Authenticate Calls</span>
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" v-model="profileSettings['manage-presence']" />
-            <span>Manage Presence</span>
-          </label>
+          <div v-else class="empty-domains">
+            <p>No domains configured. Click "Add Domain" to add one.</p>
+            <p class="text-muted text-sm">Common options: "all" (matches all domains) or specific domain names.</p>
+          </div>
         </div>
       </div>
 
@@ -166,10 +296,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, inject } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { 
   RefreshCw as RefreshCwIcon, Server as ServerIcon, X as XIcon,
-  Edit as EditIcon, StopCircle as StopCircleIcon, PlayCircle as PlayCircleIcon, Trash2 as TrashIcon
+  Edit as EditIcon, StopCircle as StopCircleIcon, PlayCircle as PlayCircleIcon, 
+  Trash2 as TrashIcon, Plus as PlusIcon
 } from 'lucide-vue-next'
 import { systemAPI } from '@/services/api'
 
@@ -184,15 +315,84 @@ const loadingRegistrations = ref(false)
 const showModal = ref(false)
 const isEditing = ref(false)
 const activeProfile = ref({ profile_name: '', description: '', enabled: true })
-const profileSettings = ref({
+const activeTab = ref('Basic')
+const settingsSearch = ref('')
+const profileDomains = ref([])
+
+// Quick settings for Basic tab (most common ones)
+const quickSettings = ref({
   'sip-ip': '$${local_ip_v4}',
   'sip-port': '5060',
   'rtp-ip': '$${local_ip_v4}',
+  'ext-sip-ip': 'auto-nat',
+  'ext-rtp-ip': 'auto-nat',
   'context': 'public',
-  'codec-prefs': 'OPUS,G722,PCMU,PCMA',
-  'auth-calls': true,
-  'manage-presence': true
+  'inbound-codec-prefs': 'OPUS,G722,PCMU,PCMA',
+  'outbound-codec-prefs': 'OPUS,G722,PCMU,PCMA',
 })
+
+// All settings array for Settings tab
+const allSettings = ref([])
+
+// Default SIP profile settings from FusionPBX
+const defaultSettings = [
+  { name: 'accept-blind-auth', value: 'true', enabled: false },
+  { name: 'accept-blind-reg', value: 'true', enabled: false },
+  { name: 'aggressive-nat-detection', value: 'true', enabled: false },
+  { name: 'apply-inbound-acl', value: 'providers', enabled: true },
+  { name: 'apply-nat-acl', value: 'nat.auto', enabled: true },
+  { name: 'apply-register-acl', value: 'providers', enabled: false },
+  { name: 'auth-all-packets', value: 'false', enabled: true },
+  { name: 'auth-calls', value: 'true', enabled: true },
+  { name: 'auth-subscriptions', value: 'true', enabled: true },
+  { name: 'challenge-realm', value: 'auto_to', enabled: true },
+  { name: 'context', value: 'public', enabled: true },
+  { name: 'debug', value: '0', enabled: true },
+  { name: 'dialplan', value: 'XML', enabled: true },
+  { name: 'disable-naptr', value: 'false', enabled: false },
+  { name: 'disable-register', value: 'true', enabled: false },
+  { name: 'disable-rtp-auto-adjust', value: 'true', enabled: false },
+  { name: 'disable-srv', value: 'false', enabled: false },
+  { name: 'disable-transcoding', value: 'true', enabled: false },
+  { name: 'dtmf-duration', value: '2000', enabled: true },
+  { name: 'dtmf-type', value: 'rfc2833', enabled: true },
+  { name: 'enable-timer', value: 'false', enabled: true },
+  { name: 'ext-rtp-ip', value: 'auto-nat', enabled: true },
+  { name: 'ext-sip-ip', value: 'auto-nat', enabled: true },
+  { name: 'force-register-domain', value: '$${domain}', enabled: false },
+  { name: 'force-register-db-domain', value: '$${domain}', enabled: false },
+  { name: 'hold-music', value: 'local_stream://moh', enabled: true },
+  { name: 'inbound-codec-prefs', value: 'OPUS,G722,PCMU,PCMA', enabled: true },
+  { name: 'inbound-codec-negotiation', value: 'generous', enabled: true },
+  { name: 'log-level', value: '0', enabled: true },
+  { name: 'manage-presence', value: 'true', enabled: true },
+  { name: 'manage-shared-appearance', value: 'true', enabled: true },
+  { name: 'nonce-ttl', value: '60', enabled: true },
+  { name: 'outbound-codec-prefs', value: 'OPUS,G722,PCMU,PCMA', enabled: true },
+  { name: 'rfc2833-pt', value: '101', enabled: true },
+  { name: 'rtp-hold-timeout-sec', value: '1800', enabled: true },
+  { name: 'rtp-ip', value: '$${local_ip_v4}', enabled: true },
+  { name: 'rtp-timeout-sec', value: '300', enabled: true },
+  { name: 'rtp-timer-name', value: 'soft', enabled: true },
+  { name: 'sip-ip', value: '$${local_ip_v4}', enabled: true },
+  { name: 'sip-port', value: '5060', enabled: true },
+  { name: 'sip-trace', value: 'false', enabled: false },
+  { name: 'tls', value: 'true', enabled: false },
+  { name: 'tls-bind-params', value: 'transport=tls', enabled: false },
+  { name: 'tls-cert-dir', value: '/etc/freeswitch/tls', enabled: false },
+  { name: 'tls-sip-port', value: '5061', enabled: false },
+  { name: 'user-agent-string', value: 'Callsign', enabled: true },
+]
+
+// Computed: filtered settings based on search
+const filteredSettings = computed(() => {
+  if (!settingsSearch.value) return allSettings.value
+  const q = settingsSearch.value.toLowerCase()
+  return allSettings.value.filter(s => s.name.toLowerCase().includes(q) || s.value.toLowerCase().includes(q))
+})
+
+// Legacy profileSettings ref for compatibility
+const profileSettings = ref({})
 
 onMounted(async () => {
   await refreshAll()
@@ -298,23 +498,89 @@ async function reloadXML() {
 
 function editProfile(profile) {
   activeProfile.value = { ...profile }
-  profileSettings.value = {}
-  profile.settings?.forEach(s => {
-    profileSettings.value[s.setting_name] = s.setting_value
+  activeTab.value = 'Basic'
+  settingsSearch.value = ''
+  
+  // Initialize allSettings from profile or defaults
+  if (profile.settings?.length > 0) {
+    allSettings.value = profile.settings.map(s => ({
+      name: s.setting_name,
+      value: s.setting_value,
+      enabled: s.enabled !== false
+    }))
+  } else {
+    allSettings.value = JSON.parse(JSON.stringify(defaultSettings))
+  }
+  
+  // Initialize quickSettings from allSettings
+  quickSettings.value = {}
+  const quickKeys = ['sip-ip', 'sip-port', 'rtp-ip', 'ext-sip-ip', 'ext-rtp-ip', 'context', 'inbound-codec-prefs', 'outbound-codec-prefs']
+  quickKeys.forEach(key => {
+    const setting = allSettings.value.find(s => s.name === key)
+    quickSettings.value[key] = setting?.value || ''
   })
+  
+  // Initialize domains
+  profileDomains.value = profile.domains?.map(d => ({ ...d })) || []
+  
   isEditing.value = true
   showModal.value = true
 }
 
+function openNewProfile() {
+  activeProfile.value = { profile_name: '', description: '', enabled: true }
+  activeTab.value = 'Basic'
+  settingsSearch.value = ''
+  allSettings.value = JSON.parse(JSON.stringify(defaultSettings))
+  quickSettings.value = {
+    'sip-ip': '$${local_ip_v4}',
+    'sip-port': '5060',
+    'rtp-ip': '$${local_ip_v4}',
+    'ext-sip-ip': 'auto-nat',
+    'ext-rtp-ip': 'auto-nat',
+    'context': 'public',
+    'inbound-codec-prefs': 'OPUS,G722,PCMU,PCMA',
+    'outbound-codec-prefs': 'OPUS,G722,PCMU,PCMA',
+  }
+  profileDomains.value = [{ domain_name: 'all', alias: true, parse: true }]
+  isEditing.value = false
+  showModal.value = true
+}
+
+// Sync quick settings to allSettings before save
+function syncQuickSettings() {
+  for (const [name, value] of Object.entries(quickSettings.value)) {
+    const existing = allSettings.value.find(s => s.name === name)
+    if (existing) {
+      existing.value = value
+      existing.enabled = true
+    } else if (value) {
+      allSettings.value.push({ name, value, enabled: true })
+    }
+  }
+}
+
 async function saveProfile() {
   try {
+    // Sync quick settings to allSettings
+    syncQuickSettings()
+    
     const payload = {
       ...activeProfile.value,
-      settings: Object.entries(profileSettings.value).map(([name, value]) => ({
-        setting_name: name,
-        setting_value: String(value),
-        enabled: true
-      }))
+      settings: allSettings.value
+        .filter(s => s.name.trim())
+        .map(s => ({
+          setting_name: s.name,
+          setting_value: s.value,
+          enabled: s.enabled
+        })),
+      domains: profileDomains.value
+        .filter(d => d.domain_name.trim())
+        .map(d => ({
+          domain_name: d.domain_name,
+          alias: d.alias,
+          parse: d.parse
+        }))
     }
 
     if (isEditing.value && activeProfile.value.id) {
@@ -329,6 +595,24 @@ async function saveProfile() {
   } catch (error) {
     toast?.error('Failed to save profile', error.message)
   }
+}
+
+// Settings CRUD
+function addNewSetting() {
+  allSettings.value.push({ name: '', value: '', enabled: true })
+}
+
+function removeSetting(idx) {
+  allSettings.value.splice(idx, 1)
+}
+
+// Domains CRUD
+function addDomain() {
+  profileDomains.value.push({ domain_name: '', alias: true, parse: true })
+}
+
+function removeDomain(idx) {
+  profileDomains.value.splice(idx, 1)
 }
 
 async function deleteProfile(profile) {
@@ -426,10 +710,109 @@ async function deleteProfile(profile) {
 /* Modal */
 .modal-overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); padding: 24px; }
 .modal-card { background: white; border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); width: 100%; max-width: 560px; max-height: 90vh; display: flex; flex-direction: column; }
+.modal-card.large { max-width: 900px; }
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-color); }
 .modal-header h3 { font-size: 16px; font-weight: 700; margin: 0; }
 .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 20px; border-top: 1px solid var(--border-color); }
+
+/* Modal Tabs */
+.modal-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border-color); padding: 0 20px; }
+.tab-btn { 
+  padding: 12px 16px; 
+  border: none; 
+  background: none; 
+  font-size: 13px; 
+  font-weight: 600; 
+  color: var(--text-muted); 
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tab-btn:hover { color: var(--text-primary); }
+.tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
+.tab-count { 
+  background: var(--bg-secondary); 
+  padding: 2px 6px; 
+  border-radius: 10px; 
+  font-size: 10px; 
+  font-weight: 700; 
+}
+.tab-content { min-height: 300px; }
+
+/* Settings Table */
+.settings-toolbar { display: flex; gap: 12px; margin-bottom: 16px; }
+.search-input { flex: 1; }
+.settings-table-container { max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; }
+.settings-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.settings-table th { 
+  text-align: left; 
+  padding: 10px 12px; 
+  background: var(--bg-secondary); 
+  font-weight: 600; 
+  font-size: 11px; 
+  text-transform: uppercase; 
+  color: var(--text-muted);
+  position: sticky;
+  top: 0;
+}
+.settings-table td { padding: 8px 12px; border-top: 1px solid var(--border-color); }
+.settings-table tr.disabled { opacity: 0.5; }
+.settings-table tr:hover { background: var(--bg-secondary); }
+.setting-input { width: 100%; padding: 6px 10px; font-size: 12px; font-family: monospace; }
+.center { text-align: center; }
+
+/* Toggle Switch */
+.toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: #e5e7eb;
+  border-radius: 20px;
+  transition: 0.2s;
+}
+.toggle-slider::before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: 0.2s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--primary-color); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+/* Delete button in table */
+.btn-icon-only { 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  width: 28px; 
+  height: 28px; 
+  border: none; 
+  background: none; 
+  cursor: pointer; 
+  border-radius: 6px;
+  color: var(--text-muted);
+}
+.btn-icon-only:hover { background: #fef2f2; color: #dc2626; }
+.icon-xs { width: 14px; height: 14px; }
+
+.settings-hint { font-size: 12px; color: var(--text-muted); margin-top: 12px; padding: 8px 12px; background: var(--bg-secondary); border-radius: 6px; }
+
+/* Domains */
+.domains-toolbar { margin-bottom: 16px; }
+.empty-domains { padding: 40px; text-align: center; color: var(--text-muted); background: var(--bg-secondary); border-radius: 8px; }
+.empty-domains p { margin: 0 0 8px; }
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .form-row.three { grid-template-columns: 1fr 1fr 1fr; }

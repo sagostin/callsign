@@ -428,6 +428,7 @@ export const systemAPI = {
     createGateway: (data) => api.post('/system/gateways', data),
     updateGateway: (id, data) => api.put(`/system/gateways/${id}`, data),
     deleteGateway: (id) => api.delete(`/system/gateways/${id}`),
+    getGatewayStatus: () => api.get('/system/gateways/status'),
 
     // Bridges
     listBridges: () => api.get('/system/bridges'),

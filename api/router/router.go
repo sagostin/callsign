@@ -466,6 +466,7 @@ func (r *Router) Init() {
 					gateways.Get("/{id}", r.Handler.GetGateway)
 					gateways.Put("/{id}", r.Handler.UpdateGateway)
 					gateways.Delete("/{id}", r.Handler.DeleteGateway)
+					gateways.Get("/status", r.Handler.GetGatewayStatus)
 				}
 
 				// Bridges
