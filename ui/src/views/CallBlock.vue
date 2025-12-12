@@ -177,81 +177,120 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { 
   Plus as PlusIcon, Upload as UploadIcon, 
   PhoneIncoming as PhoneIncomingIcon, PhoneOutgoing as PhoneOutgoingIcon,
   Edit as EditIcon, Trash2 as TrashIcon, Ban, Phone, Voicemail
 } from 'lucide-vue-next'
+import { routingAPI } from '../services/api'
 
 const filter = ref('all')
 const showCreateModal = ref(false)
 const showImportModal = ref(false)
 const editingRule = ref(null)
+const isLoading = ref(false)
 
-const form = ref({ number: '', name: '', type: 'Inbound', action: 'Reject' })
+const form = ref({ number: '', notes: '', match_type: 'exact', action: 'reject' })
 const importData = ref('')
-const importType = ref('Inbound')
-const importAction = ref('Reject')
+const importType = ref('exact')
+const importAction = ref('reject')
 
-const blockedNumbers = ref([
-  { id: 1, number: '+1555000*', name: 'Spam Pattern A', type: 'Inbound', action: 'Reject', hits: 142, recentHits: 12 },
-  { id: 2, number: '8005551234', name: 'Known Telemarketer', type: 'Inbound', action: 'Busy', hits: 45, recentHits: 3 },
-  { id: 3, number: '900*', name: 'Premium Rate', type: 'Outbound', action: 'Reject', hits: 8, recentHits: 0 },
-  { id: 4, number: '976*', name: 'Adult Lines', type: 'Outbound', action: 'Reject', hits: 2, recentHits: 0 },
-  { id: 5, number: '+1800555*', name: 'Telemarketer Range', type: 'Inbound', action: 'Hangup', hits: 89, recentHits: 7 },
-])
+const blockedNumbers = ref([])
 
-const inboundCount = computed(() => blockedNumbers.value.filter(r => r.type === 'Inbound').length)
-const outboundCount = computed(() => blockedNumbers.value.filter(r => r.type === 'Outbound').length)
-const totalHits = computed(() => blockedNumbers.value.reduce((sum, r) => sum + (r.recentHits || 0), 0))
+// Computed stats
+const inboundCount = computed(() => blockedNumbers.value.length) // All are inbound for now
+const outboundCount = computed(() => 0) // Future feature
+const totalHits = computed(() => 0) // CDR integration TODO
 
 const filteredRules = computed(() => {
-  if (filter.value === 'all') return blockedNumbers.value
-  return blockedNumbers.value.filter(r => r.type.toLowerCase() === filter.value)
+  return blockedNumbers.value // Filter by type when we add outbound support
 })
 
 const getActionIcon = (action) => {
-  const icons = { Reject: Ban, Busy: Phone, Hangup: Phone, Voicemail: Voicemail }
+  const icons = { reject: Ban, busy: Phone, hangup: Phone, voicemail: Voicemail }
   return icons[action] || Ban
+}
+
+// API Functions
+const loadBlocks = async () => {
+  isLoading.value = true
+  try {
+    const response = await routingAPI.listBlocks()
+    blockedNumbers.value = response.data.data || []
+  } catch (e) {
+    console.error('Failed to load call blocks', e)
+  } finally {
+    isLoading.value = false
+  }
 }
 
 const editRule = (rule) => {
   editingRule.value = rule
-  form.value = { ...rule }
+  form.value = {
+    number: rule.number,
+    notes: rule.notes || '',
+    match_type: rule.match_type,
+    action: rule.action
+  }
   showCreateModal.value = true
 }
 
-const deleteRule = (rule) => {
-  if (confirm(`Remove block for "${rule.number}"?`)) {
-    blockedNumbers.value = blockedNumbers.value.filter(r => r.id !== rule.id)
+const deleteRule = async (rule) => {
+  if (!confirm(`Remove block for "${rule.number}"?`)) return
+  try {
+    await routingAPI.deleteBlock(rule.id)
+    await loadBlocks()
+  } catch (e) {
+    console.error(e)
+    alert('Failed to delete block')
   }
 }
 
-const saveRule = () => {
-  if (editingRule.value) {
-    const idx = blockedNumbers.value.findIndex(r => r.id === editingRule.value.id)
-    if (idx !== -1) blockedNumbers.value[idx] = { ...form.value, id: editingRule.value.id, hits: editingRule.value.hits }
-  } else {
-    blockedNumbers.value.push({ ...form.value, id: Date.now(), hits: 0, recentHits: 0 })
+const saveRule = async () => {
+  try {
+    if (editingRule.value) {
+      await routingAPI.updateBlock(editingRule.value.id, form.value)
+    } else {
+      await routingAPI.createBlock(form.value)
+    }
+    await loadBlocks()
+    closeModal()
+  } catch (e) {
+    console.error(e)
+    alert('Failed to save block rule')
   }
-  closeModal()
 }
 
 const closeModal = () => {
   showCreateModal.value = false
   editingRule.value = null
-  form.value = { number: '', name: '', type: 'Inbound', action: 'Reject' }
+  form.value = { number: '', notes: '', match_type: 'exact', action: 'reject' }
 }
 
-const processImport = () => {
+const processImport = async () => {
   const lines = importData.value.split('\n').filter(l => l.trim())
-  lines.forEach(line => {
-    blockedNumbers.value.push({ id: Date.now() + Math.random(), number: line.trim(), name: 'Imported', type: importType.value, action: importAction.value, hits: 0, recentHits: 0 })
-  })
-  showImportModal.value = false
-  importData.value = ''
+  try {
+    for (const line of lines) {
+      await routingAPI.createBlock({
+        number: line.trim(),
+        match_type: importType.value,
+        action: importAction.value,
+        notes: 'Imported'
+      })
+    }
+    await loadBlocks()
+    showImportModal.value = false
+    importData.value = ''
+  } catch (e) {
+    console.error(e)
+    alert('Import failed')
+  }
 }
+
+onMounted(() => {
+  loadBlocks()
+})
 </script>
 
 <style scoped>

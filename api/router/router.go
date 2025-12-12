@@ -174,6 +174,12 @@ func (r *Router) Init() {
 					routing.Get("/outbound", r.Handler.ListOutboundRoutes)
 					routing.Post("/outbound", r.Handler.CreateOutboundRoute)
 					routing.Post("/outbound/defaults", r.Handler.CreateDefaultUSCANRoutes)
+
+					// Call Blocks
+					routing.Get("/blocks", r.Handler.ListCallBlocks)
+					routing.Post("/blocks", r.Handler.CreateCallBlock)
+					routing.Put("/blocks/{id}", r.Handler.UpdateCallBlock)
+					routing.Delete("/blocks/{id}", r.Handler.DeleteCallBlock)
 				}
 
 				// Dial Plans

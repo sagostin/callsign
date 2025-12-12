@@ -278,6 +278,12 @@ export const routingAPI = {
     listOutbound: (params) => api.get('/routing/outbound', { params }),
     createOutbound: (data) => api.post('/routing/outbound', data),
     createDefaultOutbound: () => api.post('/routing/outbound/defaults'),
+
+    // Call Blocks
+    listBlocks: () => api.get('/routing/blocks'),
+    createBlock: (data) => api.post('/routing/blocks', data),
+    updateBlock: (id, data) => api.put(`/routing/blocks/${id}`, data),
+    deleteBlock: (id) => api.delete(`/routing/blocks/${id}`),
 }
 
 // =====================

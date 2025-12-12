@@ -371,27 +371,52 @@ const stopCurrentAudio = () => {
 }
 
 // -- ACTIONS --
-const playSound = (file) => {
+const playSound = async (file) => {
     stopCurrentAudio()
-    // Use system sounds stream endpoint (if available, or use static path)
-    // For system sounds, they are served statically from /api/system/sounds/stream?path=...
-    // Or we can construct a direct URL based on known file paths
-    const url = `/api/system/sounds/stream?path=${encodeURIComponent(file.path)}`
-    
-    currentAudioObj.value = new Audio(url)
-    currentAudioObj.value.addEventListener('ended', () => { isPlaying.value = false })
-    currentAudioObj.value.play()
-    isPlaying.value = true
+    try {
+        const token = localStorage.getItem('token')
+        const response = await fetch(`/api/system/media/sounds/stream?path=${encodeURIComponent(file.path)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (!response.ok) throw new Error(`Failed: ${response.status}`)
+        const blob = await response.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        
+        currentAudioObj.value = new Audio(blobUrl)
+        currentAudioObj.value.addEventListener('ended', () => {
+            isPlaying.value = false
+            URL.revokeObjectURL(blobUrl)
+        })
+        currentAudioObj.value.play()
+        isPlaying.value = true
+    } catch (e) {
+        console.error('Failed to play sound', e)
+        alert('Failed to play sound')
+    }
 }
 
-const playMusic = (file) => {
+const playMusic = async (file) => {
     stopCurrentAudio()
-    const url = `/api/system/music/stream?path=${encodeURIComponent(file.path)}`
-    
-    currentAudioObj.value = new Audio(url)
-    currentAudioObj.value.addEventListener('ended', () => { isPlaying.value = false })
-    currentAudioObj.value.play()
-    isPlaying.value = true
+    try {
+        const token = localStorage.getItem('token')
+        const response = await fetch(`/api/system/media/music/stream?path=${encodeURIComponent(file.path)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (!response.ok) throw new Error(`Failed: ${response.status}`)
+        const blob = await response.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        
+        currentAudioObj.value = new Audio(blobUrl)
+        currentAudioObj.value.addEventListener('ended', () => {
+            isPlaying.value = false
+            URL.revokeObjectURL(blobUrl)
+        })
+        currentAudioObj.value.play()
+        isPlaying.value = true
+    } catch (e) {
+        console.error('Failed to play music', e)
+        alert('Failed to play music')
+    }
 }
 
 const deleteMusic = async (file) => {

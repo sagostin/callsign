@@ -62,6 +62,90 @@
         <button class="btn-link" @click="viewNumberStats(row)">Stats</button>
       </template>
     </DataTable>
+
+    <!-- Call Blocks Section -->
+    <div class="section-divider">
+      <h3>Blocked Callers</h3>
+      <button class="btn-secondary btn-sm" @click="showBlockModal = true">+ Block Number</button>
+    </div>
+
+    <div class="blocks-table" v-if="callBlocks.length > 0">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Number</th>
+            <th>Match</th>
+            <th>Action</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="block in callBlocks" :key="block.id">
+            <td class="font-mono">{{ formatPhoneNumber(block.number) }}</td>
+            <td><span class="match-badge" :class="block.match_type">{{ block.match_type }}</span></td>
+            <td><span class="action-badge" :class="block.action">{{ block.action }}</span></td>
+            <td>
+              <label class="toggle-switch">
+                <input type="checkbox" :checked="block.enabled" @change="toggleBlock(block)">
+                <span class="slider"></span>
+              </label>
+            </td>
+            <td>
+              <button class="btn-icon danger" @click="deleteBlock(block)" title="Delete">
+                <TrashIcon class="icon-sm" />
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div v-else class="empty-state">
+      <p>No blocked callers. Add a number to automatically reject calls from it.</p>
+    </div>
+  </div>
+
+  <!-- BLOCK NUMBER MODAL -->
+  <div v-if="showBlockModal" class="modal-overlay" @click.self="showBlockModal = false">
+    <div class="modal-card modal-sm">
+      <div class="modal-header">
+        <h3>Block Caller</h3>
+        <button class="btn-icon" @click="showBlockModal = false"><XIcon class="icon-sm" /></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Phone Number</label>
+          <input v-model="blockForm.number" class="input-field" placeholder="+1 (555) 123-4567">
+          <span class="help-text">Number will be normalized to E.164 format</span>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Match Type</label>
+            <select v-model="blockForm.match_type" class="input-field">
+              <option value="exact">Exact Match</option>
+              <option value="prefix">Prefix (starts with)</option>
+              <option value="regex">Regex Pattern</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Action</label>
+            <select v-model="blockForm.action" class="input-field">
+              <option value="reject">Reject (603)</option>
+              <option value="busy">Busy (486)</option>
+              <option value="hangup">Hangup</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes (optional)</label>
+          <input v-model="blockForm.notes" class="input-field" placeholder="Spam caller">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" @click="showBlockModal = false">Cancel</button>
+        <button class="btn-primary" @click="saveBlock" :disabled="!blockForm.number">Block Number</button>
+      </div>
+    </div>
   </div>
 
   <!-- INBOUND ROUTES TAB -->
@@ -478,8 +562,56 @@ import {
 } from 'lucide-vue-next'
 import DataTable from '../components/common/DataTable.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
+import { routingAPI, numbersAPI, dialPlansAPI } from '../services/api'
+import { formatPhoneNumber } from '../utils/formatters'
 
 const activeTab = ref('inbound')
+
+// Call Blocks State
+const callBlocks = ref([])
+const showBlockModal = ref(false)
+const blockForm = ref({ number: '', match_type: 'exact', action: 'reject', notes: '' })
+
+const loadCallBlocks = async () => {
+  try {
+    const response = await routingAPI.listBlocks()
+    callBlocks.value = response.data.data || []
+  } catch (e) {
+    console.error('Failed to load call blocks', e)
+  }
+}
+
+const saveBlock = async () => {
+  try {
+    await routingAPI.createBlock(blockForm.value)
+    await loadCallBlocks()
+    showBlockModal.value = false
+    blockForm.value = { number: '', match_type: 'exact', action: 'reject', notes: '' }
+  } catch (e) {
+    console.error(e)
+    alert('Failed to create call block')
+  }
+}
+
+const toggleBlock = async (block) => {
+  try {
+    await routingAPI.updateBlock(block.id, { ...block, enabled: !block.enabled })
+    await loadCallBlocks()
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const deleteBlock = async (block) => {
+  if (!confirm(`Remove block on ${block.number}?`)) return
+  try {
+    await routingAPI.deleteBlock(block.id)
+    await loadCallBlocks()
+  } catch (e) {
+    console.error(e)
+    alert('Failed to delete block')
+  }
+}
 
 // Drag and Drop State
 const dragIndex = ref(null)

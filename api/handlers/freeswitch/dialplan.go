@@ -52,7 +52,13 @@ func (h *FSHandler) handleDialplan(req *XMLCurlRequest) string {
 }
 
 // buildSingleDialplan looks up a specific destination number (inbound route)
+// Order of processing: 1) Call Blocks, 2) Feature Codes, 3) Destinations
 func (h *FSHandler) buildSingleDialplan(req *XMLCurlRequest) string {
+	// First, check if caller is blocked
+	if blockXML := h.checkCallBlocks(req); blockXML != "" {
+		return blockXML
+	}
+
 	// Look up destination by number
 	var dest models.Destination
 	result := h.DB.Where(
@@ -67,6 +73,89 @@ func (h *FSHandler) buildSingleDialplan(req *XMLCurlRequest) string {
 
 	// Build XML for this destination
 	return h.buildDestinationXML(&dest, req)
+}
+
+// checkCallBlocks checks if the caller is on a block list and returns reject XML if so
+func (h *FSHandler) checkCallBlocks(req *XMLCurlRequest) string {
+	callerNumber := req.CallerIDNumber
+	if callerNumber == "" {
+		return ""
+	}
+
+	// Find destination to get tenant ID
+	var dest models.Destination
+	if err := h.DB.Where("destination_number = ? AND enabled = ?", req.DestinationNumber, true).First(&dest).Error; err != nil {
+		return "" // No destination, no block check
+	}
+
+	// Check for matching call blocks for this tenant
+	var blocks []models.CallBlock
+	h.DB.Where("tenant_id = ? AND enabled = ?", dest.TenantID, true).Find(&blocks)
+
+	for _, block := range blocks {
+		matched := false
+		switch block.MatchType {
+		case "exact":
+			matched = callerNumber == block.Number || "+"+callerNumber == block.Number || callerNumber == "+"+block.Number
+		case "prefix":
+			matched = strings.HasPrefix(callerNumber, block.Number) || strings.HasPrefix(callerNumber, "+"+block.Number)
+		case "regex":
+			// Simple regex matching
+			if strings.HasPrefix(callerNumber, block.Number) {
+				matched = true
+			}
+		default:
+			matched = callerNumber == block.Number
+		}
+
+		if matched {
+			log.Infof("Call blocked: caller=%s matched block=%s (type=%s)", callerNumber, block.Number, block.MatchType)
+			return h.buildBlockedCallerXML(req, &block)
+		}
+	}
+
+	return ""
+}
+
+// buildBlockedCallerXML generates XML to reject a blocked caller
+func (h *FSHandler) buildBlockedCallerXML(req *XMLCurlRequest, block *models.CallBlock) string {
+	var b strings.Builder
+
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
+	b.WriteString("\n")
+	b.WriteString(`<document type="freeswitch/xml">`)
+	b.WriteString("\n")
+	b.WriteString(`  <section name="dialplan" description="Dialplan">`)
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf(`    <context name="%s">`, xmlEscape(req.Context)))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf(`      <extension name="blocked_caller_%s">`, xmlEscape(block.Number)))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf(`        <condition field="caller_id_number" expression="%s">`, xmlEscape(block.Number)))
+	b.WriteString("\n")
+
+	// Action based on block type
+	switch block.Action {
+	case "busy":
+		b.WriteString(`          <action application="respond" data="486 Busy Here"/>`)
+	case "hangup":
+		b.WriteString(`          <action application="hangup" data="CALL_REJECTED"/>`)
+	default: // reject
+		b.WriteString(`          <action application="respond" data="603 Decline"/>`)
+	}
+	b.WriteString("\n")
+
+	b.WriteString(`        </condition>`)
+	b.WriteString("\n")
+	b.WriteString(`      </extension>`)
+	b.WriteString("\n")
+	b.WriteString(`    </context>`)
+	b.WriteString("\n")
+	b.WriteString(`  </section>`)
+	b.WriteString("\n")
+	b.WriteString(`</document>`)
+
+	return b.String()
 }
 
 // buildMultiDialplan gets all dialplans for a context

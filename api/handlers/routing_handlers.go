@@ -4,10 +4,41 @@ import (
 	"callsign/middleware"
 	"callsign/models"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/kataras/iris/v12"
 	"gorm.io/gorm"
 )
+
+// normalizeToE164 attempts to convert a phone number to E.164 format
+func normalizeToE164(number string) string {
+	// Remove all non-digit characters except leading +
+	hasPlus := strings.HasPrefix(number, "+")
+	digits := regexp.MustCompile(`\D`).ReplaceAllString(number, "")
+
+	if digits == "" {
+		return number // Return original if no digits
+	}
+
+	// If already has country code prefix
+	if hasPlus {
+		return "+" + digits
+	}
+
+	// US/CA: 10 digits -> +1 prefix
+	if len(digits) == 10 {
+		return "+1" + digits
+	}
+
+	// US/CA: 11 digits starting with 1
+	if len(digits) == 11 && strings.HasPrefix(digits, "1") {
+		return "+" + digits
+	}
+
+	// Assume international, add + prefix
+	return "+" + digits
+}
 
 // =====================
 // Inbound Routes (Dialplan context=public)
@@ -718,4 +749,107 @@ func (h *Handler) CreateDefaultUSCANRoutes(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(iris.Map{"message": "Default routes created"})
+}
+
+// =====================
+// Call Blocks (Blocked Callers)
+// =====================
+
+func (h *Handler) ListCallBlocks(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	var blocks []models.CallBlock
+	if err := h.DB.Where("tenant_id = ?", tenantID).Order("created_at DESC").Find(&blocks).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to retrieve call blocks"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": blocks})
+}
+
+func (h *Handler) CreateCallBlock(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	var block models.CallBlock
+	if err := ctx.ReadJSON(&block); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	block.TenantID = tenantID
+
+	// Normalize number to E.164 if possible
+	block.Number = normalizeToE164(block.Number)
+
+	// Set defaults
+	if block.MatchType == "" {
+		block.MatchType = "exact"
+	}
+	if block.Action == "" {
+		block.Action = "reject"
+	}
+
+	if err := h.DB.Create(&block).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create call block"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(iris.Map{"message": "Call block created", "data": block})
+}
+
+func (h *Handler) UpdateCallBlock(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id := ctx.Params().GetUintDefault("id", 0)
+
+	var block models.CallBlock
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&block).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Call block not found"})
+		return
+	}
+
+	var input models.CallBlock
+	if err := ctx.ReadJSON(&input); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	block.Number = normalizeToE164(input.Number)
+	block.MatchType = input.MatchType
+	block.Action = input.Action
+	block.Enabled = input.Enabled
+	block.Notes = input.Notes
+
+	if err := h.DB.Save(&block).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to update call block"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "Call block updated", "data": block})
+}
+
+func (h *Handler) DeleteCallBlock(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id := ctx.Params().GetUintDefault("id", 0)
+
+	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.CallBlock{})
+	if result.Error != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to delete call block"})
+		return
+	}
+
+	if result.RowsAffected == 0 {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Call block not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "Call block deleted"})
 }
