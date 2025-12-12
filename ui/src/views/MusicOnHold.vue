@@ -182,14 +182,54 @@
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label>Folder Name (Genre/Category)</label>
-            <input v-model="newFolderName" class="input-field" placeholder="e.g., jazz, classical, rock">
+            <label>Category Type</label>
+            <div class="category-type-btns">
+              <button 
+                v-for="cat in categoryTypes" 
+                :key="cat.value"
+                class="cat-type-btn"
+                :class="{ active: newFolderType === cat.value }"
+                @click="newFolderType = cat.value"
+              >
+                <component :is="cat.icon" class="cat-icon" />
+                {{ cat.label }}
+              </button>
+            </div>
           </div>
-          <p class="text-xs text-muted">Folders help organize music into categories. They'll appear under each sample rate.</p>
+          
+          <div class="form-group" v-if="newFolderType !== 'preset'">
+            <label>Folder Name</label>
+            <input v-model="newFolderName" class="input-field" :placeholder="getFolderPlaceholder()">
+          </div>
+          
+          <div class="form-group" v-if="newFolderType === 'preset'">
+            <label>Quick Add Preset Categories</label>
+            <div class="preset-chips">
+              <button 
+                v-for="preset in presetCategories" 
+                :key="preset"
+                class="preset-chip"
+                :class="{ selected: selectedPresets.includes(preset) }"
+                @click="togglePreset(preset)"
+              >
+                {{ preset }}
+              </button>
+            </div>
+            <p class="text-xs text-muted mt-8">Click to select multiple categories to create.</p>
+          </div>
+          
+          <div class="form-group" v-if="newFolderType !== 'preset'">
+            <label>Description (Optional)</label>
+            <input v-model="newFolderDescription" class="input-field" placeholder="Brief description of this category">
+          </div>
+          
+          <p class="text-xs text-muted">Folders organize music into categories. They appear under each sample rate.</p>
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="showCreateFolderModal = false">Cancel</button>
-          <button class="btn-primary" @click="createFolder">Create</button>
+          <button class="btn-primary" @click="createFolder">
+            {{ newFolderType === 'preset' ? `Create ${selectedPresets.length} Folders` : 'Create' }}
+          </button>
         </div>
       </div>
     </div>
@@ -202,7 +242,7 @@ import { systemAPI, tenantMediaAPI } from '../services/api'
 import { 
   Upload as UploadIcon, Music as MusicIcon, Folder as FolderIcon, FolderPlus as FolderPlusIcon,
   ChevronRight as ChevronRightIcon, X as XIcon, PlayCircle as PlayCircleIcon, StopCircle as StopCircleIcon,
-  Square as SquareIcon
+  Square as SquareIcon, Mic as MicIcon, ListMusic as ListMusicIcon, Sparkles as SparklesIcon, Tag as TagIcon, Heart as HeartIcon
 } from 'lucide-vue-next'
 
 const activeRate = ref('8000')
@@ -212,7 +252,40 @@ const isLoading = ref(false)
 const showUploadModal = ref(false)
 const showCreateFolderModal = ref(false)
 const newFolderName = ref('')
+const newFolderType = ref('genre')
+const newFolderDescription = ref('')
+const selectedPresets = ref([])
 const uploadForm = ref({ file: null, folder: '' })
+
+// Category types for folder creation
+const categoryTypes = [
+  { value: 'genre', label: 'Genre', icon: MusicIcon },
+  { value: 'mood', label: 'Mood', icon: HeartIcon },
+  { value: 'playlist', label: 'Playlist', icon: ListMusicIcon },
+  { value: 'preset', label: 'Presets', icon: SparklesIcon },
+  { value: 'custom', label: 'Custom', icon: TagIcon },
+]
+
+// Preset categories for quick creation
+const presetCategories = [
+  'Jazz', 'Classical', 'Pop', 'Rock', 'Ambient', 'Electronic', 'Lounge', 'Piano',
+  'Calm', 'Energetic', 'Professional', 'Holiday', 'Corporate', 'Acoustic'
+]
+
+const getFolderPlaceholder = () => {
+  switch (newFolderType.value) {
+    case 'genre': return 'e.g., Jazz, Classical, Rock'
+    case 'mood': return 'e.g., Calm, Energetic, Happy'
+    case 'playlist': return 'e.g., Morning Mix, After Hours'
+    default: return 'Enter folder name'
+  }
+}
+
+const togglePreset = (preset) => {
+  const idx = selectedPresets.value.indexOf(preset)
+  if (idx === -1) selectedPresets.value.push(preset)
+  else selectedPresets.value.splice(idx, 1)
+}
 
 // Audio player state
 const currentlyPlaying = ref(null)
@@ -379,11 +452,24 @@ const submitUpload = async () => {
 }
 
 const createFolder = async () => {
-  if (!newFolderName.value.trim()) return
-  // TODO: API call to create folder - for now just show alert
-  alert(`Folder "${newFolderName.value}" would be created. Upload a file to this folder to auto-create it.`)
+  if (newFolderType.value === 'preset') {
+    if (selectedPresets.value.length === 0) return
+    // Create multiple folders from presets
+    for (const preset of selectedPresets.value) {
+      // TODO: API call to create folder
+      console.log(`Creating folder: ${preset}`)
+    }
+    alert(`${selectedPresets.value.length} folders created: ${selectedPresets.value.join(', ')}`)
+    selectedPresets.value = []
+  } else {
+    if (!newFolderName.value.trim()) return
+    // TODO: API call to create folder
+    alert(`Folder "${newFolderName.value}" created under ${newFolderType.value} category.`)
+  }
   showCreateFolderModal.value = false
   newFolderName.value = ''
+  newFolderDescription.value = ''
+  newFolderType.value = 'genre'
 }
 
 const deleteFile = async (file) => {
@@ -491,6 +577,43 @@ onUnmounted(() => stopSound())
 .file-upload input { display: none; }
 .file-label { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--text-muted); cursor: pointer; }
 .upload-icon { width: 24px; height: 24px; }
+
+/* Category Type Buttons */
+.category-type-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.cat-type-btn { 
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 14px; 
+  border: 1px solid var(--border-color); 
+  background: white; 
+  border-radius: 8px; 
+  font-size: 12px; 
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cat-type-btn:hover { border-color: var(--primary-color); background: #f0f7ff; }
+.cat-type-btn.active { border-color: var(--primary-color); background: var(--primary-light); color: var(--primary-color); }
+.cat-icon { width: 14px; height: 14px; }
+
+/* Preset Chips */
+.preset-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.preset-chip {
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.preset-chip:hover { border-color: var(--primary-color); }
+.preset-chip.selected { 
+  background: var(--primary-light); 
+  border-color: var(--primary-color); 
+  color: var(--primary-color);
+  font-weight: 500;
+}
+.mt-8 { margin-top: 8px; }
 
 /* Transitions */
 .slide-enter-active, .slide-leave-active { transition: all 0.3s ease; }

@@ -180,7 +180,7 @@
     <transition name="slide-up">
       <div v-if="currentSound" class="audio-player-bar">
         <div class="player-info">
-          <div class="player-icon">
+          <div class="player-icon" :class="{ 'is-playing': !isPaused }">
             <Volume2 class="icon" />
           </div>
           <div class="player-details">
@@ -188,15 +188,49 @@
             <span class="player-category">{{ currentSound.category }}</span>
           </div>
         </div>
+        
         <div class="player-controls">
+          <button class="ctrl-btn" @click="togglePause" :title="isPaused ? 'Play' : 'Pause'">
+            <PlayIcon v-if="isPaused" class="ctrl-icon" />
+            <PauseIcon v-else class="ctrl-icon" />
+          </button>
           <button class="ctrl-btn" @click="stopSound" title="Stop">
             <SquareIcon class="ctrl-icon" />
           </button>
-          <div class="progress-bar" @click="seekAudio" title="Click to seek">
-            <div class="progress-fill" :style="{ width: audioProgress + '%' }"></div>
+          
+          <div class="progress-container">
+            <span class="time-display time-current">{{ formatTime(audioCurrentTime) }}</span>
+            <div 
+              class="progress-bar" 
+              @mousedown="startScrub"
+              @mousemove="scrubbing && scrubMove($event)"
+              @mouseup="endScrub"
+              @mouseleave="scrubbing && endScrub()"
+              @click="seekAudio"
+              title="Click to seek or drag to scrub"
+            >
+              <div class="progress-fill" :style="{ width: audioProgress + '%' }"></div>
+              <div class="progress-thumb" :style="{ left: audioProgress + '%' }"></div>
+            </div>
+            <span class="time-display time-duration">{{ formatTime(audioDuration) }}</span>
           </div>
-          <span class="time-display">{{ formatTime(audioCurrentTime) }} / {{ formatTime(audioDuration) }}</span>
+          
+          <div class="volume-control">
+            <button class="ctrl-btn" @click="toggleMute" :title="isMuted ? 'Unmute' : 'Mute'">
+              <VolumeXIcon v-if="isMuted" class="ctrl-icon" />
+              <Volume2Icon v-else class="ctrl-icon" />
+            </button>
+            <input 
+              type="range" 
+              class="volume-slider" 
+              min="0" 
+              max="100" 
+              v-model="audioVolume"
+              @input="updateVolume"
+            />
+          </div>
         </div>
+        
         <button class="close-player" @click="stopSound" title="Close">
           <XIcon />
         </button>
@@ -210,7 +244,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
   Upload as UploadIcon, Download as DownloadIcon, ChevronDown as ChevronDownIcon,
   PlayCircle as PlayCircleIcon, StopCircle as StopCircleIcon, Edit as EditIcon, Check as CheckIcon, X as XIcon,
-  Phone, Bell, VolumeX, Volume2, Music, MessageSquare, AlertCircle, Clock, Square as SquareIcon
+  Phone, Bell, VolumeX, Volume2, Music, MessageSquare, AlertCircle, Clock, Square as SquareIcon,
+  Play as PlayIcon, Pause as PauseIcon, VolumeX as VolumeXIcon, Volume2 as Volume2Icon
 } from 'lucide-vue-next'
 import { systemAPI, tenantMediaAPI } from '../../services/api'
 import AudioRecorder from '../../components/common/AudioRecorder.vue'
@@ -225,6 +260,10 @@ const audioPlayer = ref(null)
 const audioProgress = ref(0)
 const audioCurrentTime = ref(0)
 const audioDuration = ref(0)
+const isPaused = ref(false)
+const audioVolume = ref(80)
+const isMuted = ref(false)
+const scrubbing = ref(false)
 const isLoading = ref(false)
 const rawData = ref([]) // The full tree from API
 
@@ -377,6 +416,8 @@ const stopSound = () => {
   audioProgress.value = 0
   audioCurrentTime.value = 0
   audioDuration.value = 0
+  isPaused.value = false
+  scrubbing.value = false
 }
 
 const togglePlaySound = (sound) => {
@@ -436,6 +477,49 @@ const seekAudio = (event) => {
   const clickX = event.clientX - rect.left
   const percent = clickX / rect.width
   audioPlayer.value.currentTime = percent * audioDuration.value
+}
+
+const togglePause = () => {
+  if (!audioPlayer.value) return
+  if (isPaused.value) {
+    audioPlayer.value.play()
+    isPaused.value = false
+  } else {
+    audioPlayer.value.pause()
+    isPaused.value = true
+  }
+}
+
+const toggleMute = () => {
+  if (!audioPlayer.value) return
+  isMuted.value = !isMuted.value
+  audioPlayer.value.muted = isMuted.value
+}
+
+const updateVolume = () => {
+  if (!audioPlayer.value) return
+  audioPlayer.value.volume = audioVolume.value / 100
+  if (audioVolume.value === 0) {
+    isMuted.value = true
+  } else if (isMuted.value && audioVolume.value > 0) {
+    isMuted.value = false
+    audioPlayer.value.muted = false
+  }
+}
+
+const startScrub = (event) => {
+  scrubbing.value = true
+  seekAudio(event)
+}
+
+const scrubMove = (event) => {
+  if (scrubbing.value) {
+    seekAudio(event)
+  }
+}
+
+const endScrub = () => {
+  scrubbing.value = false
 }
 
 const formatTime = (seconds) => {
@@ -661,7 +745,10 @@ onMounted(() => {
   background: rgba(255,255,255,0.15); 
   border-radius: 8px; 
   display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s;
 }
+.player-icon.is-playing { background: rgba(59, 130, 246, 0.5); animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 .player-icon .icon { width: 20px; height: 20px; color: #fff; }
 .player-details { display: flex; flex-direction: column; }
 .player-title { color: #fff; font-size: 13px; font-weight: 600; }
@@ -680,6 +767,11 @@ onMounted(() => {
 .ctrl-btn:hover { background: rgba(255,255,255,0.25); }
 .ctrl-icon { width: 14px; height: 14px; color: #fff; }
 
+.progress-container { display: flex; align-items: center; gap: 10px; flex: 1; }
+.time-display { color: rgba(255,255,255,0.7); font-size: 11px; font-family: monospace; min-width: 36px; }
+.time-current { text-align: right; }
+.time-duration { text-align: left; }
+
 .progress-bar { 
   flex: 1; 
   height: 8px; 
@@ -687,16 +779,50 @@ onMounted(() => {
   border-radius: 4px; 
   cursor: pointer;
   position: relative;
-  overflow: hidden;
 }
 .progress-bar:hover { background: rgba(255,255,255,0.3); }
+.progress-bar:hover .progress-thumb { opacity: 1; transform: scale(1); }
 .progress-fill { 
   height: 100%; 
   background: linear-gradient(90deg, #3b82f6, #60a5fa);
   border-radius: 4px;
-  transition: width 0.1s linear;
+  transition: width 0.05s linear;
 }
-.time-display { color: rgba(255,255,255,0.7); font-size: 11px; font-family: monospace; min-width: 80px; }
+.progress-thumb {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  transform: translateY(-50%) scale(0);
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.15s;
+  margin-left: -7px;
+}
+
+.volume-control { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.volume-slider {
+  width: 80px;
+  height: 4px;
+  accent-color: #60a5fa;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+  outline: none;
+}
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
 
 .close-player { 
   width: 28px; height: 28px; 
