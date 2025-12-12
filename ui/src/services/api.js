@@ -277,6 +277,7 @@ export const routingAPI = {
     createInbound: (data) => api.post('/routing/inbound', data),
     listOutbound: (params) => api.get('/routing/outbound', { params }),
     createOutbound: (data) => api.post('/routing/outbound', data),
+    createDefaultOutbound: () => api.post('/routing/outbound/defaults'),
 }
 
 // =====================
@@ -351,6 +352,9 @@ export const systemAPI = {
     createTenant: (data) => api.post('/system/tenants', data),
     updateTenant: (id, data) => api.put(`/system/tenants/${id}`, data),
     deleteTenant: (id) => api.delete(`/system/tenants/${id}`),
+
+    // System Numbers (All Tenants)
+    listAllNumbers: () => api.get('/system/numbers'),
 
     // Tenant Profiles
     listProfiles: () => api.get('/system/tenant-profiles'),

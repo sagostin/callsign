@@ -875,37 +875,7 @@ func (h *Handler) DeleteConference(ctx iris.Context) {
 // Numbers/DIDs
 // =====================
 
-func (h *Handler) ListNumbers(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
-	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
-	}
-
-	// TODO: Implement DID/Number model
-	ctx.JSON(iris.Map{"data": []interface{}{}, "message": "DID management requires additional model"})
-}
-
-func (h *Handler) CreateNumber(ctx iris.Context) {
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "Number created"})
-}
-
-func (h *Handler) GetNumber(ctx iris.Context) {
-	id := ctx.Params().Get("id")
-	ctx.JSON(iris.Map{"data": map[string]interface{}{"id": id}})
-}
-
-func (h *Handler) UpdateNumber(ctx iris.Context) {
-	id := ctx.Params().Get("id")
-	ctx.JSON(iris.Map{"message": "Number updated", "id": id})
-}
-
-func (h *Handler) DeleteNumber(ctx iris.Context) {
-	id := ctx.Params().Get("id")
-	ctx.JSON(iris.Map{"message": "Number deleted", "id": id})
-}
+// Numbers handlers moved to routing_handlers.go
 
 // Routing and Dialplan handlers moved to routing_handlers.go
 

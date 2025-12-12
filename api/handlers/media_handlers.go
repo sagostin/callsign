@@ -61,6 +61,59 @@ func (h *Handler) ListSystemMusic(ctx iris.Context) {
 	ctx.JSON(iris.Map{"data": tree.Children})
 }
 
+// StreamSystemSound serves a system sound file for playback
+func (h *Handler) StreamSystemSound(ctx iris.Context) {
+	path := ctx.URLParam("path")
+	if path == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Path is required"})
+		return
+	}
+
+	// Security: prevent directory traversal
+	if strings.Contains(path, "..") {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid path"})
+		return
+	}
+
+	fullPath := filepath.Join("/usr/share/freeswitch/sounds", path)
+
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "File not found"})
+		return
+	}
+
+	ctx.ServeFile(fullPath)
+}
+
+// StreamSystemMusic serves a system music file for playback
+func (h *Handler) StreamSystemMusic(ctx iris.Context) {
+	path := ctx.URLParam("path")
+	if path == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Path is required"})
+		return
+	}
+
+	if strings.Contains(path, "..") {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid path"})
+		return
+	}
+
+	fullPath := filepath.Join("/usr/share/freeswitch/sounds/music", path)
+
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "File not found"})
+		return
+	}
+
+	ctx.ServeFile(fullPath)
+}
+
 func buildFileTree(root, currentPath string) (*FileNode, error) {
 	info, err := os.Stat(currentPath)
 	if err != nil {

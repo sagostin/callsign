@@ -339,22 +339,31 @@ const playAudio = (row) => {
     stopAudio() // Stop previous
     currentAudio.value = row
     
-    // Construct valid URL (assuming static file serving or signed URL)
-    // For now assuming a direct path or API endpoint to stream
-    // Using a mock or relative path if backend serves it statically
-    // TODO: Add a specific download/stream endpoint or use relative path if served publicly
-    // For now we'll assume the API serves it or we use a placeholder if not set up
-    const url = `/api/audio-library/${row.id}/stream` // This endpoint needs to exist or be handled
-    // Alternatively, mapping 'path' to a served directory
+    // Use the stream endpoint
+    const url = `/api/audio-library/${row.id}/stream`
     
-    // Since we don't have a streaming endpoint in the handler list I created, I should probably add one or use a static serving.
-    // For this task, I'll log it.
-    console.log('Playing', row.filename)
+    audioObj.value = new Audio(url)
+    audioObj.value.addEventListener('timeupdate', () => {
+      currentTime.value = audioObj.value.currentTime
+      duration.value = audioObj.value.duration || 0
+      progress.value = duration.value ? (currentTime.value / duration.value) * 100 : 0
+    })
+    audioObj.value.addEventListener('ended', () => {
+      playing.value = false
+      progress.value = 0
+    })
+    audioObj.value.play()
     playing.value = true
   }
 }
 
 const togglePlay = () => {
+  if (!audioObj.value) return
+  if (playing.value) {
+    audioObj.value.pause()
+  } else {
+    audioObj.value.play()
+  }
   playing.value = !playing.value
 }
 

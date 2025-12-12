@@ -320,3 +320,53 @@ func (h *Handler) DeleteMediaFile(ctx iris.Context) {
 
 	ctx.JSON(iris.Map{"message": "File deleted successfully"})
 }
+
+// StreamMediaFile serves an audio file for playback
+func (h *Handler) StreamMediaFile(ctx iris.Context) {
+	tenantID := middleware.GetScopedTenantID(ctx)
+	if tenantID == 0 {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Tenant context required"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	var mediaFile models.MediaFile
+
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&mediaFile).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "File not found"})
+		return
+	}
+
+	storageRoot := "/usr/share/freeswitch/sounds"
+	fullPath := filepath.Join(storageRoot, mediaFile.Path)
+
+	// Check file exists
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "File not found on disk"})
+		return
+	}
+
+	// Determine content type
+	contentType := mediaFile.MimeType
+	if contentType == "" {
+		ext := strings.ToLower(filepath.Ext(fullPath))
+		switch ext {
+		case ".wav":
+			contentType = "audio/wav"
+		case ".mp3":
+			contentType = "audio/mpeg"
+		case ".ogg":
+			contentType = "audio/ogg"
+		default:
+			contentType = "application/octet-stream"
+		}
+	}
+
+	ctx.ContentType(contentType)
+	ctx.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", mediaFile.Filename))
+
+	ctx.ServeFile(fullPath)
+}

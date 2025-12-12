@@ -1116,3 +1116,20 @@ func (h *Handler) DeleteACLNode(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusNoContent)
 }
+
+// =====================
+// System Numbers (All Tenants)
+// =====================
+
+func (h *Handler) ListAllNumbers(ctx iris.Context) {
+	var numbers []models.Destination
+
+	// Get all numbers across all tenants with tenant info
+	if err := h.DB.Preload("Tenant").Order("destination_number ASC").Find(&numbers).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to retrieve numbers"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": numbers})
+}

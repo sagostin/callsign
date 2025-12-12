@@ -173,6 +173,7 @@ func (r *Router) Init() {
 					routing.Post("/inbound", r.Handler.CreateInboundRoute)
 					routing.Get("/outbound", r.Handler.ListOutboundRoutes)
 					routing.Post("/outbound", r.Handler.CreateOutboundRoute)
+					routing.Post("/outbound/defaults", r.Handler.CreateDefaultUSCANRoutes)
 				}
 
 				// Dial Plans
@@ -192,6 +193,7 @@ func (r *Router) Init() {
 					audioLibrary.Post("/", r.Handler.UploadMediaFile)
 					audioLibrary.Put("/{id}", r.Handler.UpdateMediaFile)
 					audioLibrary.Delete("/{id}", r.Handler.DeleteMediaFile)
+					audioLibrary.Get("/{id}/stream", r.Handler.StreamMediaFile)
 				}
 
 				// Music on Hold
@@ -359,6 +361,9 @@ func (r *Router) Init() {
 					tenants.Delete("/{id}", r.Handler.DeleteTenant)
 				}
 
+				// System Numbers (All Tenants)
+				system.Get("/numbers", r.Handler.ListAllNumbers)
+
 				// Tenant Profiles
 				profiles := system.Party("/tenant-profiles")
 				{
@@ -451,8 +456,10 @@ func (r *Router) Init() {
 				{
 					media.Get("/sounds", r.Handler.ListSystemSounds)
 					media.Post("/sounds", r.Handler.UploadSystemSound)
+					media.Get("/sounds/stream", r.Handler.StreamSystemSound)
 					media.Get("/music", r.Handler.ListSystemMusic)
 					media.Post("/music", r.Handler.UploadSystemMusic)
+					media.Get("/music/stream", r.Handler.StreamSystemMusic)
 				}
 
 				// System status

@@ -35,7 +35,7 @@
 
     <DataTable :columns="numberColumns" :data="filteredNumbers" actions>
       <template #number="{ value }">
-        <span class="font-mono font-semibold">{{ value }}</span>
+        <span class="font-mono font-semibold">{{ formatPhoneNumber(value) }}</span>
       </template>
       <template #capabilities="{ row }">
         <div class="cap-badges">
@@ -525,52 +525,6 @@ const onDragEnd = () => {
   dragType.value = null
 }
 
-// Numbers
-const numberSearch = ref('')
-const numberFilter = ref('')
-const showAddNumberModal = ref(false)
-const newNumber = ref({ number: '', voice: true, sms: false, fax: false, context: 'public', routeType: 'extension', target: '' })
-
-const numberColumns = [
-  { key: 'number', label: 'Number', width: '150px' },
-  { key: 'capabilities', label: 'Capabilities', width: '140px' },
-  { key: 'routing', label: 'Voice Routing', width: '160px' },
-  { key: 'smsProvider', label: 'SMS Provider', width: '130px' },
-  { key: 'carrier', label: 'Carrier', width: '100px' },
-  { key: 'status', label: 'Status', width: '90px' }
-]
-
-const numbers = ref([
-  { number: '+1 415-555-0100', voice: true, sms: true, fax: false, routing: 'IVR: Main Menu', smsProvider: 'Twilio Primary', context: 'public', carrier: 'Bandwidth', status: 'Active' },
-  { number: '+1 415-555-0101', voice: true, sms: false, fax: true, routing: 'Fax-to-Email', smsProvider: null, context: 'public', carrier: 'Bandwidth', status: 'Active' },
-  { number: '+1 310-555-9988', voice: true, sms: true, fax: false, routing: 'Ring Group: Sales', smsProvider: 'Bandwidth Backup', context: 'public', carrier: 'Twilio', status: 'Active' },
-  { number: '+1 800-555-1234', voice: true, sms: true, fax: false, routing: 'Queue: Support', smsProvider: 'Twilio Primary', context: 'public', carrier: 'Bandwidth', status: 'Active' },
-])
-
-const filteredNumbers = computed(() => {
-  return numbers.value.filter(n => {
-    const matchesSearch = n.number.includes(numberSearch.value)
-    const matchesFilter = !numberFilter.value || 
-      (numberFilter.value === 'Voice' && n.voice) ||
-      (numberFilter.value === 'SMS' && n.sms) ||
-      (numberFilter.value === 'Fax' && n.fax)
-    return matchesSearch && matchesFilter
-  })
-})
-
-const editNumber = (row) => alert(`Editing ${row.number}`)
-const viewNumberStats = (row) => alert(`Stats for ${row.number}`)
-const saveNewNumber = () => {
-  numbers.value.push({
-    ...newNumber.value,
-    routing: `${newNumber.value.routeType}: ${newNumber.value.target}`,
-    carrier: 'Manual',
-    status: 'Active'
-  })
-  showAddNumberModal.value = false
-  newNumber.value = { number: '', voice: true, sms: false, fax: false, context: 'public', routeType: 'extension', target: '' }
-}
-
 // Inbound Routes
 const showInboundModal = ref(false)
 const editingInbound = ref(false)
@@ -591,6 +545,171 @@ const loadInboundRoutes = async () => {
     console.error('Failed to load inbound routes', e)
   }
 }
+
+// Numbers
+import { formatPhoneNumber } from '../utils/formatters'
+import { numbersAPI } from '../services/api'
+
+const numberSearch = ref('')
+const numberFilter = ref('')
+const showAddNumberModal = ref(false)
+const newNumber = ref({ number: '', voice: true, sms: false, fax: false, context: 'public', routeType: 'extension', target: '' })
+const numbers = ref([])
+
+const numberColumns = [
+  { key: 'destination_number', label: 'Number', width: '150px' },
+  { key: 'capabilities', label: 'Capabilities', width: '140px' },
+  { key: 'routing', label: 'Voice Routing', width: '160px' },
+  { key: 'smsProvider', label: 'SMS Provider', width: '130px' },
+  { key: 'carrier', label: 'Carrier', width: '100px' },
+  { key: 'status', label: 'Status', width: '90px' }
+]
+
+const loadNumbers = async () => {
+    try {
+        const response = await numbersAPI.list()
+        numbers.value = response.data.data || []
+    } catch (e) {
+        console.error('Failed to load numbers', e)
+    }
+}
+
+const filteredNumbers = computed(() => {
+  return numbers.value.filter(n => {
+    const numStr = n.destination_number || ''
+    const matchesSearch = numStr.includes(numberSearch.value)
+    const matchesFilter = !numberFilter.value || 
+      (numberFilter.value === 'Voice' && n.enabled) // Basic filter assumption
+    return matchesSearch && matchesFilter
+  })
+})
+
+const editNumber = (row) => alert(`Editing not fully implemented yet for ${row.destination_number}`)
+const viewNumberStats = (row) => alert(`Stats for ${row.destination_number}`)
+
+const saveNewNumber = async () => {
+  try {
+      const payload = {
+        destination_number: newNumber.value.number,
+        destination_type: newNumber.value.routeType,
+        destination_action: newNumber.value.target,
+        context: newNumber.value.context,
+        enabled: true, // Auto enable
+        // Other fields like voice/sms flags would need to be in model if we want to store them separately
+        // For now, assuming standard setup
+      }
+      await numbersAPI.create(payload)
+      await loadNumbers()
+      showAddNumberModal.value = false
+      newNumber.value = { number: '', voice: true, sms: false, fax: false, context: 'public', routeType: 'extension', target: '' }
+  } catch (e) {
+      console.error(e)
+      alert('Failed to create number')
+  }
+}
+
+const outboundRoutes = ref([])
+
+const loadOutboundRoutes = async () => {
+    try {
+        const response = await routingAPI.listOutbound()
+        outboundRoutes.value = response.data.data || []
+    } catch (e) {
+        console.error(e)
+    }
+}
+
+const outboundForm = ref({ name: '', pattern: '', strip: 0, prepend: '', gateway: '', continue: true, international: false, enabled: true })
+
+const editOutboundRoute = (route) => {
+    // Map existing structure back to simple form if possible, or warn
+    // Simplified logic: Just copy known fields. Complex fields might be lost in simple editor.
+    outboundForm.value = { ...route }
+    editingOutbound.value = true
+    showOutboundModal.value = true
+}
+
+const deleteOutboundRoute = async (route) => {
+    if (confirm(`Delete route "${route.name}"?`)) {
+        try {
+            await dialPlansAPI.delete(route.id)
+            await loadOutboundRoutes()
+        } catch (e) {
+            console.error(e)
+            alert('Failed to delete route')
+        }
+    }
+}
+
+const saveOutboundRoute = async () => {
+    try {
+        // We need to construct the dialplan model based on the simple UI
+        // Pattern -> Condition destination_number
+        // Strip/Prepend/Gateway -> Bridge action with manipulation
+        
+        // This logic is complex to do purely frontend if we want to match backend's model structure rigidly.
+        // Ideally backend has a "SimpleOutbound" endpoint, OR we construct the detailed Dialplan object here.
+        // Going with constructing the Dialplan object for the generic Create/Update endpoint.
+        
+        const details = []
+        let order = 10
+        // Condition
+        details.push({ detail_type: 'condition', condition_field: 'destination_number', condition_expression: outboundForm.value.pattern, condition_break: 'on-false', detail_order: order++ })
+        
+        // Action: Bridge
+        // Logic: sofia/gateway/{gateway}/{prepend}{destination_number:strip}
+        // This is pseudo-code logic for FreeSWITCH.
+        // Actually simplest is: bridge sofia/gateway/${gateway}/${prepend}${destination_number:${strip}}
+        // But for regex pattern match $1, usually we bridge to $1.
+        
+        // Let's assume the user regex has a capture group for the number part we want.
+        // bridge data: sofia/gateway/${gateway_name}/${prepend}$1
+        
+        const bridgeData = `sofia/gateway/${outboundForm.value.gateway}/${outboundForm.value.prepend}$1`
+        details.push({ detail_type: 'action', action_application: 'bridge', action_data: bridgeData, detail_order: order++ })
+
+        const payload = {
+            dialplan_name: outboundForm.value.name,
+            dialplan_context: 'default',
+            enabled: outboundForm.value.enabled,
+            continue: outboundForm.value.continue,
+            details: details
+        }
+        
+        if (editingOutbound.value) {
+            await dialPlansAPI.update(outboundForm.value.id, payload)
+        } else {
+            await routingAPI.createOutbound(payload)
+        }
+        
+        await loadOutboundRoutes()
+        showOutboundModal.value = false
+        editingOutbound.value = false
+        outboundForm.value = { name: '', pattern: '', strip: 0, prepend: '', gateway: '', continue: true, international: false, enabled: true }
+    } catch (e) {
+        console.error(e)
+        alert('Failed to save outbound route')
+    }
+}
+
+const createDefaultRoutes = async () => {
+    if (confirm('Create standard US/CA (10/11 digit) and Emergency routes? This may duplicate existing routes.')) {
+        try {
+            await routingAPI.createDefaultOutbound()
+            await loadOutboundRoutes()
+        } catch (e) {
+            console.error(e)
+            alert('Failed to create default routes')
+        }
+    }
+}
+
+// Initial Load
+onMounted(() => {
+    loadNumbers()
+    loadInboundRoutes()
+    loadOutboundRoutes()
+})
 
 const addInboundCondition = () => inboundForm.value.conditions.push({ variable: 'destination_number', operator: '=~', value: '' })
 const removeInboundCondition = (i) => inboundForm.value.conditions.splice(i, 1)

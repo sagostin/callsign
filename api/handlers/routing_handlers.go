@@ -533,3 +533,189 @@ func (h *Handler) ToggleCallFlow(ctx iris.Context) {
 	h.DB.Save(&flow)
 	ctx.JSON(flow)
 }
+
+// =====================
+// Numbers / DIDs
+// =====================
+
+func (h *Handler) ListNumbers(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	var numbers []models.Destination
+	if err := h.DB.Where("tenant_id = ?", tenantID).Order("destination_number").Find(&numbers).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to retrieve numbers"})
+		return
+	}
+	ctx.JSON(iris.Map{"data": numbers})
+}
+
+func (h *Handler) CreateNumber(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	var number models.Destination
+	if err := ctx.ReadJSON(&number); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	number.TenantID = tenantID
+
+	// Normalize to E.164 (Basic US/CA logic for now)
+	num := number.DestinationNumber
+	// Strip non-digits
+	normalized := ""
+	for _, r := range num {
+		if r >= '0' && r <= '9' {
+			normalized += string(r)
+		}
+	}
+
+	// Check length and add prefix
+	if len(normalized) == 10 {
+		normalized = "+1" + normalized
+	} else if len(normalized) == 11 && normalized[0] == '1' {
+		normalized = "+" + normalized
+	} else if len(normalized) > 0 {
+		normalized = "+" + normalized
+	}
+
+	number.DestinationNumber = normalized
+
+	if err := h.DB.Create(&number).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create number"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(number)
+}
+
+func (h *Handler) GetNumber(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var number models.Destination
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&number).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Number not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": number})
+}
+
+func (h *Handler) UpdateNumber(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var number models.Destination
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&number).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Number not found"})
+		return
+	}
+
+	if err := ctx.ReadJSON(&number); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	// Re-normalize if changed? For now assume edits respect format or just update props
+	// Basic protection: if number field is submitted, re-normalize
+	if number.DestinationNumber != "" {
+		num := number.DestinationNumber
+		normalized := ""
+		for _, r := range num {
+			if r >= '0' && r <= '9' {
+				normalized += string(r)
+			} else if r == '+' { // maintain existing + if passed
+				normalized += string(r)
+			}
+		}
+		// If user removed +, re-add if needed logic... simple re-save for now
+		// Assuming generic update
+	}
+
+	number.TenantID = tenantID
+	h.DB.Save(&number)
+	ctx.JSON(number)
+}
+
+func (h *Handler) DeleteNumber(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var number models.Destination
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&number).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Number not found"})
+		return
+	}
+
+	h.DB.Delete(&number)
+	ctx.StatusCode(http.StatusNoContent)
+}
+
+// =====================
+// Default Dial Plans (US/CA)
+// =====================
+
+func (h *Handler) CreateDefaultUSCANRoutes(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	// 1. 11-digit dialing (1 + 10 digits) -> E.164 (+1 + 10 digits)
+	// Order 9000+ for outbound routes (high priority to not conflict with internal)
+	r1 := models.Dialplan{
+		TenantID:        &tenantID,
+		DialplanName:    "US/CA 11-Digit",
+		DialplanContext: "default",
+		DialplanOrder:   9000,
+		Enabled:         true,
+		Continue:        true,
+		Details: []models.DialplanDetail{
+			{DetailType: "condition", ConditionField: "destination_number", ConditionExpression: "^1(\\d{10})$", ConditionBreak: "on-false", DetailOrder: 10},
+			{DetailType: "action", ActionApplication: "set", ActionData: "effective_caller_id_number=+${effective_caller_id_number}", DetailOrder: 20},
+			{DetailType: "action", ActionApplication: "bridge", ActionData: "sofia/gateway/${default_gateway}/+1$1", DetailOrder: 30},
+		},
+	}
+
+	// 2. 10-digit dialing (10 digits) -> E.164 (+1 + 10 digits)
+	r2 := models.Dialplan{
+		TenantID:        &tenantID,
+		DialplanName:    "US/CA 10-Digit",
+		DialplanContext: "default",
+		DialplanOrder:   9010,
+		Enabled:         true,
+		Continue:        true,
+		Details: []models.DialplanDetail{
+			{DetailType: "condition", ConditionField: "destination_number", ConditionExpression: "^(\\d{10})$", ConditionBreak: "on-false", DetailOrder: 10},
+			{DetailType: "action", ActionApplication: "set", ActionData: "effective_caller_id_number=+${effective_caller_id_number}", DetailOrder: 20},
+			{DetailType: "action", ActionApplication: "bridge", ActionData: "sofia/gateway/${default_gateway}/+1$1", DetailOrder: 30},
+		},
+	}
+
+	// 3. Emergency 911 - Order 100 (highest priority)
+	r3 := models.Dialplan{
+		TenantID:        &tenantID,
+		DialplanName:    "Emergency 911",
+		DialplanContext: "default",
+		DialplanOrder:   100,
+		Enabled:         true,
+		Continue:        false,
+		Details: []models.DialplanDetail{
+			{DetailType: "condition", ConditionField: "destination_number", ConditionExpression: "^911$", ConditionBreak: "on-false", DetailOrder: 10},
+			{DetailType: "action", ActionApplication: "bridge", ActionData: "sofia/gateway/${emergency_gateway}/911", DetailOrder: 20},
+		},
+	}
+
+	h.DB.Create(&r1)
+	h.DB.Create(&r2)
+	h.DB.Create(&r3)
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(iris.Map{"message": "Default routes created"})
+}

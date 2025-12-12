@@ -2,7 +2,7 @@
   <div class="system-media-page">
     <div class="view-header">
       <div class="header-content">
-        <h2>System Media</h2>
+        <h2>Sounds</h2>
         <p class="text-muted text-sm">Manage global audio resources: sounds, music on hold, and phrases.</p>
       </div>
       <div class="header-actions">
@@ -358,10 +358,52 @@ const createPhrase = () => { alert('Create phrase') }
 const editPhrase = (p) => { alert('Edit ' + p.name) }
 const deletePhrase = (p) => { alert('Delete ' + p.name) }
 
+// -- PLAYBACK STATE --
+const currentAudioObj = ref(null)
+const isPlaying = ref(false)
+
+const stopCurrentAudio = () => {
+    if (currentAudioObj.value) {
+        currentAudioObj.value.pause()
+        currentAudioObj.value = null
+    }
+    isPlaying.value = false
+}
+
 // -- ACTIONS --
-const playSound = (file) => { console.log('Play sound', file) }
-const playMusic = (file) => { console.log('Play music', file) }
-const deleteMusic = (file) => { console.log('Delete music', file) }
+const playSound = (file) => {
+    stopCurrentAudio()
+    // Use system sounds stream endpoint (if available, or use static path)
+    // For system sounds, they are served statically from /api/system/sounds/stream?path=...
+    // Or we can construct a direct URL based on known file paths
+    const url = `/api/system/sounds/stream?path=${encodeURIComponent(file.path)}`
+    
+    currentAudioObj.value = new Audio(url)
+    currentAudioObj.value.addEventListener('ended', () => { isPlaying.value = false })
+    currentAudioObj.value.play()
+    isPlaying.value = true
+}
+
+const playMusic = (file) => {
+    stopCurrentAudio()
+    const url = `/api/system/music/stream?path=${encodeURIComponent(file.path)}`
+    
+    currentAudioObj.value = new Audio(url)
+    currentAudioObj.value.addEventListener('ended', () => { isPlaying.value = false })
+    currentAudioObj.value.play()
+    isPlaying.value = true
+}
+
+const deleteMusic = async (file) => {
+    if (!confirm(`Delete ${file.name}?`)) return
+    try {
+        await systemAPI.deleteMusic({ path: file.path })
+        loadData()
+    } catch (e) {
+        console.error('Failed to delete music', e)
+        alert('Failed to delete')
+    }
+}
 
 const formatSize = (bytes) => {
     if(bytes === 0) return '0 B'

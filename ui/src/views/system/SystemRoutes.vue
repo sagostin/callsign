@@ -11,9 +11,38 @@
   </div>
 
   <div class="tabs">
+    <button class="tab" :class="{ active: activeTab === 'numbers' }" @click="activeTab = 'numbers'">All Numbers</button>
     <button class="tab" :class="{ active: activeTab === 'inbound' }" @click="activeTab = 'inbound'">Global Inbound</button>
     <button class="tab" :class="{ active: activeTab === 'outbound' }" @click="activeTab = 'outbound'">Global Outbound</button>
     <button class="tab" :class="{ active: activeTab === 'settings' }" @click="activeTab = 'settings'">Global Settings</button>
+  </div>
+
+  <!-- NUMBERS TAB (All Tenants) -->
+  <div class="tab-content" v-if="activeTab === 'numbers'">
+    <div class="route-help">
+      <InfoIcon class="help-icon" />
+      <span>All phone numbers (DIDs) across all tenants. Numbers are stored in E.164 format.</span>
+    </div>
+
+    <div class="filter-bar">
+      <div class="search-box">
+        <SearchIcon class="search-icon" />
+        <input type="text" v-model="numberSearch" placeholder="Search numbers..." class="search-input">
+      </div>
+    </div>
+
+    <DataTable :columns="numberColumns" :data="filteredNumbers">
+      <template #destination_number="{ value }">
+        <span class="font-mono font-semibold">{{ formatPhoneNumber(value) }}</span>
+      </template>
+      <template #tenant="{ row }">
+        <span class="tenant-badge" v-if="row.Tenant">{{ row.Tenant.name }}</span>
+        <span class="text-muted" v-else>—</span>
+      </template>
+      <template #enabled="{ value }">
+        <StatusBadge :status="value ? 'Active' : 'Disabled'" />
+      </template>
+    </DataTable>
   </div>
 
   <!-- INBOUND ROUTES TAB -->
@@ -300,14 +329,18 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { 
   Search as SearchIcon, Info as InfoIcon, GripVertical as GripVerticalIcon,
   ArrowRight as ArrowRightIcon, Edit as EditIcon,
   Trash2 as TrashIcon, X as XIcon
 } from 'lucide-vue-next'
+import DataTable from '../../components/common/DataTable.vue'
+import StatusBadge from '../../components/common/StatusBadge.vue'
+import { formatPhoneNumber } from '../../utils/formatters'
+import { systemAPI } from '../../services/api'
 
-const activeTab = ref('inbound')
+const activeTab = ref('numbers')
 
 // Drag and Drop State
 const dragIndex = ref(null)
@@ -351,6 +384,33 @@ const onDragEnd = () => {
   dragIndex.value = null
   dragOverIndex.value = null
   dragType.value = null
+}
+
+// All Numbers (System-wide)
+const allNumbers = ref([])
+const numberSearch = ref('')
+const numberColumns = [
+  { key: 'destination_number', label: 'Number', width: '160px' },
+  { key: 'tenant', label: 'Tenant', width: '150px' },
+  { key: 'destination_type', label: 'Type', width: '100px' },
+  { key: 'context', label: 'Context', width: '100px' },
+  { key: 'enabled', label: 'Status', width: '80px' }
+]
+
+const filteredNumbers = computed(() => {
+  return allNumbers.value.filter(n => {
+    const numStr = n.destination_number || ''
+    return numStr.includes(numberSearch.value)
+  })
+})
+
+const loadAllNumbers = async () => {
+  try {
+    const response = await systemAPI.listAllNumbers()
+    allNumbers.value = response.data.data || []
+  } catch (e) {
+    console.error('Failed to load all numbers', e)
+  }
 }
 
 // Inbound Routes (Global)
@@ -534,6 +594,7 @@ const saveOutboundRoute = async () => {
 
 // Initial Load
 onMounted(() => {
+  loadAllNumbers()
   loadRoutes()
 })
 
