@@ -135,6 +135,10 @@
             <GitMerge class="nav-icon" />
             <span class="nav-label">DIDs & Routing</span>
           </router-link>
+          <router-link to="/admin/feature-codes" class="nav-item" v-tooltip="isCollapsed ? 'Feature Codes' : ''">
+            <Hash class="nav-icon" />
+            <span class="nav-label">Feature Codes</span>
+          </router-link>
           <router-link to="/admin/call-flows" class="nav-item" v-tooltip="isCollapsed ? 'Call Flows' : ''">
             <GitMerge class="nav-icon" />
             <span class="nav-label">Call Flows</span>

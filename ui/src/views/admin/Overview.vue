@@ -89,7 +89,7 @@
 </template>
 
 <script setup>
-import StatCard from '../components/features/StatCard.vue'
+import StatCard from '../../components/features/StatCard.vue'
 </script>
 
 <style scoped>

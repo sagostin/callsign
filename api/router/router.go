@@ -173,6 +173,12 @@ func (r *Router) Init() {
 					voicemail.Get("/boxes/{ext}", r.Handler.GetVoicemailBox)
 					voicemail.Put("/boxes/{ext}", r.Handler.UpdateVoicemailBox)
 					voicemail.Delete("/boxes/{ext}", r.Handler.DeleteVoicemailBox)
+					// Voicemail messages
+					voicemail.Get("/boxes/{ext}/messages", r.Handler.ListVoicemailMessages)
+					voicemail.Get("/messages/{id}", r.Handler.GetVoicemailMessage)
+					voicemail.Delete("/messages/{id}", r.Handler.DeleteVoicemailMessage)
+					voicemail.Post("/messages/{id}/read", r.Handler.MarkVoicemailRead)
+					voicemail.Get("/messages/{id}/stream", r.Handler.StreamVoicemailMessage)
 				}
 
 				// Recordings

@@ -335,6 +335,161 @@ func (h *Handler) DeleteVoicemailBox(ctx iris.Context) {
 	ctx.JSON(iris.Map{"message": "Voicemail box deleted"})
 }
 
+// ListVoicemailMessages lists messages for a specific voicemail box
+func (h *Handler) ListVoicemailMessages(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	ext := ctx.Params().Get("ext")
+	tenantID := middleware.GetTenantID(ctx)
+
+	// Find the voicemail box
+	var box models.VoicemailBox
+	if err := h.DB.Where("extension = ? AND tenant_id = ?", ext, tenantID).First(&box).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Voicemail box not found"})
+		return
+	}
+
+	// Get messages
+	var messages []models.VoicemailMessage
+	if err := h.DB.Where("box_id = ?", box.ID).Order("created_at DESC").Find(&messages).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to fetch messages"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": messages, "box": box})
+}
+
+// GetVoicemailMessage gets a single voicemail message
+func (h *Handler) GetVoicemailMessage(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	var message models.VoicemailMessage
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&message).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Message not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": message})
+}
+
+// DeleteVoicemailMessage deletes a voicemail message
+func (h *Handler) DeleteVoicemailMessage(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	var message models.VoicemailMessage
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&message).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Message not found"})
+		return
+	}
+
+	// TODO: Delete the audio file from storage
+
+	// Update box message counts
+	if message.IsNew {
+		h.DB.Model(&models.VoicemailBox{}).Where("id = ?", message.BoxID).Update("new_messages", models.VoicemailBox{}.NewMessages-1)
+	} else {
+		h.DB.Model(&models.VoicemailBox{}).Where("id = ?", message.BoxID).Update("saved_messages", models.VoicemailBox{}.SavedMessages-1)
+	}
+
+	if err := h.DB.Delete(&message).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to delete message"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "Voicemail message deleted"})
+}
+
+// MarkVoicemailRead marks a voicemail message as read
+func (h *Handler) MarkVoicemailRead(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	var message models.VoicemailMessage
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&message).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Message not found"})
+		return
+	}
+
+	if message.IsNew {
+		if err := message.MarkAsRead(h.DB); err != nil {
+			ctx.StatusCode(http.StatusInternalServerError)
+			ctx.JSON(iris.Map{"error": "Failed to mark as read"})
+			return
+		}
+
+		// Update box counts
+		h.DB.Model(&models.VoicemailBox{}).Where("id = ?", message.BoxID).Updates(map[string]interface{}{
+			"new_messages":   models.VoicemailBox{}.NewMessages - 1,
+			"saved_messages": models.VoicemailBox{}.SavedMessages + 1,
+		})
+	}
+
+	ctx.JSON(iris.Map{"data": message, "message": "Marked as read"})
+}
+
+// StreamVoicemailMessage streams the voicemail audio file
+func (h *Handler) StreamVoicemailMessage(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	var message models.VoicemailMessage
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&message).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Message not found"})
+		return
+	}
+
+	if message.FilePath == "" {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Audio file not found"})
+		return
+	}
+
+	// Serve the file
+	ctx.ServeFile(message.FilePath)
+}
+
 // =====================
 // Recordings
 // =====================

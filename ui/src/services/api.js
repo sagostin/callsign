@@ -258,6 +258,12 @@ export const voicemailAPI = {
     createBox: (data) => api.post('/voicemail/boxes', data),
     updateBox: (ext, data) => api.put(`/voicemail/boxes/${ext}`, data),
     deleteBox: (ext) => api.delete(`/voicemail/boxes/${ext}`),
+    // Messages
+    listMessages: (ext) => api.get(`/voicemail/boxes/${ext}/messages`),
+    getMessage: (id) => api.get(`/voicemail/messages/${id}`),
+    deleteMessage: (id) => api.delete(`/voicemail/messages/${id}`),
+    markRead: (id) => api.post(`/voicemail/messages/${id}/read`),
+    streamUrl: (id) => `/api/voicemail/messages/${id}/stream`,
 }
 
 // =====================
