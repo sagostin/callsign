@@ -158,21 +158,8 @@ func (h *FSHandler) buildBlockedCallerXML(req *XMLCurlRequest, block *models.Cal
 	return b.String()
 }
 
-// buildMultiDialplan gets all dialplans for a context
+// buildMultiDialplan gets all dialplans for a context including feature codes
 func (h *FSHandler) buildMultiDialplan(req *XMLCurlRequest) string {
-	var dialplans []models.Dialplan
-
-	// Get dialplans for this context (and global ones)
-	h.DB.Where(
-		"dialplan_context IN ? AND enabled = ?",
-		[]string{req.Context, "${domain_name}", "global"},
-		true,
-	).Order("dialplan_order ASC").Find(&dialplans)
-
-	if len(dialplans) == 0 {
-		return ""
-	}
-
 	var b strings.Builder
 
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
@@ -184,16 +171,59 @@ func (h *FSHandler) buildMultiDialplan(req *XMLCurlRequest) string {
 	b.WriteString(fmt.Sprintf(`    <context name="%s">`, xmlEscape(req.Context)))
 	b.WriteString("\n")
 
-	for _, dp := range dialplans {
+	// 1. First, add global dialplans (lowest order, highest priority)
+	var globalDialplans []models.Dialplan
+	h.DB.Where(
+		"dialplan_context = ? AND enabled = ?",
+		"global",
+		true,
+	).Order("dialplan_order ASC").Find(&globalDialplans)
+
+	for _, dp := range globalDialplans {
 		if dp.DialplanXML != "" {
-			// Use pre-generated XML
 			b.WriteString(dp.DialplanXML)
 			b.WriteString("\n")
 		} else {
-			// Generate XML from details
 			xml := h.buildDialplanFromDetails(&dp)
 			b.WriteString(xml)
 		}
+	}
+
+	// 2. Add feature codes for this context (if internal/domain context)
+	if req.Context != "public" {
+		featureXML := h.buildFeatureCodeDialplans(req)
+		if featureXML != "" {
+			b.WriteString(featureXML)
+		}
+
+		// 2b. Add time conditions and call flows
+		timeCondXML := h.buildTimeConditionDialplans(req)
+		if timeCondXML != "" {
+			b.WriteString(timeCondXML)
+		}
+	}
+
+	// 3. Add context-specific and domain dialplans
+	var dialplans []models.Dialplan
+	h.DB.Where(
+		"dialplan_context IN ? AND enabled = ?",
+		[]string{req.Context, "${domain_name}"},
+		true,
+	).Order("dialplan_order ASC").Find(&dialplans)
+
+	for _, dp := range dialplans {
+		if dp.DialplanXML != "" {
+			b.WriteString(dp.DialplanXML)
+			b.WriteString("\n")
+		} else {
+			xml := h.buildDialplanFromDetails(&dp)
+			b.WriteString(xml)
+		}
+	}
+
+	// If nothing was added, return empty for fallback
+	if len(globalDialplans) == 0 && len(dialplans) == 0 {
+		return ""
 	}
 
 	b.WriteString(`    </context>`)
@@ -358,6 +388,241 @@ func (h *FSHandler) buildDialplanFromDetails(dp *models.Dialplan) string {
 	b.WriteString("\n")
 
 	return b.String()
+}
+
+// buildFeatureCodeDialplans generates dialplan XML for all feature codes
+func (h *FSHandler) buildFeatureCodeDialplans(req *XMLCurlRequest) string {
+	// Get domain from context (context is often the domain name)
+	domain := req.Context
+	if domain == "default" || domain == "" {
+		domain = req.Domain
+	}
+
+	// Find tenant by domain
+	var tenant models.Tenant
+	if err := h.DB.Where("domain = ?", domain).First(&tenant).Error; err != nil {
+		// No tenant found, just use global feature codes
+		tenant.ID = 0
+	}
+
+	// Get feature codes (global + tenant-specific)
+	var featureCodes []models.FeatureCode
+	h.DB.Where(
+		"(tenant_id IS NULL OR tenant_id = ?) AND enabled = ?",
+		tenant.ID, true,
+	).Order(`"order" ASC`).Find(&featureCodes)
+
+	if len(featureCodes) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+
+	// Add comment for clarity
+	b.WriteString(`      <!-- Feature Codes -->`)
+	b.WriteString("\n")
+
+	for _, fc := range featureCodes {
+		// Use the model's ToDialplanXML method or build custom
+		condition := fc.Code
+		if fc.CodeRegex != "" {
+			condition = fc.CodeRegex
+		}
+
+		b.WriteString(fmt.Sprintf(`      <extension name="fc_%s" continue="false">`, xmlEscape(fc.Name)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`        <condition field="destination_number" expression="%s">`, xmlEscape(condition)))
+		b.WriteString("\n")
+
+		// Set feature code info as channel variables
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="feature_code_uuid=%s"/>`, fc.UUID.String()))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="feature_code_action=%s"/>`, string(fc.Action)))
+		b.WriteString("\n")
+
+		// Route to ESL socket for processing
+		b.WriteString(`          <action application="socket" data="127.0.0.1:9001 async full"/>`)
+		b.WriteString("\n")
+
+		b.WriteString(`        </condition>`)
+		b.WriteString("\n")
+		b.WriteString(`      </extension>`)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// buildTimeConditionDialplans generates dialplan XML for time conditions and call flows
+func (h *FSHandler) buildTimeConditionDialplans(req *XMLCurlRequest) string {
+	// Get domain from context
+	domain := req.Context
+	if domain == "default" || domain == "" {
+		domain = req.Domain
+	}
+
+	// Find tenant by domain
+	var tenant models.Tenant
+	if err := h.DB.Where("domain = ?", domain).First(&tenant).Error; err != nil {
+		return ""
+	}
+
+	var b strings.Builder
+
+	// 1. Generate Time Conditions
+	var timeConditions []models.TimeCondition
+	h.DB.Where("tenant_id = ? AND enabled = ?", tenant.ID, true).Find(&timeConditions)
+
+	for _, tc := range timeConditions {
+		if tc.Extension == "" {
+			continue
+		}
+
+		b.WriteString(fmt.Sprintf(`      <!-- Time Condition: %s -->`, xmlEscape(tc.Name)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`      <extension name="tc_%s" continue="false">`, tc.UUID.String()))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`        <condition field="destination_number" expression="^%s$">`, xmlEscape(tc.Extension)))
+		b.WriteString("\n")
+
+		// Build time expression
+		// FreeSWITCH time format: wday, hour, minute, month, mday, year, yday
+		timeExpr := h.buildTimeExpression(&tc)
+		if timeExpr != "" {
+			b.WriteString(fmt.Sprintf(`          <condition %s>`, timeExpr))
+			b.WriteString("\n")
+
+			// Match action (within time)
+			matchAction := h.buildDestinationAction(tc.MatchDestType, tc.MatchDestValue, domain)
+			b.WriteString(fmt.Sprintf(`            <action application="%s" data="%s"/>`,
+				matchAction.App, xmlEscape(matchAction.Data)))
+			b.WriteString("\n")
+
+			// Anti-action (outside time)
+			noMatchAction := h.buildDestinationAction(tc.NoMatchDestType, tc.NoMatchDestValue, domain)
+			b.WriteString(fmt.Sprintf(`            <anti-action application="%s" data="%s"/>`,
+				noMatchAction.App, xmlEscape(noMatchAction.Data)))
+			b.WriteString("\n")
+
+			b.WriteString(`          </condition>`)
+			b.WriteString("\n")
+		}
+
+		b.WriteString(`        </condition>`)
+		b.WriteString("\n")
+		b.WriteString(`      </extension>`)
+		b.WriteString("\n")
+	}
+
+	// 2. Generate Call Flows (Day/Night toggles)
+	var callFlows []models.CallFlow
+	h.DB.Where("tenant_id = ? AND enabled = ?", tenant.ID, true).Find(&callFlows)
+
+	for _, cf := range callFlows {
+		if cf.Extension == "" {
+			continue
+		}
+
+		b.WriteString(fmt.Sprintf(`      <!-- Call Flow: %s -->`, xmlEscape(cf.Name)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`      <extension name="cf_%s" continue="false">`, cf.UUID.String()))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`        <condition field="destination_number" expression="^%s$">`, xmlEscape(cf.Extension)))
+		b.WriteString("\n")
+
+		// Route based on current status
+		var destType, destValue string
+		switch cf.Status {
+		case "night":
+			destType = cf.NightDestType
+			destValue = cf.NightDestValue
+		case "holiday":
+			destType = cf.HolidayDestType
+			destValue = cf.HolidayDestValue
+		default: // "day"
+			destType = cf.DayDestType
+			destValue = cf.DayDestValue
+		}
+
+		action := h.buildDestinationAction(destType, destValue, domain)
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="call_flow_uuid=%s"/>`, cf.UUID.String()))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="call_flow_status=%s"/>`, cf.Status))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <action application="%s" data="%s"/>`,
+			action.App, xmlEscape(action.Data)))
+		b.WriteString("\n")
+
+		b.WriteString(`        </condition>`)
+		b.WriteString("\n")
+		b.WriteString(`      </extension>`)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// buildTimeExpression creates a FreeSWITCH time expression from TimeCondition
+func (h *FSHandler) buildTimeExpression(tc *models.TimeCondition) string {
+	var parts []string
+
+	// Weekdays (wday 1-7, Sunday=1)
+	if len(tc.Weekdays) > 0 {
+		// Convert to FreeSWITCH format (1-7)
+		wdays := ""
+		for i, d := range tc.Weekdays {
+			if i > 0 {
+				wdays += ","
+			}
+			wdays += fmt.Sprintf("%d", d+1) // 0-indexed to 1-indexed
+		}
+		parts = append(parts, fmt.Sprintf(`wday="%s"`, wdays))
+	}
+
+	// Time of day
+	if tc.StartTime != "" && tc.EndTime != "" {
+		// Format: hour="09:00-17:00"
+		parts = append(parts, fmt.Sprintf(`time-of-day="%s-%s"`, tc.StartTime, tc.EndTime))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return strings.Join(parts, " ")
+}
+
+// destinationAction holds parsed destination action
+type destinationAction struct {
+	App  string
+	Data string
+}
+
+// buildDestinationAction converts destination type/value to FreeSWITCH action
+func (h *FSHandler) buildDestinationAction(destType, destValue, domain string) destinationAction {
+	switch destType {
+	case "extension":
+		return destinationAction{App: "transfer", Data: destValue + " XML " + domain}
+	case "ivr":
+		return destinationAction{App: "ivr", Data: destValue}
+	case "voicemail":
+		return destinationAction{App: "voicemail", Data: "default " + domain + " " + destValue}
+	case "ring_group":
+		return destinationAction{App: "transfer", Data: destValue + " XML " + domain}
+	case "queue":
+		return destinationAction{App: "callcenter", Data: destValue + "@" + domain}
+	case "external":
+		return destinationAction{App: "bridge", Data: "sofia/gateway/default/" + destValue}
+	case "hangup":
+		return destinationAction{App: "hangup", Data: "NORMAL_CLEARING"}
+	case "playback":
+		return destinationAction{App: "playback", Data: destValue}
+	default:
+		if destValue != "" {
+			return destinationAction{App: "transfer", Data: destValue + " XML " + domain}
+		}
+		return destinationAction{App: "hangup", Data: "UNALLOCATED_NUMBER"}
+	}
 }
 
 // handlePhrases processes phrase section requests

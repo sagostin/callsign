@@ -78,6 +78,31 @@ type Extension struct {
 	// MWI (Message Waiting Indicator) account
 	MWIAccount string `json:"mwi_account"`
 
+	// Hold music per extension
+	HoldMusic string `json:"hold_music"`
+
+	// SIP/NAT settings
+	SIPForceContact string `json:"sip_force_contact"` // NDLB-connectile-dysfunction, etc.
+	SIPForceExpires int    `json:"sip_force_expires"` // Force re-registration interval
+
+	// Security
+	AuthACL          string `json:"auth_acl"`                           // ACL for this extension
+	CIDR             string `json:"cidr"`                               // IP-based auth (e.g., "192.168.1.0/24")
+	MaxRegistrations int    `json:"max_registrations" gorm:"default:5"` // Max simultaneous registrations
+
+	// Call groups
+	CallGroup   string `json:"call_group"`   // Group for pickup
+	PickupGroup string `json:"pickup_group"` // Group to pickup from
+
+	// Media bypass
+	BypassMedia string `json:"bypass_media"` // bypass-media, bypass-media-after-bridge, proxy-media
+
+	// Directory
+	DirectoryFirstName    string `json:"directory_first_name"`
+	DirectoryLastName     string `json:"directory_last_name"`
+	DirectoryVisible      bool   `json:"directory_visible" gorm:"default:true"`
+	DirectoryExtenVisible bool   `json:"directory_exten_visible" gorm:"default:true"`
+
 	// Associated user (optional)
 	UserID *uint `json:"user_id" gorm:"index"`
 	User   *User `json:"user,omitempty" gorm:"foreignKey:UserID"`

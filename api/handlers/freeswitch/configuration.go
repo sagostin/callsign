@@ -274,6 +274,20 @@ func (h *FSHandler) buildACLConfig() string {
 			}
 		}
 
+		// Auto-include enabled tenant domains for 'providers' and 'domains' ACLs
+		// This matches FusionPBX behavior where these ACLs dynamically include active domains
+		if acl.Name == "providers" || acl.Name == "domains" {
+			var tenants []models.Tenant
+			h.DB.Where("enabled = ?", true).Find(&tenants)
+			for _, tenant := range tenants {
+				if tenant.Domain != "" {
+					b.WriteString(fmt.Sprintf(`          <node type="allow" domain="%s" description="%s"/>`,
+						xmlEscape(tenant.Domain), xmlEscape(tenant.Name)))
+					b.WriteString("\n")
+				}
+			}
+		}
+
 		b.WriteString(`        </list>`)
 		b.WriteString("\n")
 	}
@@ -307,20 +321,232 @@ func (h *FSHandler) buildACLConfig() string {
 
 // buildIVRConfig generates ivr.conf XML for IVR menus
 func (h *FSHandler) buildIVRConfig(req *XMLCurlRequest) string {
-	// IVR menu requests include Menu-Name header
-	// For now, return empty to fall back to static config
-	// TODO: Build from database when IVR models are created
-	return ""
+	// Get all enabled IVR menus
+	var menus []models.IVRMenu
+	h.DB.Where("enabled = ?", true).Preload("Options", "enabled = ?", true).Find(&menus)
+
+	if len(menus) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
+	b.WriteString("\n")
+	b.WriteString(`<document type="freeswitch/xml">`)
+	b.WriteString("\n")
+	b.WriteString(`  <section name="configuration">`)
+	b.WriteString("\n")
+	b.WriteString(`    <configuration name="ivr.conf" description="IVR Menus">`)
+	b.WriteString("\n")
+	b.WriteString(`      <menus>`)
+	b.WriteString("\n")
+
+	for _, menu := range menus {
+		b.WriteString(fmt.Sprintf(`        <menu name="%s"`, xmlEscape(menu.UUID.String())))
+		b.WriteString(fmt.Sprintf(` greet-long="%s"`, xmlEscape(menu.GreetLong)))
+		if menu.GreetShort != "" {
+			b.WriteString(fmt.Sprintf(` greet-short="%s"`, xmlEscape(menu.GreetShort)))
+		}
+		if menu.InvalidSound != "" {
+			b.WriteString(fmt.Sprintf(` invalid-sound="%s"`, xmlEscape(menu.InvalidSound)))
+		}
+		if menu.ExitSound != "" {
+			b.WriteString(fmt.Sprintf(` exit-sound="%s"`, xmlEscape(menu.ExitSound)))
+		}
+		b.WriteString(fmt.Sprintf(` timeout="%d"`, menu.Timeout))
+		b.WriteString(fmt.Sprintf(` max-failures="%d"`, menu.MaxFailures))
+		b.WriteString(fmt.Sprintf(` max-timeouts="%d"`, menu.MaxTimeouts))
+		b.WriteString(fmt.Sprintf(` digit-len="%d"`, menu.DigitLen))
+		b.WriteString(fmt.Sprintf(` inter-digit-timeout="%d"`, menu.InterDigitTime))
+		b.WriteString(`>`)
+		b.WriteString("\n")
+
+		// Add options as entries
+		for _, opt := range menu.Options {
+			action := h.ivrOptionToAction(&opt)
+			b.WriteString(fmt.Sprintf(`          <entry digits="%s" action="%s" param="%s"/>`,
+				xmlEscape(opt.Digits),
+				xmlEscape(action.App),
+				xmlEscape(action.Param)))
+			b.WriteString("\n")
+		}
+
+		b.WriteString(`        </menu>`)
+		b.WriteString("\n")
+	}
+
+	b.WriteString(`      </menus>`)
+	b.WriteString("\n")
+	b.WriteString(`    </configuration>`)
+	b.WriteString("\n")
+	b.WriteString(`  </section>`)
+	b.WriteString("\n")
+	b.WriteString(`</document>`)
+
+	return b.String()
+}
+
+// ivrActionResult holds parsed IVR action
+type ivrActionResult struct {
+	App   string
+	Param string
+}
+
+// ivrOptionToAction converts an IVRMenuOption to FreeSWITCH action
+func (h *FSHandler) ivrOptionToAction(opt *models.IVRMenuOption) ivrActionResult {
+	switch opt.Action {
+	case "transfer":
+		return ivrActionResult{App: "menu-exec-app", Param: "transfer " + opt.ActionParam + " XML ${domain_name}"}
+	case "ivr":
+		return ivrActionResult{App: "menu-sub", Param: opt.ActionParam}
+	case "voicemail":
+		return ivrActionResult{App: "menu-exec-app", Param: "voicemail default ${domain_name} " + opt.ActionParam}
+	case "ring_group":
+		return ivrActionResult{App: "menu-exec-app", Param: "transfer " + opt.ActionParam + " XML ${domain_name}"}
+	case "queue":
+		return ivrActionResult{App: "menu-exec-app", Param: "callcenter " + opt.ActionParam + "@${domain_name}"}
+	case "playback":
+		return ivrActionResult{App: "menu-exec-app", Param: "playback " + opt.ActionParam}
+	case "hangup":
+		return ivrActionResult{App: "menu-exit", Param: ""}
+	case "repeat":
+		return ivrActionResult{App: "menu-top", Param: ""}
+	case "exit":
+		return ivrActionResult{App: "menu-exit", Param: ""}
+	default:
+		return ivrActionResult{App: "menu-exec-app", Param: opt.Action + " " + opt.ActionParam}
+	}
 }
 
 // buildConferenceConfig generates conference.conf XML
 func (h *FSHandler) buildConferenceConfig() string {
-	// TODO: Build from database
-	return ""
+	// For now, return a default conference config
+	// TODO: Build from database when conference models are created
+	var b strings.Builder
+
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
+	b.WriteString("\n")
+	b.WriteString(`<document type="freeswitch/xml">`)
+	b.WriteString("\n")
+	b.WriteString(`  <section name="configuration">`)
+	b.WriteString("\n")
+	b.WriteString(`    <configuration name="conference.conf" description="Audio Conference">`)
+	b.WriteString("\n")
+	b.WriteString(`      <caller-controls>`)
+	b.WriteString("\n")
+	b.WriteString(`        <group name="default">`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="mute" digits="0"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="deaf mute" digits="*"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="energy up" digits="9"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="energy equ" digits="8"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="energy dn" digits="7"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="vol talk up" digits="3"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="vol talk zero" digits="2"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="vol talk dn" digits="1"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="vol listen up" digits="6"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="vol listen zero" digits="5"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="vol listen dn" digits="4"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="hangup" digits="#"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        </group>`)
+	b.WriteString("\n")
+	b.WriteString(`      </caller-controls>`)
+	b.WriteString("\n")
+	b.WriteString(`      <profiles>`)
+	b.WriteString("\n")
+	b.WriteString(`        <profile name="default">`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="rate" value="16000"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="interval" value="20"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="energy-level" value="100"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="moh-sound" value="local_stream://default"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="caller-controls" value="default"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        </profile>`)
+	b.WriteString("\n")
+	b.WriteString(`      </profiles>`)
+	b.WriteString("\n")
+	b.WriteString(`    </configuration>`)
+	b.WriteString("\n")
+	b.WriteString(`  </section>`)
+	b.WriteString("\n")
+	b.WriteString(`</document>`)
+
+	return b.String()
 }
 
 // buildLocalStreamConfig generates local_stream.conf XML for music on hold
 func (h *FSHandler) buildLocalStreamConfig() string {
-	// TODO: Build from database
-	return ""
+	var b strings.Builder
+
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
+	b.WriteString("\n")
+	b.WriteString(`<document type="freeswitch/xml">`)
+	b.WriteString("\n")
+	b.WriteString(`  <section name="configuration">`)
+	b.WriteString("\n")
+	b.WriteString(`    <configuration name="local_stream.conf" description="Local Streams">`)
+	b.WriteString("\n")
+
+	// Default stream pointing to standard FreeSWITCH music location
+	b.WriteString(`      <directory name="default" path="$${sounds_dir}/music/default">`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="rate" value="8000"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="shuffle" value="true"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="channels" value="1"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="interval" value="20"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="timer-name" value="soft"/>`)
+	b.WriteString("\n")
+	b.WriteString(`      </directory>`)
+	b.WriteString("\n")
+
+	// Additional rate directories
+	rates := []string{"8000", "16000", "32000", "48000"}
+	for _, rate := range rates {
+		b.WriteString(fmt.Sprintf(`      <directory name="moh/%s" path="$${sounds_dir}/music/%s">`, rate, rate))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`        <param name="rate" value="%s"/>`, rate))
+		b.WriteString("\n")
+		b.WriteString(`        <param name="shuffle" value="true"/>`)
+		b.WriteString("\n")
+		b.WriteString(`        <param name="channels" value="1"/>`)
+		b.WriteString("\n")
+		b.WriteString(`        <param name="interval" value="20"/>`)
+		b.WriteString("\n")
+		b.WriteString(`        <param name="timer-name" value="soft"/>`)
+		b.WriteString("\n")
+		b.WriteString(`      </directory>`)
+		b.WriteString("\n")
+	}
+
+	// TODO: Add tenant-specific streams from database
+
+	b.WriteString(`    </configuration>`)
+	b.WriteString("\n")
+	b.WriteString(`  </section>`)
+	b.WriteString("\n")
+	b.WriteString(`</document>`)
+
+	return b.String()
 }

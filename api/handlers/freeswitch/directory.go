@@ -108,6 +108,24 @@ func (h *FSHandler) buildDirectoryXML(ext *models.Extension, req *XMLCurlRequest
 		b.WriteString("\n")
 	}
 
+	// MWI account
+	if ext.MWIAccount != "" {
+		b.WriteString(fmt.Sprintf(`                <param name="MWI-Account" value="%s"/>`, xmlEscape(ext.MWIAccount)))
+		b.WriteString("\n")
+	}
+
+	// Auth ACL
+	if ext.AuthACL != "" {
+		b.WriteString(fmt.Sprintf(`                <param name="auth-acl" value="%s"/>`, xmlEscape(ext.AuthACL)))
+		b.WriteString("\n")
+	}
+
+	// Max registrations
+	if ext.MaxRegistrations > 0 {
+		b.WriteString(fmt.Sprintf(`                <param name="max-registrations-per-extension" value="%d"/>`, ext.MaxRegistrations))
+		b.WriteString("\n")
+	}
+
 	b.WriteString(`              </params>`)
 	b.WriteString("\n")
 
@@ -146,6 +164,14 @@ func (h *FSHandler) buildDirectoryXML(ext *models.Extension, req *XMLCurlRequest
 		b.WriteString(fmt.Sprintf(`                <variable name="outbound_caller_id_number" value="%s"/>`, xmlEscape(ext.OutboundCallerIDNumber)))
 		b.WriteString("\n")
 	}
+	if ext.EmergencyCallerIDName != "" {
+		b.WriteString(fmt.Sprintf(`                <variable name="emergency_caller_id_name" value="%s"/>`, xmlEscape(ext.EmergencyCallerIDName)))
+		b.WriteString("\n")
+	}
+	if ext.EmergencyCallerIDNumber != "" {
+		b.WriteString(fmt.Sprintf(`                <variable name="emergency_caller_id_number" value="%s"/>`, xmlEscape(ext.EmergencyCallerIDNumber)))
+		b.WriteString("\n")
+	}
 
 	// Call settings
 	b.WriteString(fmt.Sprintf(`                <variable name="call_timeout" value="%d"/>`, ext.CallTimeout))
@@ -153,6 +179,45 @@ func (h *FSHandler) buildDirectoryXML(ext *models.Extension, req *XMLCurlRequest
 
 	if ext.TollAllow != "" {
 		b.WriteString(fmt.Sprintf(`                <variable name="toll_allow" value="%s"/>`, xmlEscape(ext.TollAllow)))
+		b.WriteString("\n")
+	}
+
+	// Hold music
+	if ext.HoldMusic != "" {
+		b.WriteString(fmt.Sprintf(`                <variable name="hold_music" value="%s"/>`, xmlEscape(ext.HoldMusic)))
+		b.WriteString("\n")
+	}
+
+	// Call groups
+	if ext.CallGroup != "" {
+		b.WriteString(fmt.Sprintf(`                <variable name="call_group" value="%s"/>`, xmlEscape(ext.CallGroup)))
+		b.WriteString("\n")
+	}
+	if ext.PickupGroup != "" {
+		b.WriteString(fmt.Sprintf(`                <variable name="pickup_group" value="%s"/>`, xmlEscape(ext.PickupGroup)))
+		b.WriteString("\n")
+	}
+
+	// SIP/NAT settings
+	if ext.SIPForceContact != "" {
+		b.WriteString(fmt.Sprintf(`                <variable name="sip-force-contact" value="%s"/>`, xmlEscape(ext.SIPForceContact)))
+		b.WriteString("\n")
+	}
+	if ext.SIPForceExpires > 0 {
+		b.WriteString(fmt.Sprintf(`                <variable name="sip-force-expires" value="%d"/>`, ext.SIPForceExpires))
+		b.WriteString("\n")
+	}
+
+	// Media bypass
+	if ext.BypassMedia != "" {
+		switch ext.BypassMedia {
+		case "bypass-media":
+			b.WriteString(`                <variable name="bypass_media" value="true"/>`)
+		case "bypass-media-after-bridge":
+			b.WriteString(`                <variable name="bypass_media_after_bridge" value="true"/>`)
+		case "proxy-media":
+			b.WriteString(`                <variable name="proxy_media" value="true"/>`)
+		}
 		b.WriteString("\n")
 	}
 
@@ -175,10 +240,22 @@ func (h *FSHandler) buildDirectoryXML(ext *models.Extension, req *XMLCurlRequest
 		b.WriteString(fmt.Sprintf(`                <variable name="forward_no_answer_destination" value="%s"/>`, xmlEscape(ext.ForwardNoAnswerDestination)))
 		b.WriteString("\n")
 	}
+	if ext.ForwardUserNotRegisteredEnabled {
+		b.WriteString(`                <variable name="forward_user_not_registered_enabled" value="true"/>`)
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`                <variable name="forward_user_not_registered_destination" value="%s"/>`, xmlEscape(ext.ForwardUserNotRegisteredDestination)))
+		b.WriteString("\n")
+	}
 
 	// DND
 	if ext.DoNotDisturb {
 		b.WriteString(`                <variable name="do_not_disturb" value="true"/>`)
+		b.WriteString("\n")
+	}
+
+	// Follow me
+	if ext.FollowMeEnabled {
+		b.WriteString(`                <variable name="follow_me_enabled" value="true"/>`)
 		b.WriteString("\n")
 	}
 
@@ -198,8 +275,41 @@ func (h *FSHandler) buildDirectoryXML(ext *models.Extension, req *XMLCurlRequest
 		b.WriteString("\n")
 	}
 
+	// Directory info
+	directoryFullName := ""
+	if ext.DirectoryFirstName != "" {
+		directoryFullName = ext.DirectoryFirstName
+		if ext.DirectoryLastName != "" {
+			directoryFullName += " " + ext.DirectoryLastName
+		}
+	}
+	if directoryFullName != "" {
+		b.WriteString(fmt.Sprintf(`                <variable name="directory_full_name" value="%s"/>`, xmlEscape(directoryFullName)))
+		b.WriteString("\n")
+	}
+	if ext.DirectoryVisible {
+		b.WriteString(`                <variable name="directory-visible" value="true"/>`)
+		b.WriteString("\n")
+	}
+	if ext.DirectoryExtenVisible {
+		b.WriteString(`                <variable name="directory-exten-visible" value="true"/>`)
+		b.WriteString("\n")
+	}
+
 	// Limit (max concurrent calls)
 	b.WriteString(fmt.Sprintf(`                <variable name="limit_max" value="%d"/>`, ext.LimitMax))
+	b.WriteString("\n")
+	if ext.LimitDestination != "" {
+		b.WriteString(fmt.Sprintf(`                <variable name="limit_destination" value="%s"/>`, xmlEscape(ext.LimitDestination)))
+		b.WriteString("\n")
+	}
+
+	// Standard export vars
+	b.WriteString(`                <variable name="record_stereo" value="true"/>`)
+	b.WriteString("\n")
+	b.WriteString(`                <variable name="transfer_fallback_extension" value="operator"/>`)
+	b.WriteString("\n")
+	b.WriteString(`                <variable name="export_vars" value="domain_name,domain_uuid"/>`)
 	b.WriteString("\n")
 
 	b.WriteString(`              </variables>`)
