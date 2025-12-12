@@ -151,7 +151,9 @@ const routes = [
       { path: 'gateways', component: () => import('./views/system/SystemGateways.vue'), name: 'SystemGateways' },
       { path: 'sip-profiles', component: () => import('./views/admin/SipProfiles.vue'), name: 'SipProfiles' },
       { path: 'acls', component: () => import('./views/system/ACLProfiles.vue'), name: 'ACLProfiles' },
-      { path: 'dial-plans', component: () => import('./views/admin/GlobalDialPlans.vue'), name: 'GlobalDialPlans' },
+      { path: 'acls', component: () => import('./views/system/ACLProfiles.vue'), name: 'ACLProfiles' },
+      { path: 'routing', component: () => import('./views/system/SystemRoutes.vue'), name: 'SystemRoutes' },
+      { path: 'dial-plans', redirect: '/system/routing' }, // legacy redirect
       { path: 'phrases', component: () => import('./views/Phrases.vue'), name: 'SystemPhrases' },
       { path: 'phrases/new', component: () => import('./views/admin/PhraseForm.vue'), name: 'SystemPhraseFormNew' },
       { path: 'phrases/:id', component: () => import('./views/admin/PhraseForm.vue'), name: 'SystemPhraseFormEdit' },

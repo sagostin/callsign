@@ -578,55 +578,58 @@ const inboundForm = ref({
   name: '',
   context: 'public',
   conditions: [{ variable: 'destination_number', operator: '=~', value: '' }],
-  timeCondition: '',
   actions: [{ app: 'transfer', data: '' }]
 })
 
-const inboundRoutes = ref([
-  {
-    id: 1, name: 'Main Line to IVR', context: 'public', enabled: true,
-    conditions: [{ variable: 'destination_number', operator: '=~', value: '^\\+?14155550100$' }],
-    timeCondition: 'business',
-    actions: [{ app: 'answer', data: '' }, { app: 'ivr', data: 'main_menu' }]
-  },
-  {
-    id: 2, name: 'After Hours Voicemail', context: 'public', enabled: true,
-    conditions: [{ variable: 'destination_number', operator: '=~', value: '^\\+?14155550100$' }],
-    timeCondition: 'afterhours',
-    actions: [{ app: 'playback', data: 'ivr/ivr-after_hours.wav' }, { app: 'voicemail', data: 'default 101' }]
-  },
-  {
-    id: 3, name: 'Sales Direct Line', context: 'public', enabled: true,
-    conditions: [{ variable: 'destination_number', operator: '=~', value: '^\\+?13105559988$' }],
-    timeCondition: '',
-    actions: [{ app: 'bridge', data: 'group/sales@default' }]
-  },
-])
+const inboundRoutes = ref([])
+
+const loadInboundRoutes = async () => {
+  try {
+    const response = await routingAPI.listInbound()
+    inboundRoutes.value = response.data.data || []
+  } catch (e) {
+    console.error('Failed to load inbound routes', e)
+  }
+}
 
 const addInboundCondition = () => inboundForm.value.conditions.push({ variable: 'destination_number', operator: '=~', value: '' })
 const removeInboundCondition = (i) => inboundForm.value.conditions.splice(i, 1)
-const addInboundAction = () => inboundForm.value.actions.push({ app: 'hangup', data: '' })
+const addInboundAction = () => inboundForm.value.actions.push({ app: 'log', data: 'INFO' })
 const removeInboundAction = (i) => inboundForm.value.actions.splice(i, 1)
+
 const editInboundRoute = (route) => {
   inboundForm.value = JSON.parse(JSON.stringify(route))
   editingInbound.value = true
   showInboundModal.value = true
 }
-const deleteInboundRoute = (route) => {
-  if (confirm(`Delete route "${route.name}"?`)) {
-    inboundRoutes.value = inboundRoutes.value.filter(r => r.id !== route.id)
+
+const deleteInboundRoute = async (route) => {
+  if (confirm(`Delete inbound route "${route.name}"?`)) {
+    try {
+      await dialPlansAPI.delete(route.id)
+      await loadInboundRoutes()
+    } catch (e) {
+      console.error(e)
+      alert('Failed to delete route')
+    }
   }
 }
-const saveInboundRoute = () => {
-  if (editingInbound.value) {
-    const idx = inboundRoutes.value.findIndex(r => r.id === inboundForm.value.id)
-    if (idx !== -1) inboundRoutes.value[idx] = { ...inboundForm.value }
-  } else {
-    inboundRoutes.value.push({ ...inboundForm.value, id: Date.now(), enabled: true })
+
+const saveInboundRoute = async () => {
+  try {
+    if (editingInbound.value) {
+      await dialPlansAPI.update(inboundForm.value.id, inboundForm.value)
+    } else {
+      await routingAPI.createInbound(inboundForm.value)
+    }
+    await loadInboundRoutes()
+    showInboundModal.value = false
+    editingInbound.value = false
+    inboundForm.value = { name: '', context: 'public', conditions: [{ variable: 'destination_number', operator: '=~', value: '' }], actions: [{ app: 'transfer', data: '' }] }
+  } catch (e) {
+    console.error(e)
+    alert('Failed to save route')
   }
-  showInboundModal.value = false
-  editingInbound.value = false
-  inboundForm.value = { name: '', context: 'public', conditions: [{ variable: 'destination_number', operator: '=~', value: '' }], timeCondition: '', actions: [{ app: 'transfer', data: '' }] }
 }
 
 // Outbound Routes
@@ -634,34 +637,57 @@ const showOutboundModal = ref(false)
 const editingOutbound = ref(false)
 const outboundForm = ref({ name: '', pattern: '', strip: 0, prepend: '', gateway: '', international: false, continue: true })
 
-const outboundRoutes = ref([
-  { id: 1, name: 'Internal Extensions', pattern: '^(1\\d{2})$', strip: 0, prepend: '', gateway: '', description: '3-digit extensions', enabled: true, international: false },
-  { id: 2, name: 'US Local/Toll-Free', pattern: '^\\+?1?([2-9]\\d{9})$', strip: 0, prepend: '+1', gateway: 'flowroute', description: '10-digit NANP', enabled: true, international: false },
-  { id: 3, name: 'International', pattern: '^011(\\d+)$', strip: 3, prepend: '+', gateway: 'twilio', description: '011 + country code', enabled: true, international: true },
-  { id: 4, name: 'Emergency 911', pattern: '^911$', strip: 0, prepend: '', gateway: 'local_pri', description: 'Route via local PRI', enabled: true, international: false },
-])
+const outboundRoutes = ref([])
+
+const loadOutboundRoutes = async () => {
+  try {
+    const response = await routingAPI.listOutbound()
+    outboundRoutes.value = response.data.data || []
+  } catch (e) {
+    console.error('Failed to load outbound routes', e)
+  }
+}
 
 const editOutboundRoute = (route) => {
   outboundForm.value = { ...route }
   editingOutbound.value = true
   showOutboundModal.value = true
 }
-const deleteOutboundRoute = (route) => {
-  if (confirm(`Delete route "${route.name}"?`)) {
-    outboundRoutes.value = outboundRoutes.value.filter(r => r.id !== route.id)
+
+const deleteOutboundRoute = async (route) => {
+  if (confirm(`Delete outbound route "${route.name}"?`)) {
+    try {
+      await dialPlansAPI.delete(route.id)
+      await loadOutboundRoutes()
+    } catch (e) {
+      console.error(e)
+      alert('Failed to delete route')
+    }
   }
 }
-const saveOutboundRoute = () => {
-  if (editingOutbound.value) {
-    const idx = outboundRoutes.value.findIndex(r => r.id === outboundForm.value.id)
-    if (idx !== -1) outboundRoutes.value[idx] = { ...outboundForm.value }
-  } else {
-    outboundRoutes.value.push({ ...outboundForm.value, id: Date.now(), enabled: true })
+
+const saveOutboundRoute = async () => {
+  try {
+    if (editingOutbound.value) {
+      await dialPlansAPI.update(outboundForm.value.id, outboundForm.value)
+    } else {
+      await routingAPI.createOutbound(outboundForm.value)
+    }
+    await loadOutboundRoutes()
+    showOutboundModal.value = false
+    editingOutbound.value = false
+    outboundForm.value = { name: '', pattern: '', strip: 0, prepend: '', gateway: '', international: false, continue: true }
+  } catch (e) {
+    console.error(e)
+    alert('Failed to save route')
   }
-  showOutboundModal.value = false
-  editingOutbound.value = false
-  outboundForm.value = { name: '', pattern: '', strip: 0, prepend: '', gateway: '', international: false, continue: true }
 }
+
+// Initial Load
+onMounted(() => {
+  loadInboundRoutes()
+  loadOutboundRoutes()
+})
 
 // Settings
 const settings = ref({

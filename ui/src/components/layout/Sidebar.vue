@@ -279,9 +279,9 @@
             <GlobeIcon class="nav-icon" />
             <span class="nav-label">Gateways</span>
           </router-link>
-          <router-link to="/system/dial-plans" class="nav-item" v-tooltip="isCollapsed ? 'Global Dial Plan' : ''">
+          <router-link to="/system/routing" class="nav-item" v-tooltip="isCollapsed ? 'System Routing' : ''">
             <GitMerge class="nav-icon" />
-            <span class="nav-label">Global Dial Plan</span>
+            <span class="nav-label">System Routing</span>
           </router-link>
           <router-link to="/system/messaging" class="nav-item" v-tooltip="isCollapsed ? 'Messaging' : ''">
             <MessageSquare class="nav-icon" />

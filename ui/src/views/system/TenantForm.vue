@@ -44,6 +44,52 @@
              </select>
           </div>
        </div>
+
+       <div class="divider"></div>
+       <h3 class="card-title">General Settings</h3>
+       
+       <div class="form-row">
+          <div class="form-group">
+             <label>Timezone</label>
+             <select v-model="form.settings.timezone" class="input-field">
+                <option value="America/New_York">Eastern Time (US & Canada)</option>
+                <option value="America/Chicago">Central Time (US & Canada)</option>
+                <option value="America/Denver">Mountain Time (US & Canada)</option>
+                <option value="America/Los_Angeles">Pacific Time (US & Canada)</option>
+                <option value="UTC">UTC</option>
+             </select>
+          </div>
+          <div class="form-group">
+             <label>Operator Extension</label>
+             <input v-model="form.settings.operator_extension" class="input-field" placeholder="0">
+          </div>
+       </div>
+
+       <div class="form-row">
+          <div class="form-group">
+             <label>Fallback Caller ID Name</label>
+             <input v-model="form.settings.caller_id_name" class="input-field" placeholder="Company Name">
+          </div>
+          <div class="form-group">
+             <label>Fallback Caller ID Number</label>
+             <input v-model="form.settings.caller_id_number" class="input-field" placeholder="+1234567890">
+          </div>
+       </div>
+
+       <div class="divider"></div>
+       <h3 class="card-title">Limit Overrides (Optional)</h3>
+       
+       <div class="form-row">
+          <div class="form-group">
+             <label>VM Message Limit</label>
+             <input v-model.number="form.settings.vm_limit" type="number" class="input-field" placeholder="e.g. 100">
+             <span class="text-xs text-muted">Leave empty to use profile default</span>
+          </div>
+          <div class="form-group">
+             <label>Fax Retention (Days)</label>
+             <input v-model.number="form.settings.fax_retention_days" type="number" class="input-field" placeholder="e.g. 30">
+          </div>
+       </div>
     </div>
   </div>
 
@@ -71,7 +117,15 @@ const form = ref({
    domain: '',
    admin_email: '',
    profile_id: null,
-   enabled: true
+   enabled: true,
+   settings: {
+     timezone: 'America/Los_Angeles',
+     operator_extension: '',
+     caller_id_name: '',
+     caller_id_number: '',
+     vm_limit: null,
+     fax_retention_days: null
+   }
 })
 
 const loadProfiles = async () => {
@@ -89,12 +143,28 @@ const loadTenant = async () => {
   try {
     const response = await systemAPI.getTenant(tenantId.value)
     const t = response.data.data || response.data
+    
+    let parsedSettings = {}
+    try {
+        parsedSettings = typeof t.settings === 'string' ? JSON.parse(t.settings) : (t.settings || {})
+    } catch {
+        parsedSettings = {}
+    }
+
     form.value = {
       name: t.name || '',
       domain: t.domain || '',
       admin_email: t.admin_email || '',
       profile_id: t.profile_id || null,
-      enabled: t.enabled !== false
+      enabled: t.enabled !== false,
+      settings: {
+        timezone: parsedSettings.timezone || 'America/Los_Angeles',
+        operator_extension: parsedSettings.operator_extension || '',
+        caller_id_name: parsedSettings.caller_id_name || '',
+        caller_id_number: parsedSettings.caller_id_number || '',
+        vm_limit: parsedSettings.vm_limit || null,
+        fax_retention_days: parsedSettings.fax_retention_days || null
+      }
     }
   } catch (e) {
     console.error('Failed to load tenant:', e)
@@ -112,10 +182,16 @@ onMounted(async () => {
 const save = async () => {
   saving.value = true
   try {
+    // Prepare payload
+    const payload = {
+        ...form.value,
+        settings: JSON.stringify(form.value.settings)
+    }
+
     if (isNew.value) {
-      await systemAPI.createTenant(form.value)
+      await systemAPI.createTenant(payload)
     } else {
-      await systemAPI.updateTenant(tenantId.value, form.value)
+      await systemAPI.updateTenant(tenantId.value, payload)
     }
     router.push('/system/tenants')
   } catch (e) {
