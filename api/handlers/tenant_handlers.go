@@ -5,6 +5,7 @@ import (
 	"callsign/models"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/kataras/iris/v12"
 )
@@ -46,23 +47,94 @@ func (h *Handler) CreateExtension(ctx iris.Context) {
 		return
 	}
 
-	var ext models.Extension
-	if err := ctx.ReadJSON(&ext); err != nil {
+	// Use a struct that accepts password from JSON
+	var input struct {
+		Extension               string `json:"extension"`
+		Password                string `json:"password"`
+		DisplayName             string `json:"display_name"`
+		Email                   string `json:"email"`
+		VoicemailPin            string `json:"voicemail_pin"`
+		ProfileID               *uint  `json:"profile_id"`
+		Enabled                 bool   `json:"enabled"`
+		EffectiveCallerIDName   string `json:"effective_caller_id_name"`
+		EffectiveCallerIDNumber string `json:"effective_caller_id_number"`
+		OutboundCallerIDName    string `json:"outbound_caller_id_name"`
+		OutboundCallerIDNumber  string `json:"outbound_caller_id_number"`
+	}
+	if err := ctx.ReadJSON(&input); err != nil {
 		ctx.StatusCode(http.StatusBadRequest)
 		ctx.JSON(iris.Map{"error": "Invalid request payload"})
 		return
 	}
 
-	ext.TenantID = middleware.GetTenantID(ctx)
+	// Validate required fields
+	if input.Extension == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Extension number is required"})
+		return
+	}
+
+	tenantID := middleware.GetTenantID(ctx)
+
+	// Check if extension already exists
+	var existing models.Extension
+	if err := h.DB.Where("extension = ? AND tenant_id = ?", input.Extension, tenantID).First(&existing).Error; err == nil {
+		ctx.StatusCode(http.StatusConflict)
+		ctx.JSON(iris.Map{"error": "Extension already exists"})
+		return
+	}
+
+	// Generate password if not provided
+	password := input.Password
+	if password == "" {
+		password = generateRandomPassword(16)
+	}
+
+	// Get tenant for domain
+	var tenant models.Tenant
+	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to fetch tenant"})
+		return
+	}
+
+	ext := models.Extension{
+		TenantID:                tenantID,
+		Extension:               input.Extension,
+		Password:                password,
+		Enabled:                 true,
+		Domain:                  tenant.Domain,
+		UserContext:             tenant.Domain,
+		EffectiveCallerIDName:   input.DisplayName,
+		EffectiveCallerIDNumber: input.Extension,
+		OutboundCallerIDName:    input.OutboundCallerIDName,
+		OutboundCallerIDNumber:  input.OutboundCallerIDNumber,
+		VoicemailEnabled:        true,
+		VoicemailPassword:       input.VoicemailPin,
+		VoicemailMailTo:         input.Email,
+		DirectoryFirstName:      input.DisplayName,
+		DirectoryVisible:        true,
+	}
 
 	if err := h.DB.Create(&ext).Error; err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create extension"})
+		ctx.JSON(iris.Map{"error": "Failed to create extension: " + err.Error()})
 		return
 	}
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(iris.Map{"data": ext, "message": "Extension created"})
+}
+
+// generateRandomPassword creates a random alphanumeric password
+func generateRandomPassword(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[time.Now().UnixNano()%int64(len(charset))]
+		time.Sleep(time.Nanosecond)
+	}
+	return string(b)
 }
 
 func (h *Handler) GetExtension(ctx iris.Context) {

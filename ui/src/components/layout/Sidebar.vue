@@ -90,32 +90,52 @@
       <!-- TENANT ADMIN MENU -->
       <template v-else-if="mode === 'admin'">
         <div class="nav-section">
-          <div class="nav-header" v-if="!isCollapsed">MAIN</div>
-          <router-link to="/admin" class="nav-item" v-tooltip="isCollapsed ? 'Overview' : ''">
+          <div class="nav-header" v-if="!isCollapsed">OVERVIEW</div>
+          <router-link to="/admin" class="nav-item" v-tooltip="isCollapsed ? 'Dashboard' : ''">
             <LayoutDashboard class="nav-icon" />
-            <span class="nav-label">Overview</span>
+            <span class="nav-label">Dashboard</span>
           </router-link>
+          <router-link to="/admin/cdr" class="nav-item" v-tooltip="isCollapsed ? 'Call History' : ''">
+            <PhoneCallIcon class="nav-icon" />
+            <span class="nav-label">Call History</span>
+          </router-link>
+          <router-link to="/admin/reports" class="nav-item" v-tooltip="isCollapsed ? 'Reports' : ''">
+            <BarChart3 class="nav-icon" />
+            <span class="nav-label">Reports</span>
+          </router-link>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-header" v-if="!isCollapsed">USERS & DEVICES</div>
           <router-link to="/admin/extensions" class="nav-item" v-tooltip="isCollapsed ? 'Extensions' : ''">
             <Phone class="nav-icon" />
             <span class="nav-label">Extensions</span>
+          </router-link>
+          <router-link to="/admin/extension-profiles" class="nav-item sub-item" v-tooltip="isCollapsed ? 'Extension Profiles' : ''">
+            <Users class="nav-icon" />
+            <span class="nav-label">Extension Profiles</span>
           </router-link>
           <router-link to="/admin/devices" class="nav-item" v-tooltip="isCollapsed ? 'Devices' : ''">
             <MonitorSmartphone class="nav-icon" />
             <span class="nav-label">Devices</span>
           </router-link>
-          <router-link to="/admin/routing" class="nav-item" v-tooltip="isCollapsed ? 'Routing' : ''">
-            <GitMerge class="nav-icon" />
-            <span class="nav-label">Routing</span>
+          <router-link to="/admin/device-profiles" class="nav-item sub-item" v-tooltip="isCollapsed ? 'Device Profiles' : ''">
+            <LayersIcon class="nav-icon" />
+            <span class="nav-label">Device Profiles</span>
           </router-link>
         </div>
 
         <div class="nav-section">
-          <div class="nav-header" v-if="!isCollapsed">ROUTING</div>
+          <div class="nav-header" v-if="!isCollapsed">CALL ROUTING</div>
+          <router-link to="/admin/routing" class="nav-item" v-tooltip="isCollapsed ? 'DIDs & Routing' : ''">
+            <GitMerge class="nav-icon" />
+            <span class="nav-label">DIDs & Routing</span>
+          </router-link>
           <router-link to="/admin/call-flows" class="nav-item" v-tooltip="isCollapsed ? 'Call Flows' : ''">
             <GitMerge class="nav-icon" />
             <span class="nav-label">Call Flows</span>
           </router-link>
-          <router-link to="/admin/ivr" class="nav-item" v-tooltip="isCollapsed ? 'IVR' : ''">
+          <router-link to="/admin/ivr" class="nav-item" v-tooltip="isCollapsed ? 'IVR Menus' : ''">
             <MenuIcon class="nav-icon" />
             <span class="nav-label">IVR Menus</span>
           </router-link>
@@ -134,7 +154,7 @@
         </div>
 
         <div class="nav-section">
-          <div class="nav-header" v-if="!isCollapsed">FEATURES</div>
+          <div class="nav-header" v-if="!isCollapsed">COMMUNICATIONS</div>
           <router-link to="/admin/conferences" class="nav-item" v-tooltip="isCollapsed ? 'Conferences' : ''">
             <UsersIcon class="nav-icon" />
             <span class="nav-label">Conferences</span>
@@ -147,14 +167,22 @@
             <PrinterIcon class="nav-icon" />
             <span class="nav-label">Fax Server</span>
           </router-link>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-header" v-if="!isCollapsed">MEDIA & RECORDINGS</div>
           <router-link to="/admin/call-recordings" class="nav-item" v-tooltip="isCollapsed ? 'Call Recordings' : ''">
             <PlayCircle class="nav-icon" />
             <span class="nav-label">Call Recordings</span>
           </router-link>
+          <router-link to="/admin/audio-library" class="nav-item" v-tooltip="isCollapsed ? 'Audio Library' : ''">
+            <Mic class="nav-icon" />
+            <span class="nav-label">Audio Library</span>
+          </router-link>
         </div>
 
         <div class="nav-section">
-          <div class="nav-header" v-if="!isCollapsed">INFRASTRUCTURE</div>
+          <div class="nav-header" v-if="!isCollapsed">SETTINGS</div>
           <router-link to="/admin/gateways" class="nav-item" v-tooltip="isCollapsed ? 'Gateways' : ''">
             <Server class="nav-icon" />
             <span class="nav-label">Gateways</span>
@@ -167,35 +195,15 @@
             <Shield class="nav-icon" />
             <span class="nav-label">Call Block</span>
           </router-link>
-        </div>
-
-        <div class="nav-section">
-          <div class="nav-header" v-if="!isCollapsed">SETTINGS</div>
-          <router-link to="/admin/audio-library" class="nav-item" v-tooltip="isCollapsed ? 'Audio Library' : ''">
-            <Mic class="nav-icon" />
-            <span class="nav-label">Audio Library</span>
+          <router-link to="/admin/feature-codes" class="nav-item" v-tooltip="isCollapsed ? 'Feature Codes' : ''">
+            <Hash class="nav-icon" />
+            <span class="nav-label">Feature Codes</span>
           </router-link>
           <router-link to="/admin/hospitality" class="nav-item" v-tooltip="isCollapsed ? 'Hospitality' : ''">
             <Hotel class="nav-icon" />
             <span class="nav-label">Hospitality</span>
           </router-link>
-          <router-link to="/admin/feature-codes" class="nav-item" v-tooltip="isCollapsed ? 'Feature Codes' : ''">
-            <Hash class="nav-icon" />
-            <span class="nav-label">Feature Codes</span>
-          </router-link>
-          <router-link to="/admin/extension-profiles" class="nav-item" v-tooltip="isCollapsed ? 'Extension Profiles' : ''">
-            <Users class="nav-icon" />
-            <span class="nav-label">Extension Profiles</span>
-          </router-link>
-          <router-link to="/admin/reports" class="nav-item" v-tooltip="isCollapsed ? 'Reports' : ''">
-            <BarChart3 class="nav-icon" />
-            <span class="nav-label">Reports</span>
-          </router-link>
-          <router-link to="/admin/cdr" class="nav-item" v-tooltip="isCollapsed ? 'CDR' : ''">
-            <PhoneCallIcon class="nav-icon" />
-            <span class="nav-label">Call Records</span>
-          </router-link>
-          <router-link to="/admin/settings" class="nav-item" v-tooltip="isCollapsed ? 'Settings' : ''">
+          <router-link to="/admin/settings" class="nav-item" v-tooltip="isCollapsed ? 'Tenant Settings' : ''">
             <Settings class="nav-icon" />
             <span class="nav-label">Tenant Settings</span>
           </router-link>
