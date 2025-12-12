@@ -59,6 +59,11 @@ type Config struct {
 
 	// Internal API settings
 	InternalAPIKey string // Key for internal service auth (fail2ban, etc.)
+
+	// Storage Paths
+	FirmwarePath     string // Path for firmware file storage
+	MediaBasePath    string // Base path for media files (sounds, music)
+	ProvisioningPath string // Path for provisioning config files
 }
 
 // Load reads configuration from environment variables
@@ -116,6 +121,11 @@ func Load() *Config {
 
 		// Internal API
 		InternalAPIKey: getEnv("INTERNAL_API_KEY", "callsign-internal-key"),
+
+		// Storage Paths
+		FirmwarePath:     getEnv("FIRMWARE_PATH", "/usr/share/freeswitch/firmware"),
+		MediaBasePath:    getEnv("MEDIA_PATH", "/usr/share/freeswitch/sounds"),
+		ProvisioningPath: getEnv("PROVISIONING_PATH", "/var/lib/freeswitch/provisioning"),
 	}
 }
 

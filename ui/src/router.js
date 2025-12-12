@@ -71,6 +71,7 @@ const routes = [
       { path: 'devices/templates/:id', component: TemplateDetail, name: 'TemplateDetail' },
       { path: 'devices/:id', component: () => import('./views/devices/DeviceForm.vue'), name: 'DeviceForm' },
       { path: 'device-profiles', component: () => import('./views/DeviceProfiles.vue'), name: 'DeviceProfiles' },
+      { path: 'provisioning', component: () => import('./views/admin/TenantProvisioning.vue'), name: 'TenantProvisioning' },
       { path: 'queues', component: () => import('./views/Queues.vue'), name: 'Queues' },
       { path: 'queues/new', component: () => import('./views/queues/QueueForm.vue'), name: 'QueueFormNew' },
       { path: 'queues/:id', component: () => import('./views/queues/QueueForm.vue'), name: 'QueueFormEdit' },

@@ -180,7 +180,9 @@
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="showCreateModal = false">Cancel</button>
-          <button class="btn-primary">{{ editingTemplate ? 'Update' : 'Create' }} Template</button>
+          <button class="btn-primary" @click="saveTemplate" :disabled="saving || !form.name">
+            {{ saving ? 'Saving...' : (editingTemplate ? 'Update' : 'Create') }} Template
+          </button>
         </div>
       </div>
     </div>
@@ -211,16 +213,21 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { 
   Plus as PlusIcon, Code as CodeIcon, Search as SearchIcon,
   Edit as EditIcon, Copy as CopyIcon, Trash2 as TrashIcon,
   ChevronDown as ChevronDownIcon, Users as TenantsIcon, Calendar as CalendarIcon,
   Monitor, Smartphone, Server as ServerIcon
 } from 'lucide-vue-next'
+import { systemAPI } from '@/services/api'
+
+const toast = inject('toast')
+const loading = ref(true)
+const saving = ref(false)
 
 const selectedManufacturer = ref('all')
-const expandedMfgs = ref(['yealink', 'poly'])
+const expandedMfgs = ref([])
 const searchQuery = ref('')
 const showCreateModal = ref(false)
 const showVarsModal = ref(false)
@@ -244,18 +251,39 @@ const manufacturers = ref([
   { id: 'generic', name: 'Generic SIP', logo: null },
 ])
 
-const allTemplates = ref([
-  { id: 1, manufacturer: 'yealink', model: 'T54W', name: 'Yealink T54W Default', version: 'v2.1', tenants: 45, updated: '2024-03-15' },
-  { id: 2, manufacturer: 'yealink', model: 'T57W', name: 'Yealink T57W Default', version: 'v2.0', tenants: 23, updated: '2024-03-10' },
-  { id: 3, manufacturer: 'yealink', model: 'T46U', name: 'Yealink T46U Default', version: 'v1.5', tenants: 18, updated: '2024-02-28' },
-  { id: 4, manufacturer: 'yealink', model: 'CP920', name: 'Yealink CP920 Conference', version: 'v1.0', tenants: 8, updated: '2024-01-15' },
-  { id: 5, manufacturer: 'poly', model: 'VVX 450', name: 'Poly VVX 450 Standard', version: 'v3.0', tenants: 32, updated: '2024-03-12' },
-  { id: 6, manufacturer: 'poly', model: 'VVX 350', name: 'Poly VVX 350 Standard', version: 'v2.5', tenants: 15, updated: '2024-03-01' },
-  { id: 7, manufacturer: 'poly', model: 'CCX 500', name: 'Poly CCX 500 Teams', version: 'v1.2', tenants: 5, updated: '2024-02-20' },
-  { id: 8, manufacturer: 'cisco', model: 'SPA525G2', name: 'Cisco SPA525G2 Default', version: 'v1.8', tenants: 12, updated: '2024-01-30' },
-  { id: 9, manufacturer: 'grandstream', model: 'GXP2170', name: 'Grandstream GXP2170 Default', version: 'v1.0', tenants: 7, updated: '2024-02-15' },
-  { id: 10, manufacturer: 'generic', model: 'Standard SIP', name: 'Generic SIP Device', version: 'v1.0', tenants: 3, updated: '2024-03-18' },
-])
+const allTemplates = ref([])
+
+// Load templates from API
+const loadTemplates = async () => {
+  loading.value = true
+  try {
+    const response = await systemAPI.listDeviceTemplates()
+    const templates = response.data?.data || response.data || []
+    allTemplates.value = templates.map(t => ({
+      id: t.id,
+      uuid: t.uuid,
+      manufacturer: t.vendor?.toLowerCase() || 'generic',
+      model: t.model || t.device_model || 'Unknown',
+      name: t.name,
+      version: t.version || 'v1.0',
+      tenants: t.tenant_count || 0,
+      updated: t.updated_at?.split('T')[0] || '',
+      format: t.file_type || 'cfg',
+      content: t.content || ''
+    }))
+    // Auto-expand first manufacturer with templates
+    if (allTemplates.value.length > 0 && expandedMfgs.value.length === 0) {
+      expandedMfgs.value = [allTemplates.value[0].manufacturer]
+    }
+  } catch (e) {
+    console.error('Failed to load templates:', e)
+    toast?.error('Failed to load templates')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadTemplates)
 
 const variableCategories = ref([
   { name: 'Device', vars: [
@@ -316,14 +344,60 @@ const editTemplate = (template) => {
   showCreateModal.value = true
 }
 
-const duplicateTemplate = (template) => {
-  const newT = { ...template, id: Date.now(), name: template.name + ' (Copy)', tenants: 0 }
-  allTemplates.value.push(newT)
+const duplicateTemplate = async (template) => {
+  try {
+    const payload = {
+      vendor: template.manufacturer,
+      model: template.model,
+      name: template.name + ' (Copy)',
+      file_type: template.format,
+      content: template.content
+    }
+    await systemAPI.createDeviceTemplate(payload)
+    toast?.success('Template duplicated')
+    await loadTemplates()
+  } catch (e) {
+    toast?.error('Failed to duplicate template')
+  }
 }
 
-const deleteTemplate = (template) => {
-  if (confirm(`Delete template "${template.name}"?`)) {
-    allTemplates.value = allTemplates.value.filter(t => t.id !== template.id)
+const saveTemplate = async () => {
+  saving.value = true
+  try {
+    const payload = {
+      vendor: form.value.manufacturer,
+      model: form.value.model,
+      name: form.value.name,
+      file_type: form.value.format,
+      content: form.value.content
+    }
+    
+    if (editingTemplate.value?.id) {
+      await systemAPI.updateDeviceTemplate(editingTemplate.value.id, payload)
+      toast?.success('Template updated')
+    } else {
+      await systemAPI.createDeviceTemplate(payload)
+      toast?.success('Template created')
+    }
+    showCreateModal.value = false
+    editingTemplate.value = null
+    form.value = { manufacturer: 'yealink', model: '', name: '', version: 'v1.0', format: 'cfg', content: '' }
+    await loadTemplates()
+  } catch (e) {
+    toast?.error('Failed to save template', e.message)
+  } finally {
+    saving.value = false
+  }
+}
+
+const deleteTemplate = async (template) => {
+  if (!confirm(`Delete template "${template.name}"?`)) return
+  try {
+    await systemAPI.deleteDeviceTemplate(template.id)
+    toast?.success('Template deleted')
+    await loadTemplates()
+  } catch (e) {
+    toast?.error('Failed to delete template', e.message)
   }
 }
 </script>

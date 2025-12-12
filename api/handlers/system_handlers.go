@@ -4,8 +4,12 @@ import (
 	"callsign/middleware"
 	"callsign/models"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/kataras/iris/v12"
 	"gorm.io/gorm"
@@ -1792,16 +1796,62 @@ func (h *Handler) UploadFirmware(ctx iris.Context) {
 	}
 	defer file.Close()
 
-	// Save file
-	firmwarePath := "/usr/share/freeswitch/firmware/" + fw.Manufacturer + "/" + header.Filename
-	// TODO: Implement file save with proper directory creation
+	// Use configured firmware path or default
+	firmwareBasePath := h.Config.FirmwarePath
+	if firmwareBasePath == "" {
+		firmwareBasePath = "/usr/share/freeswitch/firmware"
+	}
+
+	// Sanitize manufacturer name for directory
+	safeManufacturer := strings.ToLower(strings.ReplaceAll(fw.Manufacturer, " ", "_"))
+	safeManufacturer = strings.ReplaceAll(safeManufacturer, "/", "_")
+
+	// Create directory structure: firmware_path/manufacturer/model/
+	safeModel := strings.ToLower(strings.ReplaceAll(fw.Model, " ", "_"))
+	safeModel = strings.ReplaceAll(safeModel, "/", "_")
+	dirPath := filepath.Join(firmwareBasePath, safeManufacturer, safeModel)
+
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create firmware directory"})
+		return
+	}
+
+	// Sanitize filename
+	safeFilename := strings.ReplaceAll(header.Filename, "..", "_")
+	fullPath := filepath.Join(dirPath, safeFilename)
+
+	// Create destination file
+	dst, err := os.Create(fullPath)
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create file"})
+		return
+	}
+	defer dst.Close()
+
+	// Copy file content
+	written, err := io.Copy(dst, file)
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to save file"})
+		return
+	}
+
+	// Relative path for storage (from firmware base)
+	relativePath := filepath.Join(safeManufacturer, safeModel, safeFilename)
 
 	// Update firmware record
 	h.DB.Model(&fw).Updates(map[string]interface{}{
-		"file_path": firmwarePath,
-		"file_name": header.Filename,
-		"file_size": header.Size,
+		"file_path": relativePath,
+		"file_name": safeFilename,
+		"file_size": written,
 	})
 
-	ctx.JSON(iris.Map{"message": "Firmware file uploaded", "path": firmwarePath})
+	ctx.JSON(iris.Map{
+		"message":   "Firmware file uploaded",
+		"path":      relativePath,
+		"full_path": fullPath,
+		"size":      written,
+	})
 }

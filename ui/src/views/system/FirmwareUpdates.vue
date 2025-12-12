@@ -178,10 +178,10 @@
           <div class="form-group">
             <label>Firmware File</label>
             <div class="file-upload">
-              <input type="file" id="firmware-file" accept=".rom,.bin,.fw,.zip">
+              <input type="file" id="firmware-file" accept=".rom,.bin,.fw,.zip" @change="handleFileSelect">
               <label for="firmware-file" class="file-label">
                 <UploadIcon class="upload-icon" />
-                <span>Choose file or drag & drop</span>
+                <span>{{ uploadForm.file ? uploadForm.file.name : 'Choose file or drag & drop' }}</span>
                 <span class="file-hint">.rom, .bin, .fw, .zip</span>
               </label>
             </div>
@@ -195,7 +195,9 @@
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="showUploadModal = false">Cancel</button>
-          <button class="btn-primary">Upload Firmware</button>
+          <button class="btn-primary" @click="uploadFirmware" :disabled="uploading || !uploadForm.version">
+            {{ uploading ? 'Uploading...' : 'Upload Firmware' }}
+          </button>
         </div>
       </div>
     </div>
@@ -203,15 +205,20 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { 
   Upload as UploadIcon, Monitor as MonitorIcon, Smartphone as SmartphoneIcon,
   ChevronDown as ChevronDownIcon, Check as CheckIcon, Star as StarIcon,
   FileText as FileTextIcon, Trash2 as TrashIcon
 } from 'lucide-vue-next'
+import { systemAPI } from '@/services/api'
+
+const toast = inject('toast')
+const loading = ref(true)
+const uploading = ref(false)
 
 const selectedManufacturer = ref('yealink')
-const expandedModels = ref(['t5-series'])
+const expandedModels = ref([])
 const showUploadModal = ref(false)
 
 const uploadForm = ref({
@@ -220,6 +227,7 @@ const uploadForm = ref({
   version: '',
   releaseType: 'stable',
   notes: '',
+  file: null,
   setAsRecommended: false
 })
 
@@ -231,25 +239,70 @@ const manufacturers = ref([
   { id: 'fanvil', name: 'Fanvil' },
 ])
 
-const models = ref([
-  { id: 't5-series', manufacturer: 'yealink', name: 'T5 Series (T54W/T57W)', recommended: '96.3.0.5', deployPolicy: 'recommended' },
-  { id: 't4-series', manufacturer: 'yealink', name: 'T4 Series (T46U/T48U)', recommended: '83.15.0.20', deployPolicy: 'manual' },
-  { id: 'cp-series', manufacturer: 'yealink', name: 'CP Series (CP920/CP960)', recommended: '73.15.0.10', deployPolicy: 'recommended' },
-  { id: 'vvx-series', manufacturer: 'poly', name: 'VVX Series (VVX350/VVX450)', recommended: '6.4.3.2', deployPolicy: 'recommended' },
-  { id: 'ccx-series', manufacturer: 'poly', name: 'CCX Series (CCX500/CCX600)', recommended: '7.2.1.0', deployPolicy: 'manual' },
-  { id: 'spa-series', manufacturer: 'cisco', name: 'SPA Series', recommended: '7.6.2c', deployPolicy: 'manual' },
-])
+const models = ref([])
+const firmwareVersions = ref([])
 
-const firmwareVersions = ref([
-  { id: 1, modelId: 't5-series', version: '96.3.0.5', releaseDate: '2024-03-15', size: '48.2 MB', status: 'Active', isRecommended: true, isBeta: false },
-  { id: 2, modelId: 't5-series', version: '96.3.0.4', releaseDate: '2024-02-20', size: '47.8 MB', status: 'Active', isRecommended: false, isBeta: false },
-  { id: 3, modelId: 't5-series', version: '96.3.0.3', releaseDate: '2024-01-10', size: '47.5 MB', status: 'Archived', isRecommended: false, isBeta: false },
-  { id: 4, modelId: 't5-series', version: '96.4.0.0-beta', releaseDate: '2024-03-20', size: '49.1 MB', status: 'Testing', isRecommended: false, isBeta: true },
-  { id: 5, modelId: 't4-series', version: '83.15.0.20', releaseDate: '2024-03-01', size: '42.1 MB', status: 'Active', isRecommended: true, isBeta: false },
-  { id: 6, modelId: 't4-series', version: '83.15.0.18', releaseDate: '2024-01-15', size: '41.8 MB', status: 'Active', isRecommended: false, isBeta: false },
-  { id: 7, modelId: 'vvx-series', version: '6.4.3.2', releaseDate: '2024-02-28', size: '38.5 MB', status: 'Active', isRecommended: true, isBeta: false },
-  { id: 8, modelId: 'vvx-series', version: '6.4.3.1', releaseDate: '2024-01-20', size: '38.2 MB', status: 'Active', isRecommended: false, isBeta: false },
-])
+// Load firmware from API
+const loadFirmware = async () => {
+  loading.value = true
+  try {
+    const response = await systemAPI.listFirmware()
+    const firmware = response.data?.data || response.data || []
+    
+    // Group firmware by model
+    const modelMap = new Map()
+    firmware.forEach(fw => {
+      const modelKey = `${fw.vendor?.toLowerCase()}-${fw.model}`
+      if (!modelMap.has(modelKey)) {
+        modelMap.set(modelKey, {
+          id: modelKey,
+          manufacturer: fw.vendor?.toLowerCase() || 'generic',
+          name: fw.model || 'Unknown',
+          recommended: null,
+          deployPolicy: fw.deploy_policy || 'manual'
+        })
+      }
+      if (fw.is_default) {
+        modelMap.get(modelKey).recommended = fw.version
+      }
+    })
+    
+    models.value = Array.from(modelMap.values())
+    
+    firmwareVersions.value = firmware.map(fw => ({
+      id: fw.id,
+      uuid: fw.uuid,
+      modelId: `${fw.vendor?.toLowerCase()}-${fw.model}`,
+      version: fw.version,
+      releaseDate: fw.created_at?.split('T')[0] || '',
+      size: formatFileSize(fw.file_size || 0),
+      status: fw.is_default ? 'Active' : (fw.is_beta ? 'Testing' : 'Active'),
+      isRecommended: fw.is_default,
+      isBeta: fw.is_beta || false,
+      notes: fw.release_notes || ''
+    }))
+
+    // Auto-expand first model
+    if (models.value.length > 0 && expandedModels.value.length === 0) {
+      expandedModels.value = [models.value[0].id]
+    }
+  } catch (e) {
+    console.error('Failed to load firmware:', e)
+    toast?.error('Failed to load firmware')
+  } finally {
+    loading.value = false
+  }
+}
+
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+onMounted(loadFirmware)
 
 const modelsForManufacturer = computed(() => {
   return models.value.filter(m => m.manufacturer === selectedManufacturer.value)
@@ -268,18 +321,67 @@ const toggleModel = (modelId) => {
   else expandedModels.value.splice(idx, 1)
 }
 
-const setRecommended = (modelId, fw) => {
-  firmwareVersions.value.filter(f => f.modelId === modelId).forEach(f => f.isRecommended = false)
-  fw.isRecommended = true
-  const model = models.value.find(m => m.id === modelId)
-  if (model) model.recommended = fw.version
+const setRecommended = async (modelId, fw) => {
+  try {
+    await systemAPI.setDefaultFirmware(fw.id)
+    toast?.success(`Set ${fw.version} as default`)
+    await loadFirmware()
+  } catch (e) {
+    toast?.error('Failed to set default firmware', e.message)
+  }
 }
 
-const viewReleaseNotes = (fw) => { console.log('View notes for', fw.version) }
-const deleteFirmware = (fw) => {
-  if (confirm(`Delete firmware version ${fw.version}?`)) {
-    firmwareVersions.value = firmwareVersions.value.filter(f => f.id !== fw.id)
+const viewReleaseNotes = (fw) => { 
+  alert(`Release Notes for ${fw.version}:\n\n${fw.notes || 'No release notes available.'}`)
+}
+
+const deleteFirmware = async (fw) => {
+  if (!confirm(`Delete firmware version ${fw.version}?`)) return
+  try {
+    await systemAPI.deleteFirmware(fw.id)
+    toast?.success('Firmware deleted')
+    await loadFirmware()
+  } catch (e) {
+    toast?.error('Failed to delete firmware', e.message)
   }
+}
+
+const uploadFirmware = async () => {
+  uploading.value = true
+  try {
+    // First create the firmware record
+    const payload = {
+      vendor: uploadForm.value.manufacturer,
+      model: uploadForm.value.model,
+      version: uploadForm.value.version,
+      is_beta: uploadForm.value.releaseType === 'beta',
+      release_notes: uploadForm.value.notes,
+      is_default: uploadForm.value.setAsRecommended
+    }
+    
+    const response = await systemAPI.createFirmware(payload)
+    const firmwareId = response.data?.id || response.data?.data?.id
+    
+    // Then upload the file if present
+    if (uploadForm.value.file && firmwareId) {
+      const formData = new FormData()
+      formData.append('file', uploadForm.value.file)
+      await systemAPI.uploadFirmwareFile(firmwareId, formData)
+    }
+    
+    toast?.success('Firmware uploaded')
+    showUploadModal.value = false
+    uploadForm.value = { manufacturer: 'yealink', model: '', version: '', releaseType: 'stable', notes: '', file: null, setAsRecommended: false }
+    await loadFirmware()
+  } catch (e) {
+    toast?.error('Failed to upload firmware', e.message)
+  } finally {
+    uploading.value = false
+  }
+}
+
+const handleFileSelect = (e) => {
+  uploadForm.value.file = e.target.files[0]
 }
 </script>
 

@@ -123,6 +123,10 @@
             <LayersIcon class="nav-icon" />
             <span class="nav-label">Device Profiles</span>
           </router-link>
+          <router-link to="/admin/provisioning" class="nav-item sub-item" v-tooltip="isCollapsed ? 'Provisioning' : ''">
+            <SettingsIcon class="nav-icon" />
+            <span class="nav-label">Provisioning</span>
+          </router-link>
         </div>
 
         <div class="nav-section">
