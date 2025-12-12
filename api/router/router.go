@@ -271,6 +271,17 @@ func (r *Router) Init() {
 					timeConditions.Delete("/{id}", r.Handler.DeleteTimeCondition)
 				}
 
+				// Holiday Lists
+				holidays := tenantScoped.Party("/holidays")
+				{
+					holidays.Get("/", r.Handler.ListHolidayLists)
+					holidays.Post("/", r.Handler.CreateHolidayList)
+					holidays.Get("/{id}", r.Handler.GetHolidayList)
+					holidays.Put("/{id}", r.Handler.UpdateHolidayList)
+					holidays.Delete("/{id}", r.Handler.DeleteHolidayList)
+					holidays.Post("/{id}/sync", r.Handler.SyncHolidayList)
+				}
+
 				// Call Flows
 				callFlows := tenantScoped.Party("/call-flows")
 				{

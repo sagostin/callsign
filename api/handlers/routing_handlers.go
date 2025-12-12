@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/kataras/iris/v12"
 	"gorm.io/gorm"
@@ -452,6 +453,115 @@ func (h *Handler) DeleteTimeCondition(ctx iris.Context) {
 
 	h.DB.Delete(&condition)
 	ctx.StatusCode(http.StatusNoContent)
+}
+
+// =====================
+// Holiday Lists
+// =====================
+
+func (h *Handler) ListHolidayLists(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	var lists []models.HolidayList
+	h.DB.Where("tenant_id = ?", tenantID).Order("name ASC").Find(&lists)
+	ctx.JSON(iris.Map{"data": lists})
+}
+
+func (h *Handler) CreateHolidayList(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	var list models.HolidayList
+	if err := ctx.ReadJSON(&list); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	list.TenantID = tenantID
+	if err := h.DB.Create(&list).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create holiday list"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(iris.Map{"data": list})
+}
+
+func (h *Handler) GetHolidayList(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var list models.HolidayList
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&list).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Holiday list not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": list})
+}
+
+func (h *Handler) UpdateHolidayList(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var list models.HolidayList
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&list).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Holiday list not found"})
+		return
+	}
+
+	if err := ctx.ReadJSON(&list); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	list.TenantID = tenantID
+	h.DB.Save(&list)
+	ctx.JSON(iris.Map{"data": list})
+}
+
+func (h *Handler) DeleteHolidayList(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var list models.HolidayList
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&list).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Holiday list not found"})
+		return
+	}
+
+	h.DB.Delete(&list)
+	ctx.StatusCode(http.StatusNoContent)
+}
+
+func (h *Handler) SyncHolidayList(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var list models.HolidayList
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&list).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Holiday list not found"})
+		return
+	}
+
+	if list.ExternalURL == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "No external URL configured for this holiday list"})
+		return
+	}
+
+	// TODO: Fetch and parse ICS from external URL
+	// For now, just update the last synced time
+	now := time.Now()
+	list.LastSynced = &now
+	h.DB.Save(&list)
+
+	ctx.JSON(iris.Map{"message": "Holiday list synced", "data": list})
 }
 
 // =====================

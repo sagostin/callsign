@@ -88,6 +88,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&IVRMenu{},
 		&IVRMenuOption{},
 		&TimeCondition{},
+		&HolidayList{},
 		&CallFlow{},
 		&Recording{},
 		&Contact{},
