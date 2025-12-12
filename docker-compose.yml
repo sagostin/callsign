@@ -71,6 +71,7 @@ services:
       - /usr/share/freeswitch:/usr/share/freeswitch
       - /var/lib/freeswitch:/var/lib/freeswitch
       - /var/log/freeswitch:/var/log/freeswitch:ro
+      - /etc/freeswitch:/etc/freeswitch
     healthcheck:
       test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:${API_PORT:-8080}/api/health" ]
       interval: 30s
