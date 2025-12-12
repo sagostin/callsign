@@ -660,6 +660,196 @@ func (h *Handler) DeleteSIPProfile(ctx iris.Context) {
 }
 
 // =====================
+// Sofia Control Commands
+// =====================
+
+// GetSofiaStatus returns the status of all Sofia profiles from FreeSWITCH
+func (h *Handler) GetSofiaStatus(ctx iris.Context) {
+	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		ctx.StatusCode(http.StatusServiceUnavailable)
+		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
+		return
+	}
+
+	result, err := h.ESLManager.API("sofia status")
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to get sofia status: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": result})
+}
+
+// GetSofiaProfileStatus returns the status of a specific Sofia profile
+func (h *Handler) GetSofiaProfileStatus(ctx iris.Context) {
+	profileName := ctx.Params().Get("name")
+	if profileName == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Profile name required"})
+		return
+	}
+
+	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		ctx.StatusCode(http.StatusServiceUnavailable)
+		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
+		return
+	}
+
+	result, err := h.ESLManager.API("sofia status profile " + profileName)
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to get profile status: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": result, "profile": profileName})
+}
+
+// GetSofiaProfileRegistrations returns the registrations for a specific Sofia profile
+func (h *Handler) GetSofiaProfileRegistrations(ctx iris.Context) {
+	profileName := ctx.Params().Get("name")
+	if profileName == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Profile name required"})
+		return
+	}
+
+	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		ctx.StatusCode(http.StatusServiceUnavailable)
+		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
+		return
+	}
+
+	result, err := h.ESLManager.API("sofia status profile " + profileName + " reg")
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to get registrations: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": result, "profile": profileName})
+}
+
+// GetSofiaGatewayStatus returns gateway status for a profile
+func (h *Handler) GetSofiaGatewayStatus(ctx iris.Context) {
+	profileName := ctx.Params().Get("name")
+	if profileName == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Profile name required"})
+		return
+	}
+
+	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		ctx.StatusCode(http.StatusServiceUnavailable)
+		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
+		return
+	}
+
+	result, err := h.ESLManager.API("sofia status gateway")
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to get gateway status: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": result})
+}
+
+// RestartSofiaProfile restarts a Sofia profile
+func (h *Handler) RestartSofiaProfile(ctx iris.Context) {
+	profileName := ctx.Params().Get("name")
+	if profileName == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Profile name required"})
+		return
+	}
+
+	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		ctx.StatusCode(http.StatusServiceUnavailable)
+		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
+		return
+	}
+
+	result, err := h.ESLManager.API("sofia profile " + profileName + " restart reloadxml")
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to restart profile: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "Profile restarted", "data": result, "profile": profileName})
+}
+
+// StartSofiaProfile starts a stopped Sofia profile
+func (h *Handler) StartSofiaProfile(ctx iris.Context) {
+	profileName := ctx.Params().Get("name")
+	if profileName == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Profile name required"})
+		return
+	}
+
+	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		ctx.StatusCode(http.StatusServiceUnavailable)
+		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
+		return
+	}
+
+	result, err := h.ESLManager.API("sofia profile " + profileName + " start")
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to start profile: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "Profile started", "data": result, "profile": profileName})
+}
+
+// StopSofiaProfile stops a running Sofia profile
+func (h *Handler) StopSofiaProfile(ctx iris.Context) {
+	profileName := ctx.Params().Get("name")
+	if profileName == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Profile name required"})
+		return
+	}
+
+	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		ctx.StatusCode(http.StatusServiceUnavailable)
+		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
+		return
+	}
+
+	result, err := h.ESLManager.API("sofia profile " + profileName + " stop")
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to stop profile: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "Profile stopped", "data": result, "profile": profileName})
+}
+
+// ReloadSofiaXML reloads FreeSWITCH XML configuration
+func (h *Handler) ReloadSofiaXML(ctx iris.Context) {
+	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		ctx.StatusCode(http.StatusServiceUnavailable)
+		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
+		return
+	}
+
+	result, err := h.ESLManager.API("reloadxml")
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to reload XML: " + err.Error()})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "XML configuration reloaded", "data": result})
+}
+
+// =====================
 // System Settings & Status
 // =====================
 

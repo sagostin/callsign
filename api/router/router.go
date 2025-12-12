@@ -488,6 +488,19 @@ func (r *Router) Init() {
 					sipProfiles.Delete("/{id}", r.Handler.DeleteSIPProfile)
 				}
 
+				// Sofia Control (live FreeSWITCH commands)
+				sofia := system.Party("/sofia")
+				{
+					sofia.Get("/status", r.Handler.GetSofiaStatus)
+					sofia.Get("/profiles/{name}/status", r.Handler.GetSofiaProfileStatus)
+					sofia.Get("/profiles/{name}/registrations", r.Handler.GetSofiaProfileRegistrations)
+					sofia.Get("/profiles/{name}/gateways", r.Handler.GetSofiaGatewayStatus)
+					sofia.Post("/profiles/{name}/restart", r.Handler.RestartSofiaProfile)
+					sofia.Post("/profiles/{name}/start", r.Handler.StartSofiaProfile)
+					sofia.Post("/profiles/{name}/stop", r.Handler.StopSofiaProfile)
+					sofia.Post("/reload-xml", r.Handler.ReloadSofiaXML)
+				}
+
 				// System settings
 				settings := system.Party("/settings")
 				{

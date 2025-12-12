@@ -437,9 +437,20 @@ export const systemAPI = {
 
     // SIP Profiles
     listSIPProfiles: () => api.get('/system/sip-profiles'),
+    getSIPProfile: (id) => api.get(`/system/sip-profiles/${id}`),
     createSIPProfile: (data) => api.post('/system/sip-profiles', data),
     updateSIPProfile: (id, data) => api.put(`/system/sip-profiles/${id}`, data),
     deleteSIPProfile: (id) => api.delete(`/system/sip-profiles/${id}`),
+
+    // Sofia Control (live FreeSWITCH commands)
+    getSofiaStatus: () => api.get('/system/sofia/status'),
+    getSofiaProfileStatus: (name) => api.get(`/system/sofia/profiles/${name}/status`),
+    getSofiaProfileRegistrations: (name) => api.get(`/system/sofia/profiles/${name}/registrations`),
+    getSofiaProfileGateways: (name) => api.get(`/system/sofia/profiles/${name}/gateways`),
+    restartSofiaProfile: (name) => api.post(`/system/sofia/profiles/${name}/restart`),
+    startSofiaProfile: (name) => api.post(`/system/sofia/profiles/${name}/start`),
+    stopSofiaProfile: (name) => api.post(`/system/sofia/profiles/${name}/stop`),
+    reloadSofiaXML: () => api.post('/system/sofia/reload-xml'),
 
     // Messaging Providers
     listMessagingProviders: () => api.get('/system/messaging-providers'),

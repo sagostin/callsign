@@ -1,11 +1,11 @@
 <template>
   <div class="view-header">
     <div class="header-content">
-      <h2>System Gateways</h2>
-      <p class="text-muted text-sm">Manage global SIP trunks and PSTN gateways available to all tenants.</p>
+      <h2>Trunks</h2>
+      <p class="text-muted text-sm">Manage SIP trunks and PSTN gateways. Configure dial formats for outbound calling.</p>
     </div>
     <div class="header-actions">
-      <button class="btn-primary" @click="showModal = true">+ Add Gateway</button>
+      <button class="btn-primary" @click="showModal = true">+ Add Trunk</button>
     </div>
   </div>
 
@@ -33,7 +33,7 @@
   <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>{{ isEditing ? 'Edit Gateway' : 'Add System Gateway' }}</h3>
+        <h3>{{ isEditing ? 'Edit Trunk' : 'Add Trunk' }}</h3>
         <button class="btn-icon" @click="showModal = false"><XIcon class="icon-sm" /></button>
       </div>
       
@@ -114,7 +114,63 @@
               <option value="none">System Use Only</option>
             </select>
           </div>
-          <p class="help-text">Control which tenants can route calls through this gateway.</p>
+          <p class="help-text">Control which tenants can route calls through this trunk.</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="form-section">
+          <h4>Dial Format</h4>
+          <p class="help-text" style="margin-bottom: 12px;">Configure how numbers are formatted when sent to this trunk.</p>
+          
+          <div class="form-row">
+            <label class="checkbox-label">
+              <input type="checkbox" v-model="form.allow_10_digit">
+              <span>Allow 10-digit dialing (NANPA)</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" v-model="form.allow_11_digit">
+              <span>Allow 11-digit dialing (1+10)</span>
+            </label>
+          </div>
+
+          <div class="form-row" style="margin-top: 12px;">
+            <div class="form-group">
+              <label>International Prefix</label>
+              <input type="text" v-model="form.international_prefix" class="input-field" placeholder="011">
+            </div>
+            <div class="form-group">
+              <label>Outbound Format</label>
+              <select v-model="form.dial_format" class="input-field">
+                <option value="e164">E.164 (+1XXXXXXXXXX)</option>
+                <option value="11d">11-digit (1XXXXXXXXXX)</option>
+                <option value="10d">10-digit (XXXXXXXXXX)</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Strip Prefix</label>
+              <input type="text" v-model="form.strip_prefix" class="input-field" placeholder="None">
+            </div>
+            <div class="form-group">
+              <label>Prepend Prefix</label>
+              <input type="text" v-model="form.prepend_prefix" class="input-field" placeholder="None">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Priority (LCR)</label>
+              <input type="number" v-model="form.priority" class="input-field" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label>Weight</label>
+              <input type="number" v-model="form.weight" class="input-field" placeholder="100">
+            </div>
+          </div>
         </div>
       </div>
 
@@ -160,7 +216,17 @@ const defaultForm = () => ({
   username: '',
   password: '',
   realm: '',
-  enabled: true
+  enabled: true,
+  access: 'all',
+  // Dial format fields
+  dial_format: 'e164',
+  allow_10_digit: true,
+  allow_11_digit: true,
+  international_prefix: '011',
+  strip_prefix: '',
+  prepend_prefix: '',
+  priority: 0,
+  weight: 100
 })
 
 const form = ref(defaultForm())
@@ -203,16 +269,24 @@ const saveGateway = async () => {
   saving.value = true
   try {
     const data = {
-      name: form.value.name,
+      gateway_name: form.value.name,
       proxy: form.value.hostname,
-      protocol: form.value.protocol,
-      port: parseInt(form.value.port) || 5060,
+      transport: form.value.protocol,
       gateway_type: form.value.type,
       register: form.value.register,
       username: form.value.username,
       password: form.value.password,
       realm: form.value.realm,
-      enabled: form.value.enabled
+      enabled: form.value.enabled,
+      // Dial format fields
+      dial_format: form.value.dial_format,
+      allow_10_digit: form.value.allow_10_digit,
+      allow_11_digit: form.value.allow_11_digit,
+      international_prefix: form.value.international_prefix,
+      strip_prefix: form.value.strip_prefix,
+      prepend_prefix: form.value.prepend_prefix,
+      priority: parseInt(form.value.priority) || 0,
+      weight: parseInt(form.value.weight) || 100
     }
     if (isEditing.value && form.value.id) {
       await systemAPI.updateGateway(form.value.id, data)

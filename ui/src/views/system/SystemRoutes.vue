@@ -52,6 +52,10 @@
         <SearchIcon class="search-icon" />
         <input type="text" v-model="numberSearch" placeholder="Search numbers..." class="search-input">
       </div>
+      <select v-model="tenantFilter" class="filter-dropdown">
+        <option value="">All Tenants</option>
+        <option v-for="t in uniqueTenants" :key="t.id" :value="t.id">{{ t.name }}</option>
+      </select>
     </div>
 
     <DataTable :columns="numberColumns" :data="filteredNumbers">
@@ -412,6 +416,7 @@ const onDragEnd = () => {
 // All Numbers (System-wide)
 const allNumbers = ref([])
 const numberSearch = ref('')
+const tenantFilter = ref('')
 const numberColumns = [
   { key: 'destination_number', label: 'Number', width: '160px' },
   { key: 'tenant', label: 'Tenant', width: '150px' },
@@ -420,10 +425,23 @@ const numberColumns = [
   { key: 'enabled', label: 'Status', width: '80px' }
 ]
 
+// Get unique tenants from numbers for filter dropdown
+const uniqueTenants = computed(() => {
+  const tenantMap = new Map()
+  allNumbers.value.forEach(n => {
+    if (n.Tenant) {
+      tenantMap.set(n.Tenant.id, n.Tenant)
+    }
+  })
+  return Array.from(tenantMap.values()).sort((a, b) => a.name.localeCompare(b.name))
+})
+
 const filteredNumbers = computed(() => {
   return allNumbers.value.filter(n => {
     const numStr = n.destination_number || ''
-    return numStr.includes(numberSearch.value)
+    const matchesSearch = numStr.includes(numberSearch.value)
+    const matchesTenant = !tenantFilter.value || n.Tenant?.id === parseInt(tenantFilter.value)
+    return matchesSearch && matchesTenant
   })
 })
 
@@ -676,6 +694,13 @@ const saveSettings = () => alert('System Settings saved!')
 /* Route Help */
 .route-help { display: flex; align-items: center; gap: 8px; padding: 12px; background: #eff6ff; border-radius: var(--radius-sm); margin-bottom: 16px; color: #1e40af; font-size: 13px; }
 .help-icon { width: 16px; height: 16px; }
+
+/* Filter Bar */
+.filter-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
+.search-box { display: flex; align-items: center; gap: 8px; flex: 1; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px 12px; }
+.search-icon { width: 16px; height: 16px; color: var(--text-muted); }
+.search-input { border: none; background: transparent; flex: 1; font-size: 14px; outline: none; }
+.filter-dropdown { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 14px; min-width: 180px; background: white; cursor: pointer; }
 
 /* Routes List */
 .routes-list { display: flex; flex-direction: column; gap: 12px; }

@@ -283,9 +283,9 @@
             <Shield class="nav-icon" />
             <span class="nav-label">Access Control</span>
           </router-link>
-          <router-link to="/system/gateways" class="nav-item" v-tooltip="isCollapsed ? 'Gateways' : ''">
+          <router-link to="/system/trunks" class="nav-item" v-tooltip="isCollapsed ? 'Trunks' : ''">
             <GlobeIcon class="nav-icon" />
-            <span class="nav-label">Gateways</span>
+            <span class="nav-label">Trunks</span>
           </router-link>
           <router-link to="/system/routing" class="nav-item" v-tooltip="isCollapsed ? 'System Routing' : ''">
             <GitMerge class="nav-icon" />

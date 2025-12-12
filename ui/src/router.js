@@ -149,9 +149,9 @@ const routes = [
       { path: 'phrases', redirect: '/system/media' },// legacy redirect
 
       { path: 'infrastructure', component: () => import('./views/Infrastructure.vue'), name: 'Infrastructure' },
-      { path: 'gateways', component: () => import('./views/system/SystemGateways.vue'), name: 'SystemGateways' },
-      { path: 'sip-profiles', component: () => import('./views/admin/SipProfiles.vue'), name: 'SipProfiles' },
-      { path: 'acls', component: () => import('./views/system/ACLProfiles.vue'), name: 'ACLProfiles' },
+      { path: 'trunks', component: () => import('./views/system/SystemGateways.vue'), name: 'SystemTrunks' },
+      { path: 'gateways', redirect: '/system/trunks' }, // legacy redirect
+      { path: 'sip-profiles', component: () => import('./views/system/SipProfiles.vue'), name: 'SipProfiles' },
       { path: 'acls', component: () => import('./views/system/ACLProfiles.vue'), name: 'ACLProfiles' },
       { path: 'routing', component: () => import('./views/system/SystemRoutes.vue'), name: 'SystemRoutes' },
       { path: 'dial-plans', redirect: '/system/routing' }, // legacy redirect

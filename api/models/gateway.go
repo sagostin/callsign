@@ -67,6 +67,22 @@ type Gateway struct {
 	// Context for inbound calls
 	Context string `json:"context" gorm:"default:'public'"`
 
+	// Dial Format Configuration (for outbound calls)
+	// These control how the system formats numbers when sending to this trunk
+	DialFormat          string `json:"dial_format" gorm:"default:'e164'"`         // e164, 10d, 11d, custom
+	Allow10Digit        bool   `json:"allow_10_digit" gorm:"default:true"`        // Allow 10-digit NANPA dialing
+	Allow11Digit        bool   `json:"allow_11_digit" gorm:"default:true"`        // Allow 1+10 digit dialing
+	InternationalPrefix string `json:"international_prefix" gorm:"default:'011'"` // Prefix for international (e.g., 011)
+	InternationalFormat string `json:"international_format" gorm:"default:'011'"` // How to format outbound international
+	StripPrefix         string `json:"strip_prefix"`                              // Prefix to strip before sending
+	PrependPrefix       string `json:"prepend_prefix"`                            // Prefix to prepend before sending
+	TechPrefix          string `json:"tech_prefix"`                               // Tech prefix for LCR
+
+	// Rate limiting and routing
+	Priority int    `json:"priority" gorm:"default:0"` // Lower = higher priority for LCR
+	Weight   int    `json:"weight" gorm:"default:100"` // Weight for load balancing
+	RouteTag string `json:"route_tag"`                 // Tag for dial plan routing
+
 	// Status (read-only, updated by FreeSWITCH events)
 	Status     string     `json:"status" gorm:"-"`
 	LastStatus *time.Time `json:"last_status"`
