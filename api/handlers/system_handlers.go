@@ -571,9 +571,33 @@ func (h *Handler) DeleteBridge(ctx iris.Context) {
 // =====================
 // SIP Profiles
 // =====================
-// Note: SIP profiles are served dynamically via XML CURL (sofia.conf)
-// No need to write files to disk - the database is the source of truth
-// FreeSWITCH fetches the config via: section=configuration&key_value=sofia.conf
+// SIP profiles MUST be written to disk as XML files because:
+// - Sofia loads them via X-PRE-PROCESS from the sip_profiles directory
+// - Gateways are served dynamically via directory (purpose=gateways)
+//   when profiles have parse=true on their domain definitions
+
+// writeSIPProfileToDisk writes a SIP profile XML file to the sip_profiles directory
+func (h *Handler) writeSIPProfileToDisk(profile *models.SIPProfile) error {
+	writer := freeswitch.NewProfileWriter(h.Config.SIPProfilesPath)
+
+	// If settings/domains are not loaded, fetch them
+	var settings []models.SIPProfileSetting
+	var domains []models.SIPProfileDomain
+
+	if len(profile.Settings) > 0 {
+		settings = profile.Settings
+	} else {
+		h.DB.Where("sip_profile_uuid = ?", profile.UUID).Find(&settings)
+	}
+
+	if len(profile.Domains) > 0 {
+		domains = profile.Domains
+	} else {
+		h.DB.Where("sip_profile_uuid = ?", profile.UUID).Find(&domains)
+	}
+
+	return writer.WriteProfile(profile, settings, domains)
+}
 
 func (h *Handler) ListSIPProfiles(ctx iris.Context) {
 	var profiles []models.SIPProfile
@@ -628,8 +652,11 @@ func (h *Handler) CreateSIPProfile(ctx iris.Context) {
 		}
 	}
 
-	// Note: Profile is served via XML CURL, no need to write to disk
-	// FreeSWITCH will fetch the updated config on next reloadxml
+	// Write profile XML to disk (required for Sofia X-PRE-PROCESS)
+	if err := h.writeSIPProfileToDisk(&profile); err != nil {
+		// Log error but don't fail - DB is source of truth
+		ctx.Application().Logger().Warnf("Failed to write SIP profile to disk: %v", err)
+	}
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(profile)
@@ -700,8 +727,10 @@ func (h *Handler) UpdateSIPProfile(ctx iris.Context) {
 		h.DB.Create(&profile.Domains)
 	}
 
-	// Note: Profile is served via XML CURL, no need to write to disk
-	// FreeSWITCH will fetch the updated config on next reloadxml
+	// Write updated profile XML to disk (required for Sofia X-PRE-PROCESS)
+	if err := h.writeSIPProfileToDisk(&profile); err != nil {
+		ctx.Application().Logger().Warnf("Failed to write SIP profile to disk: %v", err)
+	}
 
 	ctx.JSON(profile)
 }
@@ -761,8 +790,11 @@ func (h *Handler) DeleteSIPProfile(ctx iris.Context) {
 		return
 	}
 
-	// Note: Profile is served via XML CURL, no need to delete files
-	// FreeSWITCH will see the profile is gone on next reloadxml
+	// Delete profile XML file from disk
+	writer := freeswitch.NewProfileWriter(h.Config.SIPProfilesPath)
+	if err := writer.DeleteProfile(profile.ProfileName); err != nil {
+		ctx.Application().Logger().Warnf("Failed to delete SIP profile from disk: %v", err)
+	}
 
 	ctx.JSON(iris.Map{"message": "SIP profile deleted successfully"})
 }

@@ -447,9 +447,176 @@ func (h *FSHandler) buildDirectoryXML(ext *models.Extension, req *XMLCurlRequest
 }
 
 // handleDirectoryGateways returns gateway directory info when purpose=gateways
+// This is called when Sofia profiles have parse=true on their domain definitions
+// Request includes: purpose=gateways, profile={profile_name}
 func (h *FSHandler) handleDirectoryGateways(req *XMLCurlRequest) string {
-	// For now, return not found - gateways are handled in configuration
-	return ""
+	profileName := req.SIPProfile
+	if profileName == "" {
+		log.Debug("Gateway request missing profile name")
+		return ""
+	}
+
+	log.WithFields(log.Fields{
+		"profile": profileName,
+		"domain":  req.Domain,
+	}).Debug("Gateway directory request")
+
+	// Query gateways for this profile
+	var gateways []models.Gateway
+	result := h.DB.Where("profile_name = ? AND enabled = ?", profileName, true).Find(&gateways)
+	if result.Error != nil || len(gateways) == 0 {
+		log.WithField("profile", profileName).Debug("No gateways found for profile")
+		// Return empty but valid response
+		return h.buildEmptyDirectoryResponse(req.Domain)
+	}
+
+	// Build gateway directory XML
+	var b strings.Builder
+
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
+	b.WriteString("\n")
+	b.WriteString(`<document type="freeswitch/xml">`)
+	b.WriteString("\n")
+	b.WriteString(`  <section name="directory">`)
+	b.WriteString("\n")
+
+	// Use domain from request or default to "all"
+	domain := req.Domain
+	if domain == "" {
+		domain = "all"
+	}
+
+	b.WriteString(fmt.Sprintf(`    <domain name="%s">`, xmlEscape(domain)))
+	b.WriteString("\n")
+	b.WriteString(`      <params>`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="dial-string" value="{presence_id=${dialed_user}@${dialed_domain}}${sofia_contact(${dialed_user}@${dialed_domain})}"/>`)
+	b.WriteString("\n")
+	b.WriteString(`      </params>`)
+	b.WriteString("\n")
+
+	// User entry with gateways
+	b.WriteString(`      <user id="default">`)
+	b.WriteString("\n")
+	b.WriteString(`        <gateways>`)
+	b.WriteString("\n")
+
+	for _, gw := range gateways {
+		b.WriteString(fmt.Sprintf(`          <gateway name="%s">`, xmlEscape(gw.GatewayName)))
+		b.WriteString("\n")
+
+		// Gateway params
+		if gw.Username != "" {
+			b.WriteString(fmt.Sprintf(`            <param name="username" value="%s"/>`, xmlEscape(gw.Username)))
+			b.WriteString("\n")
+		}
+		if gw.Password != "" {
+			b.WriteString(fmt.Sprintf(`            <param name="password" value="%s"/>`, xmlEscape(gw.Password)))
+			b.WriteString("\n")
+		}
+		if gw.AuthUsername != "" {
+			b.WriteString(fmt.Sprintf(`            <param name="auth-username" value="%s"/>`, xmlEscape(gw.AuthUsername)))
+			b.WriteString("\n")
+		}
+		if gw.Realm != "" {
+			b.WriteString(fmt.Sprintf(`            <param name="realm" value="%s"/>`, xmlEscape(gw.Realm)))
+			b.WriteString("\n")
+		}
+		if gw.Proxy != "" {
+			b.WriteString(fmt.Sprintf(`            <param name="proxy" value="%s"/>`, xmlEscape(gw.Proxy)))
+			b.WriteString("\n")
+		}
+		if gw.RegisterProxy != "" {
+			b.WriteString(fmt.Sprintf(`            <param name="register-proxy" value="%s"/>`, xmlEscape(gw.RegisterProxy)))
+			b.WriteString("\n")
+		}
+		if gw.FromUser != "" {
+			b.WriteString(fmt.Sprintf(`            <param name="from-user" value="%s"/>`, xmlEscape(gw.FromUser)))
+			b.WriteString("\n")
+		}
+		if gw.FromDomain != "" {
+			b.WriteString(fmt.Sprintf(`            <param name="from-domain" value="%s"/>`, xmlEscape(gw.FromDomain)))
+			b.WriteString("\n")
+		}
+		if gw.Extension != "" {
+			b.WriteString(fmt.Sprintf(`            <param name="extension" value="%s"/>`, xmlEscape(gw.Extension)))
+			b.WriteString("\n")
+		}
+		if gw.Transport != "" {
+			b.WriteString(fmt.Sprintf(`            <param name="register-transport" value="%s"/>`, xmlEscape(gw.Transport)))
+			b.WriteString("\n")
+		}
+		if gw.Register {
+			b.WriteString(`            <param name="register" value="true"/>`)
+		} else {
+			b.WriteString(`            <param name="register" value="false"/>`)
+		}
+		b.WriteString("\n")
+		if gw.ExpireSeconds > 0 {
+			b.WriteString(fmt.Sprintf(`            <param name="expire-seconds" value="%d"/>`, gw.ExpireSeconds))
+			b.WriteString("\n")
+		}
+		if gw.RetrySeconds > 0 {
+			b.WriteString(fmt.Sprintf(`            <param name="retry-seconds" value="%d"/>`, gw.RetrySeconds))
+			b.WriteString("\n")
+		}
+		if gw.Ping != "" {
+			b.WriteString(fmt.Sprintf(`            <param name="ping" value="%s"/>`, xmlEscape(gw.Ping)))
+			b.WriteString("\n")
+		}
+		if gw.Context != "" {
+			b.WriteString(fmt.Sprintf(`            <param name="context" value="%s"/>`, xmlEscape(gw.Context)))
+			b.WriteString("\n")
+		}
+		if gw.CallerIDInFrom {
+			b.WriteString(`            <param name="caller-id-in-from" value="true"/>`)
+			b.WriteString("\n")
+		}
+
+		b.WriteString(`          </gateway>`)
+		b.WriteString("\n")
+	}
+
+	b.WriteString(`        </gateways>`)
+	b.WriteString("\n")
+	b.WriteString(`      </user>`)
+	b.WriteString("\n")
+	b.WriteString(`    </domain>`)
+	b.WriteString("\n")
+	b.WriteString(`  </section>`)
+	b.WriteString("\n")
+	b.WriteString(`</document>`)
+
+	log.WithFields(log.Fields{
+		"profile":       profileName,
+		"gateway_count": len(gateways),
+	}).Debug("Gateway directory response generated")
+
+	return b.String()
+}
+
+// buildEmptyDirectoryResponse returns a valid but empty directory response
+func (h *FSHandler) buildEmptyDirectoryResponse(domain string) string {
+	if domain == "" {
+		domain = "all"
+	}
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
+	b.WriteString("\n")
+	b.WriteString(`<document type="freeswitch/xml">`)
+	b.WriteString("\n")
+	b.WriteString(`  <section name="directory">`)
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf(`    <domain name="%s">`, xmlEscape(domain)))
+	b.WriteString("\n")
+	b.WriteString(`      <user id="default"/>`)
+	b.WriteString("\n")
+	b.WriteString(`    </domain>`)
+	b.WriteString("\n")
+	b.WriteString(`  </section>`)
+	b.WriteString("\n")
+	b.WriteString(`</document>`)
+	return b.String()
 }
 
 // handleDirectoryNetworkList returns network list info
