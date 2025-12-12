@@ -323,7 +323,7 @@ func (h *Handler) DeleteMediaFile(ctx iris.Context) {
 
 // StreamMediaFile serves an audio file for playback
 func (h *Handler) StreamMediaFile(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+	tenantID := middleware.GetTenantID(ctx)
 	if tenantID == 0 {
 		ctx.StatusCode(http.StatusUnauthorized)
 		ctx.JSON(iris.Map{"error": "Tenant context required"})
