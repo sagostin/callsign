@@ -116,8 +116,7 @@ func AutoMigrate(db *gorm.DB) error {
 		// Audit & CDR
 		&AuditLog{},
 		&CallRecord{},
-
-		// Paging
+		&BannedIP{},
 		&PageGroup{},
 		&PageGroupDestination{},
 

@@ -226,6 +226,18 @@ export const timeConditionsAPI = {
 }
 
 // =====================
+// Holidays API
+// =====================
+export const holidaysAPI = {
+    list: (params) => api.get('/holidays', { params }),
+    get: (id) => api.get(`/holidays/${id}`),
+    create: (data) => api.post('/holidays', data),
+    update: (id, data) => api.put(`/holidays/${id}`, data),
+    delete: (id) => api.delete(`/holidays/${id}`),
+    sync: (id) => api.post(`/holidays/${id}/sync`),
+}
+
+// =====================
 // Call Flows API
 // =====================
 export const callFlowsAPI = {

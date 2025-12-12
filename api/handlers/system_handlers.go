@@ -119,7 +119,24 @@ func (h *Handler) ListTenantProfiles(ctx iris.Context) {
 		ctx.JSON(iris.Map{"error": "Failed to retrieve tenant profiles"})
 		return
 	}
-	ctx.JSON(iris.Map{"data": profiles})
+
+	// Compute tenant count for each profile
+	type ProfileWithCount struct {
+		models.TenantProfile
+		TenantCount int64 `json:"tenant_count"`
+	}
+
+	var result []ProfileWithCount
+	for _, p := range profiles {
+		var count int64
+		h.DB.Model(&models.Tenant{}).Where("profile_id = ?", p.ID).Count(&count)
+		result = append(result, ProfileWithCount{
+			TenantProfile: p,
+			TenantCount:   count,
+		})
+	}
+
+	ctx.JSON(iris.Map{"data": result})
 }
 
 func (h *Handler) CreateTenantProfile(ctx iris.Context) {

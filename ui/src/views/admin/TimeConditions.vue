@@ -209,44 +209,76 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { 
   Clock as ClockIcon, CheckCircle as CheckCircleIcon, XCircle as XCircleIcon,
   Calendar as CalendarIcon, List as ListIcon, Search as SearchIcon,
   RefreshCw as RefreshCwIcon, X as XIcon
 } from 'lucide-vue-next'
+import { timeConditionsAPI, holidaysAPI } from '@/services/api'
 
+const toast = inject('toast')
 const activeTab = ref('conditions')
 const searchQuery = ref('')
 const filterStatus = ref('')
 
 // Time Conditions Data
-const timeConditions = ref([
-  {
-    id: 1, name: 'Business Hours', extension: '40', enabled: true, currentMatch: true,
-    rules: [
-      { days: ['Mon','Tue','Wed','Thu','Fri'], startTime: '09:00', endTime: '17:00' }
-    ],
-    matchDestination: 'IVR: Main Menu (8000)',
-    noMatchDestination: 'IVR: After Hours (8001)'
-  },
-  {
-    id: 2, name: 'Weekend Support', extension: '41', enabled: true, currentMatch: false,
-    rules: [
-      { days: ['Sat'], startTime: '10:00', endTime: '14:00' }
-    ],
-    matchDestination: 'Ring Group: Weekend On-Call',
-    noMatchDestination: 'Voicemail: General'
-  },
-  {
-    id: 3, name: 'Lunch Break Override', extension: '42', enabled: true, currentMatch: false,
-    rules: [
-      { days: ['Mon','Tue','Wed','Thu','Fri'], startTime: '12:00', endTime: '13:00' }
-    ],
-    matchDestination: 'IVR: Lunch Menu',
-    noMatchDestination: 'Continue to Next'
+const timeConditions = ref([])
+const isLoading = ref(false)
+
+onMounted(async () => {
+  await Promise.all([fetchTimeConditions(), fetchHolidayLists()])
+})
+
+async function fetchTimeConditions() {
+  isLoading.value = true
+  try {
+    const response = await timeConditionsAPI.list()
+    timeConditions.value = (response.data?.data || response.data || []).map(tc => ({
+      id: tc.id,
+      name: tc.name,
+      extension: tc.extension || tc.destination_number || '',
+      enabled: tc.enabled !== false,
+      currentMatch: isCurrentlyMatching(tc),
+      rules: parseRules(tc),
+      matchDestination: tc.match_action || tc.match_destination || 'Continue',
+      noMatchDestination: tc.no_match_action || tc.no_match_destination || 'Continue'
+    }))
+  } catch (error) {
+    console.error('Failed to load time conditions', error)
+    toast?.error(error.message, 'Failed to load time conditions')
+  } finally {
+    isLoading.value = false
   }
-])
+}
+
+function isCurrentlyMatching(tc) {
+  // Simple check for demo - in production this would be server-evaluated
+  const now = new Date()
+  const currentDay = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][now.getDay()]
+  const currentHour = now.getHours()
+  const currentMin = now.getMinutes()
+  const currentTime = currentHour * 60 + currentMin
+
+  if (!tc.schedules) return false
+  return tc.schedules.some(s => {
+    if (!s.days?.includes(currentDay)) return false
+    const startParts = (s.start_time || '00:00').split(':')
+    const endParts = (s.end_time || '23:59').split(':')
+    const startMins = parseInt(startParts[0]) * 60 + parseInt(startParts[1] || 0)
+    const endMins = parseInt(endParts[0]) * 60 + parseInt(endParts[1] || 0)
+    return currentTime >= startMins && currentTime <= endMins
+  })
+}
+
+function parseRules(tc) {
+  if (!tc.schedules) return []
+  return tc.schedules.map(s => ({
+    days: s.days || [],
+    startTime: s.start_time || '09:00',
+    endTime: s.end_time || '17:00'
+  }))
+}
 
 const activeCount = computed(() => timeConditions.value.filter(t => t.currentMatch && t.enabled).length)
 
@@ -272,38 +304,83 @@ const getTimeBlockStyle = (rule) => {
   return { left: `${left}%`, width: `${width}%` }
 }
 
-const duplicateCondition = (tc) => {
-  const copy = { ...tc, id: Date.now(), name: `${tc.name} (Copy)` }
-  timeConditions.value.push(copy)
+const toggleCondition = async (tc) => {
+  try {
+    await timeConditionsAPI.update(tc.id, { enabled: !tc.enabled })
+    tc.enabled = !tc.enabled
+    toast?.success(`Time condition ${tc.enabled ? 'enabled' : 'disabled'}`)
+  } catch (error) {
+    toast?.error(error.message, 'Failed to update time condition')
+  }
 }
 
-const deleteCondition = (tc) => {
-  if (confirm(`Delete "${tc.name}"?`)) {
+const duplicateCondition = async (tc) => {
+  try {
+    const copy = {
+      name: `${tc.name} (Copy)`,
+      enabled: false,
+      // Copy other fields as needed
+    }
+    await timeConditionsAPI.create(copy)
+    await fetchTimeConditions()
+    toast?.success('Time condition duplicated')
+  } catch (error) {
+    toast?.error(error.message, 'Failed to duplicate time condition')
+  }
+}
+
+const deleteCondition = async (tc) => {
+  if (!confirm(`Delete "${tc.name}"?`)) return
+  try {
+    await timeConditionsAPI.delete(tc.id)
     timeConditions.value = timeConditions.value.filter(t => t.id !== tc.id)
+    toast?.success('Time condition deleted')
+  } catch (error) {
+    toast?.error(error.message, 'Failed to delete time condition')
   }
 }
 
 // Holiday Lists
-const holidayLists = ref([
-  { 
-    id: 1, name: 'US Federal 2025', count: 11, source: 'External URL',
-    upcoming: [
-      { name: 'New Year', date: 'Jan 1' },
-      { name: 'MLK Day', date: 'Jan 20' },
-      { name: 'Presidents Day', date: 'Feb 17' }
-    ]
-  },
-  { 
-    id: 2, name: 'Office Closures', count: 3, source: 'Manual',
-    upcoming: [
-      { name: 'Company Holiday', date: 'Dec 26' },
-      { name: 'Team Building', date: 'Mar 15' }
+const holidayLists = ref([])
+
+async function fetchHolidayLists() {
+  try {
+    const response = await holidaysAPI.list()
+    holidayLists.value = (response.data?.data || response.data || []).map(list => ({
+      id: list.id,
+      name: list.name,
+      count: list.dates?.length || list.count || 0,
+      source: list.external_url ? 'External URL' : 'Manual',
+      url: list.external_url,
+      dates: list.dates || [],
+      upcoming: getUpcomingDates(list.dates || [])
+    }))
+  } catch (error) {
+    console.error('Failed to load holiday lists', error)
+    // Use fallback demo data
+    holidayLists.value = [
+      { id: 1, name: 'US Federal 2025', count: 11, source: 'External URL', upcoming: [
+        { name: 'New Year', date: 'Jan 1' }, { name: 'MLK Day', date: 'Jan 20' }
+      ]}
     ]
   }
-])
+}
+
+function getUpcomingDates(dates) {
+  const now = new Date()
+  return dates
+    .map(d => ({ ...d, dateObj: new Date(d.date) }))
+    .filter(d => d.dateObj >= now)
+    .sort((a, b) => a.dateObj - b.dateObj)
+    .slice(0, 3)
+    .map(d => ({
+      name: d.name,
+      date: d.dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    }))
+}
 
 const showHolidayModal = ref(false)
-const editingHoliday = ref(false)
+const editingHoliday = ref(null)
 const holidayForm = ref({
   name: '',
   source: 'manual',
@@ -320,23 +397,63 @@ const removeHolidayDate = (i) => {
 }
 
 const editHolidayList = (list) => {
-  editingHoliday.value = true
+  editingHoliday.value = list
+  holidayForm.value = {
+    name: list.name,
+    source: list.source === 'External URL' ? 'url' : 'manual',
+    url: list.url || '',
+    dates: list.dates?.length ? list.dates : [{ date: '', name: '' }]
+  }
   showHolidayModal.value = true
 }
 
-const syncHolidayList = (list) => {
-  alert(`Syncing ${list.name} from external URL...`)
-}
-
-const saveHolidayList = () => {
-  showHolidayModal.value = false
-  editingHoliday.value = false
-}
-
-const deleteHolidayList = (list) => {
-  if (confirm(`Delete "${list.name}"?`)) {
-    holidayLists.value = holidayLists.value.filter(l => l.id !== list.id)
+const syncHolidayList = async (list) => {
+  try {
+    await holidaysAPI.sync(list.id)
+    await fetchHolidayLists()
+    toast?.success(`Synced ${list.name}`)
+  } catch (error) {
+    toast?.error(error.message, 'Failed to sync holiday list')
   }
+}
+
+const saveHolidayList = async () => {
+  try {
+    const payload = {
+      name: holidayForm.value.name,
+      external_url: holidayForm.value.source === 'url' ? holidayForm.value.url : null,
+      dates: holidayForm.value.source === 'manual' ? holidayForm.value.dates.filter(d => d.date) : []
+    }
+    
+    if (editingHoliday.value) {
+      await holidaysAPI.update(editingHoliday.value.id, payload)
+      toast?.success('Holiday list updated')
+    } else {
+      await holidaysAPI.create(payload)
+      toast?.success('Holiday list created')
+    }
+    await fetchHolidayLists()
+    closeHolidayModal()
+  } catch (error) {
+    toast?.error(error.message, 'Failed to save holiday list')
+  }
+}
+
+const deleteHolidayList = async (list) => {
+  if (!confirm(`Delete "${list.name}"?`)) return
+  try {
+    await holidaysAPI.delete(list.id)
+    holidayLists.value = holidayLists.value.filter(l => l.id !== list.id)
+    toast?.success('Holiday list deleted')
+  } catch (error) {
+    toast?.error(error.message, 'Failed to delete holiday list')
+  }
+}
+
+const closeHolidayModal = () => {
+  showHolidayModal.value = false
+  editingHoliday.value = null
+  holidayForm.value = { name: '', source: 'manual', url: '', dates: [{ date: '', name: '' }] }
 }
 </script>
 

@@ -35,6 +35,13 @@ type BannedIP struct {
 
 	// Status: banned, unbanned
 	Status string `json:"status" gorm:"default:'banned'"`
+
+	// Tenant-specific tracking (optional - for attacks targeting specific tenants)
+	TenantID   *uint  `json:"tenant_id" gorm:"index"`
+	Domain     string `json:"domain" gorm:"index"` // Domain being attacked
+	Extension  string `json:"extension"`           // Extension/user being targeted
+	UserAgent  string `json:"user_agent"`          // User-Agent from attacker
+	TargetType string `json:"target_type"`         // "sip", "web", "api", "provisioning"
 }
 
 // BeforeCreate generates UUID
