@@ -22,7 +22,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import DataTable from '../components/common/DataTable.vue'
+import DataTable from '../../components/common/DataTable.vue'
 
 const columns = [
   { key: 'name', label: 'Name' },

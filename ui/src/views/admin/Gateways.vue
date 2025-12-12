@@ -27,9 +27,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import DataTable from '../components/common/DataTable.vue'
-import StatusBadge from '../components/common/StatusBadge.vue'
-import { systemAPI } from '../services/api'
+import DataTable from '../../components/common/DataTable.vue'
+import StatusBadge from '../../components/common/StatusBadge.vue'
+import { systemAPI } from '../../services/api'
 
 const columns = [
   { key: 'gateway_name', label: 'Trunk Name' },

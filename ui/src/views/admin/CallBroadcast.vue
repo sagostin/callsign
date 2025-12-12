@@ -27,8 +27,8 @@
 
 <script setup>
 import { ref } from 'vue'
-import DataTable from '../components/common/DataTable.vue'
-import StatusBadge from '../components/common/StatusBadge.vue'
+import DataTable from '../../components/common/DataTable.vue'
+import StatusBadge from '../../components/common/StatusBadge.vue'
 
 const columns = [
   { key: 'name', label: 'Campaign Name' },

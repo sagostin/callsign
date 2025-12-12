@@ -324,8 +324,8 @@
 
 <script setup>
 import { ref, computed, onMounted, inject } from 'vue'
-import DataTable from '../components/common/DataTable.vue'
-import StatusBadge from '../components/common/StatusBadge.vue'
+import DataTable from '../../components/common/DataTable.vue'
+import StatusBadge from '../../components/common/StatusBadge.vue'
 import { 
   Search as SearchIcon,
   Plus as PlusIcon,

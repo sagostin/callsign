@@ -238,7 +238,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { systemAPI, tenantMediaAPI } from '../services/api'
+import { systemAPI, tenantMediaAPI } from '../../services/api'
 import { 
   Upload as UploadIcon, Music as MusicIcon, Folder as FolderIcon, FolderPlus as FolderPlusIcon,
   ChevronRight as ChevronRightIcon, X as XIcon, PlayCircle as PlayCircleIcon, StopCircle as StopCircleIcon,

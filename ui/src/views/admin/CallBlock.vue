@@ -183,7 +183,7 @@ import {
   PhoneIncoming as PhoneIncomingIcon, PhoneOutgoing as PhoneOutgoingIcon,
   Edit as EditIcon, Trash2 as TrashIcon, Ban, Phone, Voicemail
 } from 'lucide-vue-next'
-import { routingAPI } from '../services/api'
+import { routingAPI } from '../../services/api'
 
 const filter = ref('all')
 const showCreateModal = ref(false)

@@ -273,8 +273,8 @@
 <script setup>
 import { ref, computed, onMounted, inject } from 'vue'
 import { Search as SearchIcon, Edit as EditIcon, Trash2 as TrashIcon, X as XIcon, GitMerge as RouteIcon, Phone as PhoneIcon } from 'lucide-vue-next'
-import DataTable from '../components/common/DataTable.vue'
-import StatusBadge from '../components/common/StatusBadge.vue'
+import DataTable from '../../components/common/DataTable.vue'
+import StatusBadge from '../../components/common/StatusBadge.vue'
 import { extensionsAPI, extensionProfilesAPI } from '@/services/api'
 
 // Toast notifications

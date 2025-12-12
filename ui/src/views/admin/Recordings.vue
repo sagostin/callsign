@@ -182,7 +182,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import DataTable from '../components/common/DataTable.vue'
+import DataTable from '../../components/common/DataTable.vue'
 import { 
   Search as SearchIcon, 
   Upload as UploadIcon,
@@ -195,7 +195,7 @@ import {
   X as XIcon,
   AlertTriangle as AlertTriangleIcon
 } from 'lucide-vue-next'
-import { audioLibraryAPI } from '../services/api'
+import { audioLibraryAPI } from '../../services/api'
 
 const activeTab = ref('manage')
 const searchQuery = ref('')

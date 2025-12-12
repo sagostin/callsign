@@ -476,9 +476,9 @@ import {
   Clock as ClockIcon, ArrowRight as ArrowRightIcon, Edit as EditIcon,
   Trash2 as TrashIcon, X as XIcon
 } from 'lucide-vue-next'
-import DataTable from '../components/common/DataTable.vue'
-import StatusBadge from '../components/common/StatusBadge.vue'
-import { routingAPI, numbersAPI, dialPlansAPI } from '../services/api'
+import DataTable from '../../components/common/DataTable.vue'
+import StatusBadge from '../../components/common/StatusBadge.vue'
+import { routingAPI, numbersAPI, dialPlansAPI } from '../../services/api'
 import { formatPhoneNumber } from '../utils/formatters'
 
 const activeTab = ref('inbound')

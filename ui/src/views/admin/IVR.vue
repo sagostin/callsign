@@ -237,7 +237,7 @@ import {
   FileAudio as FileAudioIcon, Download as DownloadIcon, LayoutGrid as LayoutIcon,
   Mic as MicIcon
 } from 'lucide-vue-next'
-import StatusBadge from '../components/common/StatusBadge.vue'
+import StatusBadge from '../../components/common/StatusBadge.vue'
 import { ivrAPI } from '@/services/api'
 
 const toast = inject('toast')

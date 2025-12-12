@@ -290,8 +290,8 @@ import {
   Wifi as WifiIcon,
   Server as ServerIcon
 } from 'lucide-vue-next'
-import DataTable from '../components/common/DataTable.vue'
-import StatusBadge from '../components/common/StatusBadge.vue'
+import DataTable from '../../components/common/DataTable.vue'
+import StatusBadge from '../../components/common/StatusBadge.vue'
 import { devicesAPI, deviceProfilesAPI, usersAPI } from '@/services/api'
 
 const toast = inject('toast')
