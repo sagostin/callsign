@@ -951,3 +951,144 @@ func (h *Handler) DeleteMOHStream(ctx iris.Context) {
 	id := ctx.Params().Get("id")
 	ctx.JSON(iris.Map{"message": "MOH stream deleted", "id": id})
 }
+
+// =====================
+// Extension Profiles
+// =====================
+
+func (h *Handler) ListExtensionProfiles(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	var profiles []models.ExtensionProfile
+	if err := h.DB.Where("tenant_id = ?", tenantID).Order("name ASC").Find(&profiles).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to fetch extension profiles"})
+		return
+	}
+
+	// Count extensions per profile
+	type ProfileCount struct {
+		ProfileID uint
+		Count     int64
+	}
+	var counts []ProfileCount
+	h.DB.Model(&models.Extension{}).
+		Select("profile_id, count(*) as count").
+		Where("tenant_id = ? AND profile_id IS NOT NULL", tenantID).
+		Group("profile_id").
+		Scan(&counts)
+
+	countMap := make(map[uint]int64)
+	for _, c := range counts {
+		countMap[c.ProfileID] = c.Count
+	}
+
+	// Build response with counts
+	type ProfileResponse struct {
+		models.ExtensionProfile
+		ExtensionCount int64 `json:"extension_count"`
+	}
+	var response []ProfileResponse
+	for _, p := range profiles {
+		response = append(response, ProfileResponse{
+			ExtensionProfile: p,
+			ExtensionCount:   countMap[p.ID],
+		})
+	}
+
+	ctx.JSON(iris.Map{"data": response})
+}
+
+func (h *Handler) CreateExtensionProfile(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	var profile models.ExtensionProfile
+	if err := ctx.ReadJSON(&profile); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	profile.TenantID = tenantID
+
+	if err := h.DB.Create(&profile).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create extension profile"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(iris.Map{"data": profile, "message": "Extension profile created"})
+}
+
+func (h *Handler) GetExtensionProfile(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id := ctx.Params().GetUintDefault("id", 0)
+
+	var profile models.ExtensionProfile
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&profile).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Extension profile not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": profile})
+}
+
+func (h *Handler) UpdateExtensionProfile(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id := ctx.Params().GetUintDefault("id", 0)
+
+	var profile models.ExtensionProfile
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&profile).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Extension profile not found"})
+		return
+	}
+
+	var input models.ExtensionProfile
+	if err := ctx.ReadJSON(&input); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	profile.Name = input.Name
+	profile.Color = input.Color
+	profile.Permissions = input.Permissions
+	profile.CallHandling = input.CallHandling
+	profile.RoutingOverride = input.RoutingOverride
+
+	if err := h.DB.Save(&profile).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to update extension profile"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": profile, "message": "Extension profile updated"})
+}
+
+func (h *Handler) DeleteExtensionProfile(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id := ctx.Params().GetUintDefault("id", 0)
+
+	// Unassign extensions from this profile
+	h.DB.Model(&models.Extension{}).
+		Where("tenant_id = ? AND profile_id = ?", tenantID, id).
+		Update("profile_id", nil)
+
+	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.ExtensionProfile{})
+	if result.Error != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to delete extension profile"})
+		return
+	}
+
+	if result.RowsAffected == 0 {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Extension profile not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "Extension profile deleted"})
+}

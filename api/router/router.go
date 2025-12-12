@@ -88,6 +88,16 @@ func (r *Router) Init() {
 					extensions.Get("/{ext}/status", r.Handler.GetExtensionStatus)
 				}
 
+				// Extension Profiles
+				extProfiles := tenantScoped.Party("/extension-profiles")
+				{
+					extProfiles.Get("/", r.Handler.ListExtensionProfiles)
+					extProfiles.Post("/", r.Handler.CreateExtensionProfile)
+					extProfiles.Get("/{id}", r.Handler.GetExtensionProfile)
+					extProfiles.Put("/{id}", r.Handler.UpdateExtensionProfile)
+					extProfiles.Delete("/{id}", r.Handler.DeleteExtensionProfile)
+				}
+
 				// Devices
 				devices := tenantScoped.Party("/devices")
 				{

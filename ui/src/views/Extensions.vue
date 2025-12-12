@@ -275,7 +275,7 @@ import { ref, computed, onMounted, inject } from 'vue'
 import { Search as SearchIcon, Edit as EditIcon, Trash2 as TrashIcon, X as XIcon, GitMerge as RouteIcon, Phone as PhoneIcon } from 'lucide-vue-next'
 import DataTable from '../components/common/DataTable.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
-import { extensionsAPI } from '@/services/api'
+import { extensionsAPI, extensionProfilesAPI } from '@/services/api'
 
 // Toast notifications
 const toast = inject('toast')
@@ -298,17 +298,29 @@ const columns = [
 
 // Data from API
 const extensions = ref([])
-const profiles = ref([
-  { id: 1, name: 'Standard', color: '#6366f1', extensionCount: 0, permissions: { outbound: true, international: false, recording: true, portal: true, voicemail: true } },
-  { id: 2, name: 'Sales Team', color: '#22c55e', extensionCount: 0, permissions: { outbound: true, international: true, recording: true, portal: true, voicemail: true } },
-  { id: 3, name: 'Support Only', color: '#f59e0b', extensionCount: 0, permissions: { outbound: true, international: false, recording: true, portal: false, voicemail: true } },
-  { id: 4, name: 'Restricted', color: '#ef4444', extensionCount: 0, permissions: { outbound: false, international: false, recording: false, portal: false, voicemail: false } },
-])
+const profiles = ref([])
 
-// Fetch extensions on mount
+// Fetch extensions and profiles on mount
 onMounted(async () => {
-  await fetchExtensions()
+  await Promise.all([fetchExtensions(), fetchProfiles()])
 })
+
+async function fetchProfiles() {
+  try {
+    const response = await extensionProfilesAPI.list()
+    profiles.value = (response.data.data || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      color: p.color,
+      extensionCount: p.extension_count || 0,
+      permissions: p.permissions || {},
+      callHandling: p.call_handling || {},
+      routingOverride: p.routing_override || ''
+    }))
+  } catch (error) {
+    console.error('Failed to load profiles', error)
+  }
+}
 
 async function fetchExtensions() {
   isLoading.value = true
@@ -394,11 +406,8 @@ const editProfile = (profile) => {
 const deleteProfile = async (profile) => {
   if (confirm(`Delete profile "${profile.name}"? Extensions will be unassigned.`)) {
     try {
-      // TODO: Call API to delete profile
-      profiles.value = profiles.value.filter(p => p.id !== profile.id)
-      extensions.value.forEach(e => {
-        if (e.profileId === profile.id) e.profileId = null
-      })
+      await extensionProfilesAPI.delete(profile.id)
+      await fetchProfiles()
       toast?.success(`Profile "${profile.name}" deleted`)
     } catch (error) {
       toast?.error(error.message, 'Failed to delete profile')
@@ -408,20 +417,22 @@ const deleteProfile = async (profile) => {
 
 const saveProfile = async () => {
   try {
+    const payload = {
+      name: profileForm.value.name,
+      color: profileForm.value.color,
+      permissions: profileForm.value.permissions,
+      call_handling: profileForm.value.callHandling,
+      routing_override: profileForm.value.routingOverride
+    }
+    
     if (isEditingProfile.value) {
-      // TODO: Call API to update profile
-      const idx = profiles.value.findIndex(p => p.id === profileForm.value.id)
-      if (idx !== -1) profiles.value[idx] = { ...profileForm.value }
+      await extensionProfilesAPI.update(profileForm.value.id, payload)
       toast?.success('Profile updated')
     } else {
-      // TODO: Call API to create profile
-      profiles.value.push({
-        ...profileForm.value,
-        id: Date.now(),
-        extensionCount: 0
-      })
+      await extensionProfilesAPI.create(payload)
       toast?.success('Profile created')
     }
+    await fetchProfiles()
     showProfileModal.value = false
     resetProfileForm()
   } catch (error) {
@@ -455,8 +466,7 @@ const applyProfile = async () => {
   if (selectedExt.value) {
     try {
       const newProfileId = selectedProfileId.value ? parseInt(selectedProfileId.value) : null
-      // TODO: Call API to update extension profile
-      // await extensionsAPI.update(selectedExt.value.id, { profile_id: newProfileId })
+      await extensionsAPI.update(selectedExt.value.id, { profile_id: newProfileId })
       selectedExt.value.profileId = newProfileId
       toast?.success(`Profile updated for extension ${selectedExt.value.extension}`)
     } catch (error) {

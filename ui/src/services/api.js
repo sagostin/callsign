@@ -109,6 +109,17 @@ export const extensionsAPI = {
 }
 
 // =====================
+// Extension Profiles API
+// =====================
+export const extensionProfilesAPI = {
+    list: () => api.get('/extension-profiles'),
+    get: (id) => api.get(`/extension-profiles/${id}`),
+    create: (data) => api.post('/extension-profiles', data),
+    update: (id, data) => api.put(`/extension-profiles/${id}`, data),
+    delete: (id) => api.delete(`/extension-profiles/${id}`),
+}
+
+// =====================
 // Devices API
 // =====================
 export const devicesAPI = {

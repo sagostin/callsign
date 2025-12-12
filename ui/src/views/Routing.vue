@@ -679,9 +679,6 @@ const loadInboundRoutes = async () => {
 }
 
 // Numbers
-import { formatPhoneNumber } from '../utils/formatters'
-import { numbersAPI } from '../services/api'
-
 const numberSearch = ref('')
 const numberFilter = ref('')
 const showAddNumberModal = ref(false)

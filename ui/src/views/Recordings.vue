@@ -340,13 +340,13 @@ const playAudio = async (row) => {
     currentAudio.value = row
     
     try {
-      // Fetch with auth credentials
+      // Fetch with auth credentials and tenant header
       const token = localStorage.getItem('token')
-      const response = await fetch(`/api/audio-library/${row.id}/stream`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
+      const tenantId = localStorage.getItem('tenantId')
+      const headers = { 'Authorization': `Bearer ${token}` }
+      if (tenantId) headers['X-Tenant-ID'] = tenantId
+      
+      const response = await fetch(`/api/audio-library/${row.id}/stream`, { headers })
       
       if (!response.ok) {
         throw new Error(`Failed to load audio: ${response.status}`)
@@ -408,11 +408,11 @@ const formatTime = (seconds) => {
 const downloadAudio = async (row) => {
   try {
     const token = localStorage.getItem('token')
-    const response = await fetch(`/api/audio-library/${row.id}/stream`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
+    const tenantId = localStorage.getItem('tenantId')
+    const headers = { 'Authorization': `Bearer ${token}` }
+    if (tenantId) headers['X-Tenant-ID'] = tenantId
+    
+    const response = await fetch(`/api/audio-library/${row.id}/stream`, { headers })
     
     if (!response.ok) {
       throw new Error(`Download failed: ${response.status}`)

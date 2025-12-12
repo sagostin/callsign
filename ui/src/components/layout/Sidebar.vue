@@ -243,9 +243,9 @@
 
         <div class="nav-section">
           <div class="nav-header" v-if="!isCollapsed">MEDIA</div>
-          <router-link to="/system/media" class="nav-item" v-tooltip="isCollapsed ? 'System Media' : ''">
-            <VolumeIcon class="nav-icon" />
-            <span class="nav-label">System Media</span>
+          <router-link to="/system/media" class="nav-item" v-tooltip="isCollapsed ? 'Sounds' : ''">
+            <Volume2Icon class="nav-icon" />
+            <span class="nav-label">Sounds</span>
           </router-link>
         </div>
 
