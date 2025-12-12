@@ -60,6 +60,7 @@
       <!-- Portal Links -->
       <div class="portal-links">
         <button 
+          v-if="!auth.permissions.isSystemAdmin()"
           class="portal-btn" 
           :class="{ active: mode === 'user' }"
           @click="$router.push('/')"
@@ -69,13 +70,14 @@
         </button>
         <button 
           class="portal-btn" 
-          :class="{ active: mode === 'admin' }"
-          @click="$router.push('/admin')"
+          :class="{ active: mode === 'admin', disabled: auth.permissions.isSystemAdmin() && !auth.state.currentTenantId }"
+          @click="navigateToTenantAdmin"
           title="Tenant Admin"
         >
           <LayoutDashboardIcon class="portal-icon" />
         </button>
         <button 
+          v-if="auth.permissions.isSystemAdmin()"
           class="portal-btn system" 
           :class="{ active: mode === 'system' }"
           @click="$router.push('/system')"
@@ -196,6 +198,11 @@ const userRole = computed(() => {
 
 const handleContextChange = () => {
   auth.switchTenant(selectedContext.value)
+}
+
+const navigateToTenantAdmin = () => {
+  if (auth.permissions.isSystemAdmin() && !auth.state.currentTenantId) return
+  router.push('/admin')
 }
 
 const showHelp = () => alert('Help & Documentation')

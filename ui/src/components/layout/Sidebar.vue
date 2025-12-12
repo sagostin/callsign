@@ -18,7 +18,7 @@
     <nav class="nav-menu">
       
       <!-- USER PORTAL MENU -->
-      <template v-if="mode === 'user'">
+      <template v-if="mode === 'user' && !auth.permissions.isSystemAdmin()">
         <div class="nav-section">
           <div class="nav-header" v-if="!isCollapsed">COMMUNICATION</div>
           <router-link to="/" class="nav-item" v-tooltip="isCollapsed ? 'Web Phone' : ''">
@@ -203,7 +203,7 @@
 
         <div class="nav-spacer"></div>
         <div class="nav-section bottom">
-          <router-link to="/" class="nav-item portal-link" v-tooltip="isCollapsed ? 'User Portal' : ''">
+          <router-link to="/" class="nav-item portal-link" v-if="!auth.permissions.isSystemAdmin()" v-tooltip="isCollapsed ? 'User Portal' : ''">
             <ArrowLeftIcon class="nav-icon" />
             <span class="nav-label">User Portal</span>
           </router-link>
@@ -302,7 +302,7 @@
         </div>
 
         <div class="nav-spacer"></div>
-        <div class="nav-section bottom">
+        <div class="nav-section bottom" v-if="hasSelectedTenant">
           <router-link to="/admin" class="nav-item portal-link" v-tooltip="isCollapsed ? 'Tenant Admin' : ''">
             <ArrowLeftIcon class="nav-icon" />
             <span class="nav-label">Tenant Admin</span>
@@ -317,6 +317,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAuth } from '../../services/auth'
 import { 
   LayoutDashboard, Phone, GitMerge, Hash, MonitorSmartphone, 
   Users, 
@@ -333,9 +334,15 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuth()
 const emit = defineEmits(['navigated'])
 
 const isCollapsed = ref(false)
+
+// Check if a tenant is actively selected (for System Admins)
+const hasSelectedTenant = computed(() => {
+    return !!localStorage.getItem('tenantId')
+})
 
 router.afterEach(() => {
    emit('navigated')

@@ -7,6 +7,7 @@ const state = reactive({
     user: JSON.parse(localStorage.getItem('user') || 'null'),
     token: localStorage.getItem('token') || null,
     isAuthenticated: !!localStorage.getItem('token'),
+    currentTenantId: localStorage.getItem('tenantId') || null,
     tenants: [],
     isLoading: false,
     error: null,
@@ -75,6 +76,7 @@ function setAuth(token, user) {
     localStorage.setItem('user', JSON.stringify(user))
     if (user.tenant_id) {
         localStorage.setItem('tenantId', user.tenant_id)
+        state.currentTenantId = user.tenant_id
     }
 }
 
@@ -92,6 +94,7 @@ function clearAuth() {
     state.token = null
     state.user = null
     state.isAuthenticated = false
+    state.currentTenantId = null
 
     localStorage.removeItem('token')
     localStorage.removeItem('user')
@@ -166,6 +169,7 @@ async function fetchAvailableTenants() {
 function switchTenant(tenantId) {
     if (tenantId === 'system') {
         localStorage.removeItem('tenantId')
+        state.currentTenantId = null
         // Refresh page or trigger reload to clear headers
         window.location.href = '/system'
         return
@@ -174,6 +178,7 @@ function switchTenant(tenantId) {
     const tenant = state.tenants.find(t => t.id === tenantId)
     if (tenant) {
         localStorage.setItem('tenantId', tenant.id)
+        state.currentTenantId = tenant.id
         // Refresh page to apply new tenant header
         window.location.href = '/admin'
     }
