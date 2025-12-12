@@ -89,9 +89,14 @@
                     </div>
                   </td>
                   <td class="actions-cell">
-                    <button class="btn-icon" @click="playSound(sound)" title="Play">
-                      <PlayIcon v-if="currentlyPlaying !== sound.id" />
-                      <PauseIcon v-else class="playing" />
+                    <button 
+                      class="btn-icon play-btn" 
+                      :class="{ 'is-playing': currentlyPlaying === sound.id }"
+                      @click="togglePlaySound(sound)" 
+                      :title="currentlyPlaying === sound.id ? 'Stop' : 'Play'"
+                    >
+                      <StopCircleIcon v-if="currentlyPlaying === sound.id" class="stop-icon" />
+                      <PlayCircleIcon v-else />
                     </button>
                     <!-- Show revert if override, otherwise show upload for replacement -->
                     <button v-if="sound.isOverride" class="btn-icon" @click="deleteOverride(sound)" title="Revert to System Default">
@@ -178,7 +183,7 @@
 import { ref, computed, onMounted } from 'vue'
 import {
   Upload as UploadIcon, Download as DownloadIcon, ChevronDown as ChevronDownIcon,
-  Play as PlayIcon, Pause as PauseIcon, Edit as EditIcon, Check as CheckIcon, X as XIcon,
+  PlayCircle as PlayCircleIcon, StopCircle as StopCircleIcon, Edit as EditIcon, Check as CheckIcon, X as XIcon,
   Phone, Bell, VolumeX, Volume2, Music, MessageSquare, AlertCircle, Clock
 } from 'lucide-vue-next'
 import { systemAPI, tenantMediaAPI } from '../../services/api'
@@ -189,6 +194,7 @@ const expandedCategories = ref([])
 const showUploadModal = ref(false)
 const showImportModal = ref(false)
 const currentlyPlaying = ref(null)
+const audioPlayer = ref(null)
 const isLoading = ref(false)
 const rawData = ref([]) // The full tree from API
 
@@ -330,11 +336,48 @@ const toggleCategory = (catId) => {
   else expandedCategories.value.splice(idx, 1)
 }
 
-const playSound = (sound) => {
-    // Requires a playback endpoint, not implemented yet.
-    // Ideally we'd have a /system/media/play?path=...
-    console.log('Play not implemented yet for', sound.path)
-    currentlyPlaying.value = currentlyPlaying.value === sound.id ? null : sound.id
+const stopSound = () => {
+  if (audioPlayer.value) {
+    audioPlayer.value.pause()
+    audioPlayer.value.src = ''
+    audioPlayer.value = null
+  }
+  currentlyPlaying.value = null
+}
+
+const togglePlaySound = (sound) => {
+  // If already playing this sound, stop it
+  if (currentlyPlaying.value === sound.id) {
+    stopSound()
+    return
+  }
+  
+  // Stop any currently playing sound
+  stopSound()
+  
+  // Build URL for the sound file
+  const token = localStorage.getItem('token')
+  const baseUrl = '/api/system/media/sounds/stream'
+  const url = `${baseUrl}?path=${encodeURIComponent(sound.path)}&token=${encodeURIComponent(token)}`
+  
+  // Create and play audio
+  audioPlayer.value = new Audio(url)
+  audioPlayer.value.onended = () => {
+    currentlyPlaying.value = null
+  }
+  audioPlayer.value.onerror = (e) => {
+    console.error('Audio playback error:', e)
+    currentlyPlaying.value = null
+  }
+  
+  audioPlayer.value.play()
+    .then(() => {
+      currentlyPlaying.value = sound.id
+    })
+    .catch(err => {
+      console.error('Failed to play:', err)
+      currentlyPlaying.value = null
+    })
 }
 
 const editSound = (sound) => { console.log('Edit', sound.name) }
@@ -487,10 +530,12 @@ onMounted(() => {
 .missing-lang { color: #dc2626; display: flex; align-items: center; gap: 4px; }
 .lang-status svg { width: 12px; height: 12px; }
 .actions-cell { display: flex; gap: 4px; }
-.actions-cell .btn-icon { width: 28px; height: 28px; background: white; border: 1px solid var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-muted); }
-.actions-cell .btn-icon:hover { color: var(--primary-color); border-color: var(--primary-color); }
-.actions-cell .btn-icon svg { width: 14px; height: 14px; }
-.actions-cell .btn-icon .playing { color: var(--primary-color); }
+.actions-cell .btn-icon { width: 32px; height: 32px; background: white; border: 1px solid var(--border-color); border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-muted); transition: all 0.15s ease; }
+.actions-cell .btn-icon:hover { color: var(--primary-color); border-color: var(--primary-color); background: #f0f9ff; }
+.actions-cell .btn-icon svg { width: 18px; height: 18px; }
+.actions-cell .play-btn.is-playing { background: var(--primary-color); border-color: var(--primary-color); color: white; animation: pulse 1.5s infinite; }
+.actions-cell .play-btn .stop-icon { color: white; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 
 .override-badge { 
     font-size: 10px; font-weight: 700; color: #d97706; background: #fef3c7; 

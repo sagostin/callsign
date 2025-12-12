@@ -299,6 +299,10 @@
             <Settings class="nav-icon" />
             <span class="nav-label">Global Settings</span>
           </router-link>
+          <router-link to="/system/security" class="nav-item" v-tooltip="isCollapsed ? 'Security' : ''">
+            <ShieldIcon class="nav-icon" />
+            <span class="nav-label">Security</span>
+          </router-link>
         </div>
 
         <div class="nav-spacer"></div>
@@ -329,7 +333,8 @@ import {
   Menu as MenuIcon, Network as NetworkIcon, ServerCog as ServerCogIcon,
   Terminal as TerminalIcon, Layers as LayersIcon, FileCode as FileCodeIcon,
   Globe as GlobeIcon, Zap as ZapIcon, ToggleLeft as ToggleIcon, PhoneCall as PhoneCallIcon,
-  Download as DownloadIcon, Volume2 as VolumeIcon, FileAudio as FileAudioIcon
+  Download as DownloadIcon, Volume2 as VolumeIcon, FileAudio as FileAudioIcon,
+  Shield as ShieldIcon
 } from 'lucide-vue-next'
 
 const route = useRoute()

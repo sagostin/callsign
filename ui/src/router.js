@@ -161,6 +161,7 @@ const routes = [
       { path: 'messaging', component: () => import('./views/system/MessagingProviders.vue'), name: 'MessagingProviders' },
       { path: 'audit-log', component: () => import('./views/admin/AuditLog.vue'), name: 'SystemAuditLog' },
       { path: 'settings', component: () => import('./views/system/SystemSettings.vue'), name: 'SystemSettings' },
+      { path: 'security', component: () => import('./views/system/SystemSecurity.vue'), name: 'SystemSecurity' },
     ]
   }
 ]

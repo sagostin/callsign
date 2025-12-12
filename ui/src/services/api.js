@@ -441,6 +441,10 @@ export const systemAPI = {
     uploadMusic: (formData) => api.post('/system/media/music', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
+
+    // Security - Banned IPs
+    listBannedIPs: (params) => api.get('/system/security/banned-ips', { params }),
+    unbanIP: (ip) => api.delete(`/system/security/banned-ips/${ip}`),
 }
 
 // =====================
