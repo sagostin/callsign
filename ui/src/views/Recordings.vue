@@ -368,9 +368,16 @@ const togglePlay = () => {
 }
 
 const stopAudio = () => {
+  if (audioObj.value) {
+    audioObj.value.pause()
+    audioObj.value.currentTime = 0
+    audioObj.value = null
+  }
   currentAudio.value = null
   playing.value = false
   progress.value = 0
+  currentTime.value = 0
+  duration.value = 0
 }
 
 const formatTime = (seconds) => {
@@ -380,8 +387,14 @@ const formatTime = (seconds) => {
 }
 
 const downloadAudio = (row) => {
-  // same streaming issue
-  alert(`Downloading ${row.filename}...`)
+  // Create a download link using the stream endpoint
+  const url = `/api/audio-library/${row.id}/stream`
+  const link = document.createElement('a')
+  link.href = url
+  link.download = row.filename || `${row.name}.wav`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
 }
 
 // Helper functions

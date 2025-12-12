@@ -751,63 +751,6 @@ const saveInboundRoute = async () => {
   }
 }
 
-// Outbound Routes
-const showOutboundModal = ref(false)
-const editingOutbound = ref(false)
-const outboundForm = ref({ name: '', pattern: '', strip: 0, prepend: '', gateway: '', international: false, continue: true })
-
-const outboundRoutes = ref([])
-
-const loadOutboundRoutes = async () => {
-  try {
-    const response = await routingAPI.listOutbound()
-    outboundRoutes.value = response.data.data || []
-  } catch (e) {
-    console.error('Failed to load outbound routes', e)
-  }
-}
-
-const editOutboundRoute = (route) => {
-  outboundForm.value = { ...route }
-  editingOutbound.value = true
-  showOutboundModal.value = true
-}
-
-const deleteOutboundRoute = async (route) => {
-  if (confirm(`Delete outbound route "${route.name}"?`)) {
-    try {
-      await dialPlansAPI.delete(route.id)
-      await loadOutboundRoutes()
-    } catch (e) {
-      console.error(e)
-      alert('Failed to delete route')
-    }
-  }
-}
-
-const saveOutboundRoute = async () => {
-  try {
-    if (editingOutbound.value) {
-      await dialPlansAPI.update(outboundForm.value.id, outboundForm.value)
-    } else {
-      await routingAPI.createOutbound(outboundForm.value)
-    }
-    await loadOutboundRoutes()
-    showOutboundModal.value = false
-    editingOutbound.value = false
-    outboundForm.value = { name: '', pattern: '', strip: 0, prepend: '', gateway: '', international: false, continue: true }
-  } catch (e) {
-    console.error(e)
-    alert('Failed to save route')
-  }
-}
-
-// Initial Load
-onMounted(() => {
-  loadInboundRoutes()
-  loadOutboundRoutes()
-})
-
 // Settings
 const settings = ref({
   region: 'nanp',
