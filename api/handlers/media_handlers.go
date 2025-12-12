@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"callsign/middleware"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -158,6 +160,26 @@ func buildFileTree(root, currentPath string) (*FileNode, error) {
 	return node, nil
 }
 
+// generateUniqueFilename checks if a file exists and adds a random suffix if needed
+func generateUniqueFilename(dir, filename string) string {
+	ext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
+
+	// Check if original filename exists
+	origPath := filepath.Join(dir, filename)
+	if _, err := os.Stat(origPath); os.IsNotExist(err) {
+		return filename // Original name is available
+	}
+
+	// Generate a short random suffix
+	b := make([]byte, 4)
+	rand.Read(b)
+	suffix := hex.EncodeToString(b)
+
+	newName := fmt.Sprintf("%s_%s%s", base, suffix, ext)
+	return newName
+}
+
 // UploadSystemSound handles uploading a sound file to a specific path
 func (h *Handler) UploadSystemSound(ctx iris.Context) {
 	// Path should be relative to /usr/share/freeswitch/sounds (e.g., "en/us/callie/ivr")
@@ -200,7 +222,9 @@ func (h *Handler) UploadSystemSound(ctx iris.Context) {
 		return
 	}
 
-	dstPath := filepath.Join(fullPath, header.Filename)
+	// Generate unique filename if one already exists
+	finalFilename := generateUniqueFilename(fullPath, header.Filename)
+	dstPath := filepath.Join(fullPath, finalFilename)
 	out, err := os.Create(dstPath)
 	if err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
@@ -216,7 +240,7 @@ func (h *Handler) UploadSystemSound(ctx iris.Context) {
 	}
 
 	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": filepath.Join(targetPath, header.Filename)})
+	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": filepath.Join(targetPath, finalFilename), "filename": finalFilename})
 }
 
 // UploadSystemMusic handles uploading a music file to a specific rate directory
@@ -237,7 +261,6 @@ func (h *Handler) UploadSystemMusic(ctx iris.Context) {
 	}
 	defer file.Close()
 
-	// Validate extension
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".wav" && ext != ".mp3" && ext != ".ogg" {
 		ctx.StatusCode(http.StatusBadRequest)
@@ -245,7 +268,19 @@ func (h *Handler) UploadSystemMusic(ctx iris.Context) {
 		return
 	}
 
+	// Optional folder/genre parameter
+	folder := ctx.FormValue("folder")
+	if folder != "" && strings.Contains(folder, "..") {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid folder name"})
+		return
+	}
+
+	// Build path: /music/{rate} or /music/{rate}/{folder}
 	fullPath := filepath.Join("/usr/share/freeswitch/sounds/music", rate)
+	if folder != "" {
+		fullPath = filepath.Join(fullPath, folder)
+	}
 
 	// Ensure directory exists
 	if err := os.MkdirAll(fullPath, 0755); err != nil {
@@ -254,7 +289,9 @@ func (h *Handler) UploadSystemMusic(ctx iris.Context) {
 		return
 	}
 
-	dstPath := filepath.Join(fullPath, header.Filename)
+	// Generate unique filename if one already exists
+	finalFilename := generateUniqueFilename(fullPath, header.Filename)
+	dstPath := filepath.Join(fullPath, finalFilename)
 	out, err := os.Create(dstPath)
 	if err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
@@ -269,8 +306,13 @@ func (h *Handler) UploadSystemMusic(ctx iris.Context) {
 		return
 	}
 
+	resultPath := filepath.Join(rate, finalFilename)
+	if folder != "" {
+		resultPath = filepath.Join(rate, folder, finalFilename)
+	}
+
 	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": filepath.Join(rate, header.Filename)})
+	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": resultPath, "filename": finalFilename})
 }
 
 // ListTenantSounds merges system sounds with tenant overrides
@@ -404,7 +446,9 @@ func (h *Handler) UploadTenantSound(ctx iris.Context) {
 		return
 	}
 
-	dstPath := filepath.Join(fullDirPath, header.Filename)
+	// Generate unique filename if one already exists
+	finalFilename := generateUniqueFilename(fullDirPath, header.Filename)
+	dstPath := filepath.Join(fullDirPath, finalFilename)
 	out, err := os.Create(dstPath)
 	if err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
@@ -420,7 +464,7 @@ func (h *Handler) UploadTenantSound(ctx iris.Context) {
 	}
 
 	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": filepath.Join(targetPath, header.Filename), "is_override": true})
+	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": filepath.Join(targetPath, finalFilename), "filename": finalFilename, "is_override": true})
 }
 
 // DeleteTenantSound removes a tenant sound/override
@@ -534,9 +578,20 @@ func (h *Handler) UploadTenantMusic(ctx iris.Context) {
 		return
 	}
 
-	// Save to /usr/share/freeswitch/sounds/music/tenants/{id}/{rate}
+	// Optional folder/genre parameter
+	folder := ctx.FormValue("folder")
+	if folder != "" && strings.Contains(folder, "..") {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid folder name"})
+		return
+	}
+
+	// Save to /usr/share/freeswitch/sounds/music/tenants/{id}/{rate} or {rate}/{folder}
 	baseDir := fmt.Sprintf("/usr/share/freeswitch/sounds/music/tenants/%d", tenantID)
 	fullRatePath := filepath.Join(baseDir, rate)
+	if folder != "" {
+		fullRatePath = filepath.Join(fullRatePath, folder)
+	}
 
 	if err := os.MkdirAll(fullRatePath, 0755); err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
@@ -544,7 +599,9 @@ func (h *Handler) UploadTenantMusic(ctx iris.Context) {
 		return
 	}
 
-	dstPath := filepath.Join(fullRatePath, header.Filename)
+	// Generate unique filename if one already exists
+	finalFilename := generateUniqueFilename(fullRatePath, header.Filename)
+	dstPath := filepath.Join(fullRatePath, finalFilename)
 	out, err := os.Create(dstPath)
 	if err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
@@ -559,8 +616,13 @@ func (h *Handler) UploadTenantMusic(ctx iris.Context) {
 		return
 	}
 
+	resultPath := filepath.Join(rate, finalFilename)
+	if folder != "" {
+		resultPath = filepath.Join(rate, folder, finalFilename)
+	}
+
 	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": filepath.Join(rate, header.Filename), "is_override": true})
+	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": resultPath, "filename": finalFilename, "is_override": true})
 }
 
 // DeleteTenantMusic removes a tenant music file
