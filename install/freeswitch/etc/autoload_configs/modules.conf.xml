@@ -76,6 +76,7 @@
 		<load module="mod_shout"/>
 
 		<!-- XML Interfaces -->
+		<load module="mod_xml_curl"/>
 		<load module="mod_xml_cdr"/>
 
 	</modules>

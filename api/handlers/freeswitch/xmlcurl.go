@@ -92,16 +92,20 @@ func (h *FSHandler) HandleXMLCurl(ctx iris.Context) {
 		return
 	}
 
-	// Log the request
+	// Log the request with all relevant fields
 	log.WithFields(log.Fields{
-		"section":   req.Section,
-		"key_value": req.KeyValue,
-		"user":      req.User,
-		"domain":    req.Domain,
-		"action":    req.Action,
-		"context":   req.Context,
-		"dest":      req.DestinationNumber,
-		"hostname":  req.FreeSwitchHostname,
+		"section":     req.Section,
+		"tag_name":    req.TagName,
+		"key_name":    req.KeyName,
+		"key_value":   req.KeyValue,
+		"user":        req.User,
+		"domain":      req.Domain,
+		"action":      req.Action,
+		"purpose":     req.Purpose,
+		"context":     req.Context,
+		"dest":        req.DestinationNumber,
+		"hostname":    req.FreeSwitchHostname,
+		"sip_profile": req.SIPProfile,
 	}).Debug("XML CURL request received")
 
 	// Get hostname (use FreeSWITCH-Hostname or hostname field)
