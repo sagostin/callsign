@@ -1133,3 +1133,90 @@ func (h *Handler) ListAllNumbers(ctx iris.Context) {
 
 	ctx.JSON(iris.Map{"data": numbers})
 }
+
+// =====================
+// Security - Banned IPs
+// =====================
+
+type BannedIPRequest struct {
+	IP       string `json:"ip"`
+	Jail     string `json:"jail"`
+	Failures int    `json:"failures"`
+	BannedAt string `json:"banned_at"`
+	Action   string `json:"action"` // "ban" or "unban"
+}
+
+// ReportBannedIP receives reports from fail2ban when IPs are banned/unbanned
+func (h *Handler) ReportBannedIP(ctx iris.Context) {
+	var req BannedIPRequest
+	if err := ctx.ReadJSON(&req); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	if req.Action == "unban" {
+		// Mark IP as unbanned
+		h.DB.Model(&models.BannedIP{}).
+			Where("ip = ? AND status = ?", req.IP, "banned").
+			Update("status", "unbanned")
+		ctx.JSON(iris.Map{"message": "IP unbanned", "ip": req.IP})
+		return
+	}
+
+	// Create new ban record
+	bannedIP := models.BannedIP{
+		IP:       req.IP,
+		Source:   req.Jail,
+		Reason:   "SIP brute force attempt",
+		Failures: req.Failures,
+		Status:   "banned",
+	}
+
+	if err := h.DB.Create(&bannedIP).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to record ban"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(iris.Map{"message": "IP banned", "data": bannedIP})
+}
+
+// ListBannedIPs returns all banned IPs
+func (h *Handler) ListBannedIPs(ctx iris.Context) {
+	var bannedIPs []models.BannedIP
+
+	query := h.DB.Order("banned_at DESC")
+
+	// Filter by status
+	status := ctx.URLParamDefault("status", "banned")
+	if status != "all" {
+		query = query.Where("status = ?", status)
+	}
+
+	if err := query.Find(&bannedIPs).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to retrieve banned IPs"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": bannedIPs})
+}
+
+// UnbanIP manually unbans an IP address
+func (h *Handler) UnbanIP(ctx iris.Context) {
+	ip := ctx.Params().Get("ip")
+
+	result := h.DB.Model(&models.BannedIP{}).
+		Where("ip = ? AND status = ?", ip, "banned").
+		Update("status", "unbanned")
+
+	if result.RowsAffected == 0 {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "IP not found or already unbanned"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "IP unbanned", "ip": ip})
+}

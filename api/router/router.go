@@ -482,6 +482,14 @@ func (r *Router) Init() {
 				system.Get("/status", r.Handler.GetSystemStatus)
 				system.Get("/stats", r.Handler.GetSystemStats)
 
+				// Security - Banned IPs
+				security := system.Party("/security")
+				{
+					security.Get("/banned-ips", r.Handler.ListBannedIPs)
+					security.Post("/banned-ips", r.Handler.ReportBannedIP)
+					security.Delete("/banned-ips/{ip}", r.Handler.UnbanIP)
+				}
+
 			}
 
 			// User portal routes

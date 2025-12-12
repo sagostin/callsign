@@ -5,8 +5,31 @@
       <p class="text-muted text-sm">Manage global inbound/outbound routing and dialplan logic.</p>
     </div>
     <div class="header-actions">
+      <button class="btn-secondary" @click="recalculateOrder" v-if="activeTab === 'inbound' || activeTab === 'outbound'">
+        <RefreshCwIcon class="btn-icon" /> Recalculate Order
+      </button>
       <button class="btn-primary" v-if="activeTab === 'inbound'" @click="showInboundModal = true">+ Global Inbound</button>
       <button class="btn-primary" v-if="activeTab === 'outbound'" @click="showOutboundModal = true">+ Global Outbound</button>
+    </div>
+  </div>
+
+  <!-- Stats Row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-value">{{ allNumbers.length }}</div>
+      <div class="stat-label">Total Numbers</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">{{ inboundRoutes.length }}</div>
+      <div class="stat-label">Inbound Routes</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">{{ outboundRoutes.length }}</div>
+      <div class="stat-label">Outbound Routes</div>
+    </div>
+    <div class="stat-card accent">
+      <div class="stat-value">{{ enabledRoutesCount }}</div>
+      <div class="stat-label">Active Routes</div>
     </div>
   </div>
 
@@ -333,7 +356,7 @@ import { ref, computed, onMounted } from 'vue'
 import { 
   Search as SearchIcon, Info as InfoIcon, GripVertical as GripVerticalIcon,
   ArrowRight as ArrowRightIcon, Edit as EditIcon,
-  Trash2 as TrashIcon, X as XIcon
+  Trash2 as TrashIcon, X as XIcon, RefreshCw as RefreshCwIcon
 } from 'lucide-vue-next'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
@@ -403,6 +426,39 @@ const filteredNumbers = computed(() => {
     return numStr.includes(numberSearch.value)
   })
 })
+
+// Computed: Total enabled routes
+const enabledRoutesCount = computed(() => {
+  const inEnabled = inboundRoutes.value.filter(r => r.enabled).length
+  const outEnabled = outboundRoutes.value.filter(r => r.enabled).length
+  return inEnabled + outEnabled
+})
+
+// Auto-recalculate dialplan order based on specificity
+const recalculateOrder = async () => {
+  // Sort by specificity: exact matches first, then prefixes, then wildcards
+  const sortBySpecificity = (routes) => {
+    return [...routes].sort((a, b) => {
+      const aPattern = a.conditions?.[0]?.value || ''
+      const bPattern = b.conditions?.[0]?.value || ''
+      
+      // Exact patterns (no wildcards) first
+      const aIsExact = !aPattern.includes('*') && !aPattern.includes('.')
+      const bIsExact = !bPattern.includes('*') && !bPattern.includes('.')
+      if (aIsExact && !bIsExact) return -1
+      if (!aIsExact && bIsExact) return 1
+      
+      // Longer patterns = more specific
+      return bPattern.length - aPattern.length
+    })
+  }
+  
+  inboundRoutes.value = sortBySpecificity(inboundRoutes.value)
+  outboundRoutes.value = sortBySpecificity(outboundRoutes.value)
+  
+  // TODO: Save new order to backend
+  alert('Route order recalculated by specificity! Don\'t forget to save.')
+}
 
 const loadAllNumbers = async () => {
   try {
@@ -707,4 +763,58 @@ label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var
 .condition-row .input-field, .action-row .input-field { flex: 1; }
 
 .form-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+
+/* Stats Row */
+.stats-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.stat-card {
+  flex: 1;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+.stat-card.accent {
+  border-color: var(--primary-color);
+  background: linear-gradient(135deg, #f8faff 0%, #eef4ff 100%);
+}
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+.btn-secondary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: white;
+  border: 1px solid var(--border-color);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn-secondary:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+.btn-icon { width: 14px; height: 14px; }
+
+@media (max-width: 768px) {
+  .stats-row { flex-wrap: wrap; }
+  .stat-card { min-width: 140px; }
+  .view-header { flex-direction: column; gap: 12px; align-items: flex-start; }
+  .header-actions { width: 100%; flex-wrap: wrap; }
+}
 </style>
