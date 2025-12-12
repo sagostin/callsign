@@ -40,6 +40,12 @@ type Tenant struct {
 	SSLDomain    string `json:"ssl_domain"`
 	SSLAutoRenew bool   `json:"ssl_auto_renew" gorm:"default:true"`
 
+	// Provisioning settings
+	// URL pattern: /provision/{tenant_uuid}/{provisioning_secret}/{mac}.cfg
+	ProvisioningSecret  string `json:"provisioning_secret"`                      // Secret token in URL path
+	ProvisioningEnabled bool   `json:"provisioning_enabled" gorm:"default:true"` // Enable/disable provisioning
+	ProvisioningPrefix  string `json:"provisioning_prefix" gorm:"default:'d_'"`  // Device registration prefix
+
 	// Settings stored as JSON
 	Settings string `json:"settings" gorm:"type:jsonb;default:'{}'"`
 

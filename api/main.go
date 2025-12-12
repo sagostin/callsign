@@ -76,6 +76,7 @@ func main() {
 	r := router.NewRouter(db, cfg)
 	r.Init()
 	r.Handler.SetESLManager(eslManager)
+	r.Handler.SetLogManager(logManager)
 
 	// Graceful shutdown handling
 	quit := make(chan os.Signal, 1)

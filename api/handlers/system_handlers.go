@@ -1220,3 +1220,297 @@ func (h *Handler) UnbanIP(ctx iris.Context) {
 
 	ctx.JSON(iris.Map{"message": "IP unbanned", "ip": ip})
 }
+
+// =====================
+// System Device Templates
+// =====================
+
+// ListSystemDeviceTemplates returns all system (global) device templates
+func (h *Handler) ListSystemDeviceTemplates(ctx iris.Context) {
+	var templates []models.DeviceTemplate
+
+	query := h.DB.Where("tenant_id IS NULL")
+
+	// Filter by manufacturer
+	if manufacturer := ctx.URLParam("manufacturer"); manufacturer != "" {
+		query = query.Where("manufacturer = ?", manufacturer)
+	}
+
+	query.Order("manufacturer, model, name").Find(&templates)
+
+	// Add device counts
+	for i := range templates {
+		h.DB.Model(&models.Device{}).Where("template_id = ?", templates[i].ID).Count(&templates[i].DeviceCount)
+	}
+
+	ctx.JSON(iris.Map{"data": templates})
+}
+
+// CreateSystemDeviceTemplate creates a new system template
+func (h *Handler) CreateSystemDeviceTemplate(ctx iris.Context) {
+	var tmpl models.DeviceTemplate
+	if err := ctx.ReadJSON(&tmpl); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request body"})
+		return
+	}
+
+	// System templates have no tenant
+	tmpl.TenantID = nil
+	tmpl.IsSystem = true
+
+	if err := h.DB.Create(&tmpl).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create template"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(iris.Map{"data": tmpl, "message": "System template created"})
+}
+
+// GetSystemDeviceTemplate returns a single system template
+func (h *Handler) GetSystemDeviceTemplate(ctx iris.Context) {
+	id := ctx.Params().Get("id")
+
+	var tmpl models.DeviceTemplate
+	if err := h.DB.Where("id = ? AND tenant_id IS NULL", id).
+		Preload("Firmware").
+		First(&tmpl).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Template not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": tmpl})
+}
+
+// UpdateSystemDeviceTemplate updates a system template
+func (h *Handler) UpdateSystemDeviceTemplate(ctx iris.Context) {
+	id := ctx.Params().Get("id")
+
+	var tmpl models.DeviceTemplate
+	if err := h.DB.Where("id = ? AND tenant_id IS NULL", id).First(&tmpl).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Template not found"})
+		return
+	}
+
+	var input models.DeviceTemplate
+	if err := ctx.ReadJSON(&input); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request body"})
+		return
+	}
+
+	updates := map[string]interface{}{
+		"name":            input.Name,
+		"description":     input.Description,
+		"manufacturer":    input.Manufacturer,
+		"model":           input.Model,
+		"family":          input.Family,
+		"config_template": input.ConfigTemplate,
+		"config_type":     input.ConfigType,
+		"firmware_id":     input.FirmwareID,
+		"enabled":         input.Enabled,
+	}
+
+	h.DB.Model(&tmpl).Updates(updates)
+
+	ctx.JSON(iris.Map{"data": tmpl, "message": "Template updated"})
+}
+
+// DeleteSystemDeviceTemplate deletes a system template
+func (h *Handler) DeleteSystemDeviceTemplate(ctx iris.Context) {
+	id := ctx.Params().Get("id")
+
+	// Check if any devices are using this template
+	var count int64
+	h.DB.Model(&models.Device{}).Where("template_id = ?", id).Count(&count)
+	if count > 0 {
+		ctx.StatusCode(http.StatusConflict)
+		ctx.JSON(iris.Map{"error": "Template is in use by devices", "device_count": count})
+		return
+	}
+
+	result := h.DB.Where("id = ? AND tenant_id IS NULL", id).Delete(&models.DeviceTemplate{})
+	if result.RowsAffected == 0 {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Template not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "Template deleted"})
+}
+
+// =====================
+// Firmware Management
+// =====================
+
+// ListFirmware returns all firmware files
+func (h *Handler) ListFirmware(ctx iris.Context) {
+	var firmware []models.Firmware
+
+	query := h.DB.Where("enabled = ?", true)
+
+	// Filter by manufacturer
+	if manufacturer := ctx.URLParam("manufacturer"); manufacturer != "" {
+		query = query.Where("manufacturer = ?", manufacturer)
+	}
+
+	// Filter by model/family
+	if model := ctx.URLParam("model"); model != "" {
+		query = query.Where("model = ? OR family = ?", model, model)
+	}
+
+	query.Order("manufacturer, model, version DESC").Find(&firmware)
+
+	ctx.JSON(iris.Map{"data": firmware})
+}
+
+// CreateFirmware creates a new firmware entry
+func (h *Handler) CreateFirmware(ctx iris.Context) {
+	var fw models.Firmware
+	if err := ctx.ReadJSON(&fw); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request body"})
+		return
+	}
+
+	if err := h.DB.Create(&fw).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create firmware entry"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(iris.Map{"data": fw, "message": "Firmware created"})
+}
+
+// GetFirmware returns a single firmware entry
+func (h *Handler) GetFirmware(ctx iris.Context) {
+	id := ctx.Params().Get("id")
+
+	var fw models.Firmware
+	if err := h.DB.First(&fw, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Firmware not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": fw})
+}
+
+// UpdateFirmware updates a firmware entry
+func (h *Handler) UpdateFirmware(ctx iris.Context) {
+	id := ctx.Params().Get("id")
+
+	var fw models.Firmware
+	if err := h.DB.First(&fw, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Firmware not found"})
+		return
+	}
+
+	var input models.Firmware
+	if err := ctx.ReadJSON(&input); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request body"})
+		return
+	}
+
+	updates := map[string]interface{}{
+		"manufacturer":  input.Manufacturer,
+		"model":         input.Model,
+		"family":        input.Family,
+		"version":       input.Version,
+		"release_date":  input.ReleaseDate,
+		"release_notes": input.ReleaseNotes,
+		"is_default":    input.IsDefault,
+		"enabled":       input.Enabled,
+	}
+
+	h.DB.Model(&fw).Updates(updates)
+
+	ctx.JSON(iris.Map{"data": fw, "message": "Firmware updated"})
+}
+
+// DeleteFirmware deletes a firmware entry
+func (h *Handler) DeleteFirmware(ctx iris.Context) {
+	id := ctx.Params().Get("id")
+
+	// Check if any templates are using this firmware
+	var count int64
+	h.DB.Model(&models.DeviceTemplate{}).Where("firmware_id = ?", id).Count(&count)
+	if count > 0 {
+		ctx.StatusCode(http.StatusConflict)
+		ctx.JSON(iris.Map{"error": "Firmware is referenced by templates", "template_count": count})
+		return
+	}
+
+	result := h.DB.Delete(&models.Firmware{}, id)
+	if result.RowsAffected == 0 {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Firmware not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "Firmware deleted"})
+}
+
+// SetDefaultFirmware sets a firmware as the default for its model
+func (h *Handler) SetDefaultFirmware(ctx iris.Context) {
+	id := ctx.Params().Get("id")
+
+	var fw models.Firmware
+	if err := h.DB.First(&fw, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Firmware not found"})
+		return
+	}
+
+	// Clear default flag for same manufacturer/model
+	h.DB.Model(&models.Firmware{}).
+		Where("manufacturer = ? AND (model = ? OR family = ?)", fw.Manufacturer, fw.Model, fw.Family).
+		Update("is_default", false)
+
+	// Set this one as default
+	h.DB.Model(&fw).Update("is_default", true)
+
+	ctx.JSON(iris.Map{"message": "Firmware set as default"})
+}
+
+// UploadFirmware handles firmware file upload
+func (h *Handler) UploadFirmware(ctx iris.Context) {
+	// Get firmware ID
+	id := ctx.Params().Get("id")
+
+	var fw models.Firmware
+	if err := h.DB.First(&fw, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Firmware not found"})
+		return
+	}
+
+	// Get file
+	file, header, err := ctx.FormFile("file")
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "File is required"})
+		return
+	}
+	defer file.Close()
+
+	// Save file
+	firmwarePath := "/usr/share/freeswitch/firmware/" + fw.Manufacturer + "/" + header.Filename
+	// TODO: Implement file save with proper directory creation
+
+	// Update firmware record
+	h.DB.Model(&fw).Updates(map[string]interface{}{
+		"file_path": firmwarePath,
+		"file_name": header.Filename,
+		"file_size": header.Size,
+	})
+
+	ctx.JSON(iris.Map{"message": "Firmware file uploaded", "path": firmwarePath})
+}

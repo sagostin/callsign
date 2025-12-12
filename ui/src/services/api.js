@@ -124,18 +124,49 @@ export const extensionProfilesAPI = {
 // =====================
 export const devicesAPI = {
     list: (params) => api.get('/devices', { params }),
-    get: (mac) => api.get(`/devices/${mac}`),
+    get: (id) => api.get(`/devices/${id}`),
     create: (data) => api.post('/devices', data),
-    update: (mac, data) => api.put(`/devices/${mac}`, data),
-    delete: (mac) => api.delete(`/devices/${mac}`),
+    update: (id, data) => api.put(`/devices/${id}`, data),
+    delete: (id) => api.delete(`/devices/${id}`),
+
+    // Device actions
+    reprovision: (id) => api.post(`/devices/${id}/reprovision`),
+    assignUser: (id, userId) => api.post(`/devices/${id}/assign-user`, { user_id: userId }),
+    assignProfile: (id, profileId) => api.post(`/devices/${id}/assign-profile`, { profile_id: profileId }),
+
+    // Lines
+    getLines: (id) => api.get(`/devices/${id}/lines`),
+    updateLines: (id, lines) => api.put(`/devices/${id}/lines`, lines),
 
     // Call control
-    hangup: (mac) => api.post(`/devices/${mac}/hangup`),
-    transfer: (mac, destination, type = 'blind') =>
-        api.post(`/devices/${mac}/transfer`, { destination, type }),
-    hold: (mac, hold = true) => api.post(`/devices/${mac}/hold`, { hold }),
-    dial: (mac, number) => api.post(`/devices/${mac}/dial`, { number }),
-    callStatus: (mac) => api.get(`/devices/${mac}/call-status`),
+    hangup: (id) => api.post(`/devices/${id}/hangup`),
+    transfer: (id, destination, type = 'blind') =>
+        api.post(`/devices/${id}/transfer`, { destination, type }),
+    hold: (id, hold = true) => api.post(`/devices/${id}/hold`, { hold }),
+    dial: (id, number) => api.post(`/devices/${id}/dial`, { number }),
+    callStatus: (id) => api.get(`/devices/${id}/call-status`),
+}
+
+// =====================
+// Device Profiles API (tenant-level)
+// =====================
+export const deviceProfilesAPI = {
+    list: (params) => api.get('/device-profiles', { params }),
+    get: (id) => api.get(`/device-profiles/${id}`),
+    create: (data) => api.post('/device-profiles', data),
+    update: (id, data) => api.put(`/device-profiles/${id}`, data),
+    delete: (id) => api.delete(`/device-profiles/${id}`),
+}
+
+// =====================
+// Device Templates API (tenant-level, includes system templates)
+// =====================
+export const deviceTemplatesAPI = {
+    list: (params) => api.get('/device-templates', { params }),
+    get: (id) => api.get(`/device-templates/${id}`),
+    create: (data) => api.post('/device-templates', data),
+    update: (id, data) => api.put(`/device-templates/${id}`, data),
+    delete: (id) => api.delete(`/device-templates/${id}`),
 }
 
 // =====================
@@ -445,6 +476,24 @@ export const systemAPI = {
     // Security - Banned IPs
     listBannedIPs: (params) => api.get('/system/security/banned-ips', { params }),
     unbanIP: (ip) => api.delete(`/system/security/banned-ips/${ip}`),
+
+    // Device Templates (system-level master templates)
+    listDeviceTemplates: (params) => api.get('/system/device-templates', { params }),
+    getDeviceTemplate: (id) => api.get(`/system/device-templates/${id}`),
+    createDeviceTemplate: (data) => api.post('/system/device-templates', data),
+    updateDeviceTemplate: (id, data) => api.put(`/system/device-templates/${id}`, data),
+    deleteDeviceTemplate: (id) => api.delete(`/system/device-templates/${id}`),
+
+    // Firmware Management
+    listFirmware: (params) => api.get('/system/firmware', { params }),
+    getFirmware: (id) => api.get(`/system/firmware/${id}`),
+    createFirmware: (data) => api.post('/system/firmware', data),
+    updateFirmware: (id, data) => api.put(`/system/firmware/${id}`, data),
+    deleteFirmware: (id) => api.delete(`/system/firmware/${id}`),
+    uploadFirmwareFile: (id, formData) => api.post(`/system/firmware/${id}/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    setDefaultFirmware: (id) => api.post(`/system/firmware/${id}/set-default`),
 }
 
 // =====================

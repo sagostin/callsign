@@ -60,6 +60,13 @@ func (r *Router) Init() {
 		// Public WebSocket routes (auth handled inside handler via first message)
 		api.Get("/system/console", r.Handler.FreeSwitchConsole)
 
+		// Device provisioning (public, authenticated via tenant secret in URL)
+		// URL format: /provision/{tenant_uuid}/{secret}/{mac}.cfg
+		provision := api.Party("/provision")
+		{
+			provision.Get("/{tenant}/{secret}/{mac}", r.Handler.GetDeviceConfigSecure)
+		}
+
 		// Protected routes (require authentication)
 		protected := api.Party("")
 		protected.Use(r.Auth.RequireAuth())
@@ -103,9 +110,30 @@ func (r *Router) Init() {
 				{
 					devices.Get("/", r.Handler.ListDevices)
 					devices.Post("/", r.Handler.CreateDevice)
-					devices.Get("/{mac}", r.Handler.GetDevice)
-					devices.Put("/{mac}", r.Handler.UpdateDevice)
-					devices.Delete("/{mac}", r.Handler.DeleteDevice)
+					devices.Get("/{id}", r.Handler.GetDevice)
+					devices.Put("/{id}", r.Handler.UpdateDevice)
+					devices.Delete("/{id}", r.Handler.DeleteDevice)
+					devices.Post("/{id}/assign-user", r.Handler.AssignDeviceToUser)
+					devices.Post("/{id}/assign-profile", r.Handler.AssignDeviceToProfile)
+					devices.Post("/{id}/reprovision", r.Handler.ReprovisionDevice)
+					devices.Put("/{id}/lines", r.Handler.UpdateDeviceLines)
+				}
+
+				// Device Profiles (tenant-level device grouping)
+				deviceProfiles := tenantScoped.Party("/device-profiles")
+				{
+					deviceProfiles.Get("/", r.Handler.ListDeviceProfiles)
+					deviceProfiles.Post("/", r.Handler.CreateDeviceProfile)
+					deviceProfiles.Get("/{id}", r.Handler.GetDeviceProfile)
+					deviceProfiles.Put("/{id}", r.Handler.UpdateDeviceProfile)
+					deviceProfiles.Delete("/{id}", r.Handler.DeleteDeviceProfile)
+				}
+
+				// Device Templates (tenant-level, includes system templates)
+				deviceTemplates := tenantScoped.Party("/device-templates")
+				{
+					deviceTemplates.Get("/", r.Handler.ListDeviceTemplates)
+					deviceTemplates.Post("/", r.Handler.CreateDeviceTemplate)
 				}
 
 				// Voicemail
@@ -488,6 +516,28 @@ func (r *Router) Init() {
 					security.Get("/banned-ips", r.Handler.ListBannedIPs)
 					security.Post("/banned-ips", r.Handler.ReportBannedIP)
 					security.Delete("/banned-ips/{ip}", r.Handler.UnbanIP)
+				}
+
+				// Device Templates (system-level master templates)
+				deviceTemplates := system.Party("/device-templates")
+				{
+					deviceTemplates.Get("/", r.Handler.ListSystemDeviceTemplates)
+					deviceTemplates.Post("/", r.Handler.CreateSystemDeviceTemplate)
+					deviceTemplates.Get("/{id}", r.Handler.GetSystemDeviceTemplate)
+					deviceTemplates.Put("/{id}", r.Handler.UpdateSystemDeviceTemplate)
+					deviceTemplates.Delete("/{id}", r.Handler.DeleteSystemDeviceTemplate)
+				}
+
+				// Firmware Management
+				firmware := system.Party("/firmware")
+				{
+					firmware.Get("/", r.Handler.ListFirmware)
+					firmware.Post("/", r.Handler.CreateFirmware)
+					firmware.Get("/{id}", r.Handler.GetFirmware)
+					firmware.Put("/{id}", r.Handler.UpdateFirmware)
+					firmware.Delete("/{id}", r.Handler.DeleteFirmware)
+					firmware.Post("/{id}/upload", r.Handler.UploadFirmware)
+					firmware.Post("/{id}/set-default", r.Handler.SetDefaultFirmware)
 				}
 
 			}

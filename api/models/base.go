@@ -46,6 +46,7 @@ func AutoMigrate(db *gorm.DB) error {
 		// Extension/Directory models
 		&Extension{},
 		&ExtensionSetting{},
+		&ExtensionProfile{},
 
 		// SIP/Sofia models
 		&SIPProfile{},
@@ -123,6 +124,16 @@ func AutoMigrate(db *gorm.DB) error {
 		// Provisioning
 		&ProvisioningTemplate{},
 		&ProvisioningVariable{},
+
+		// Device Management
+		&Device{},
+		&DeviceLine{},
+		&DeviceTemplate{},
+		&DeviceProfile{},
+		&Firmware{},
+
+		// Call Recording & Transcription
+		&CallRecording{},
 
 		// Call Recording & Transcription
 		&CallRecording{},

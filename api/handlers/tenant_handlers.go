@@ -141,74 +141,7 @@ func (h *Handler) GetExtensionStatus(ctx iris.Context) {
 	ctx.JSON(iris.Map{"status": "registered", "message": "Real-time status requires ESL integration"})
 }
 
-// =====================
-// Devices
-// =====================
-
-func (h *Handler) ListDevices(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
-	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
-	}
-
-	// For now, return devices from extensions that have device_uuid set
-	var extensions []models.Extension
-	h.DB.Where("tenant_id = ? AND device_uuid IS NOT NULL AND device_uuid != ''", middleware.GetTenantID(ctx)).Find(&extensions)
-
-	devices := make([]map[string]interface{}, 0)
-	for _, ext := range extensions {
-		devices = append(devices, map[string]interface{}{
-			"device_uuid": ext.DeviceUUID,
-			"extension":   ext.Extension,
-			"name":        ext.EffectiveCallerIDName,
-		})
-	}
-
-	ctx.JSON(iris.Map{"data": devices})
-}
-
-func (h *Handler) CreateDevice(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
-	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
-	}
-
-	var req struct {
-		MAC        string `json:"mac"`
-		Extension  string `json:"extension"`
-		Name       string `json:"name"`
-		TemplateID uint   `json:"template_id"`
-	}
-
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
-	}
-
-	// TODO: Implement device provisioning logic
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "Device created", "mac": req.MAC})
-}
-
-func (h *Handler) GetDevice(ctx iris.Context) {
-	id := ctx.Params().Get("id")
-	ctx.JSON(iris.Map{"data": map[string]interface{}{"id": id}, "message": "Device details"})
-}
-
-func (h *Handler) UpdateDevice(ctx iris.Context) {
-	id := ctx.Params().Get("id")
-	ctx.JSON(iris.Map{"message": "Device updated", "id": id})
-}
-
-func (h *Handler) DeleteDevice(ctx iris.Context) {
-	id := ctx.Params().Get("id")
-	ctx.JSON(iris.Map{"message": "Device deleted", "id": id})
-}
+// NOTE: Device handlers moved to device_handlers.go
 
 // =====================
 // Voicemail
