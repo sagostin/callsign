@@ -64,7 +64,8 @@ func main() {
 	// Import SIP profiles from disk on first boot (if DB is empty)
 	// After import, profiles are managed via DB and synced back to files
 	profileImporter := freeswitch.NewProfileImporter(cfg.SIPProfilesPath, db)
-	if err := profileImporter.ImportProfilesOnBoot(); err != nil {
+	// Pass false to not overwrite existing profiles on boot (safe default)
+	if err := profileImporter.SyncProfiles(false); err != nil {
 		logManager.Warn("STARTUP", "Failed to import SIP profiles: "+err.Error(), nil)
 		log.Warnf("Failed to import SIP profiles: %v", err)
 	}

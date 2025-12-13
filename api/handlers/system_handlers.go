@@ -623,7 +623,8 @@ func (h *Handler) SyncSIPProfiles(ctx iris.Context) {
 	// Log what path we're looking at
 	log.WithField("path", profilesPath).Info("Syncing SIP profiles from disk")
 
-	if err := importer.ImportProfilesOnBoot(); err != nil {
+	// Force overwrite when syncing manually via API
+	if err := importer.SyncProfiles(true); err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
 		ctx.JSON(iris.Map{"error": "Failed to sync profiles: " + err.Error()})
 		return

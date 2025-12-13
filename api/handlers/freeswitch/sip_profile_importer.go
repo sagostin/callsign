@@ -74,11 +74,10 @@ type XMLParam struct {
 	Enabled string `xml:"enabled,attr"` // Optional: "true", "false", or empty
 }
 
-// ImportProfilesOnBoot imports SIP profiles from disk that don't exist in the database
-// This allows adding new profiles by placing XML files in the sip_profiles directory
-// Once imported, the database becomes the source of truth and profiles are synced back to files
-func (i *ProfileImporter) ImportProfilesOnBoot() error {
-	log.Info("Checking for new SIP profiles to import from disk...")
+// SyncProfiles imports SIP profiles from disk to database.
+// If overwrite is true, it updates existing profiles by replacing their settings and domains.
+func (i *ProfileImporter) SyncProfiles(overwrite bool) error {
+	log.Info("Syncing SIP profiles from disk...")
 
 	// Find all XML files in sip_profiles directory
 	files, err := filepath.Glob(filepath.Join(i.ProfilesPath, "*.xml"))
@@ -91,15 +90,16 @@ func (i *ProfileImporter) ImportProfilesOnBoot() error {
 		return nil
 	}
 
-	// Get existing profile names from DB
+	// Get existing profiles map for quick lookup
 	var existingProfiles []models.SIPProfile
-	i.DB.Select("profile_name").Find(&existingProfiles)
-	existingNames := make(map[string]bool)
+	i.DB.Find(&existingProfiles)
+	existingMap := make(map[string]models.SIPProfile)
 	for _, p := range existingProfiles {
-		existingNames[p.ProfileName] = true
+		existingMap[p.ProfileName] = p
 	}
 
 	imported := 0
+	updated := 0
 	for _, file := range files {
 		// Skip certain files that aren't profiles
 		baseName := filepath.Base(file)
@@ -117,25 +117,38 @@ func (i *ProfileImporter) ImportProfilesOnBoot() error {
 			continue
 		}
 
-		// Skip if already exists in database
-		if existingNames[profile.Name] {
-			log.WithField("profile", profile.Name).Debug("Profile already exists in database, skipping")
-			continue
-		}
+		existing, exists := existingMap[profile.Name]
 
-		if err := i.importProfile(profile); err != nil {
-			log.WithError(err).WithField("profile", profile.Name).Warn("Failed to import profile")
-			continue
-		}
+		// If profile exists
+		if exists {
+			if !overwrite {
+				log.WithField("profile", profile.Name).Debug("Profile already exists in database, skipping")
+				continue
+			}
 
-		imported++
-		log.WithField("profile", profile.Name).Info("Imported new SIP profile from file")
+			// Update existing profile
+			if err := i.updateProfile(&existing, profile); err != nil {
+				log.WithError(err).WithField("profile", profile.Name).Warn("Failed to update profile")
+				continue
+			}
+			updated++
+			log.WithField("profile", profile.Name).Info("Updated SIP profile from file")
+
+		} else {
+			// Create new profile
+			if err := i.importProfile(profile); err != nil {
+				log.WithError(err).WithField("profile", profile.Name).Warn("Failed to import profile")
+				continue
+			}
+			imported++
+			log.WithField("profile", profile.Name).Info("Imported new SIP profile from file")
+		}
 	}
 
-	if imported > 0 {
-		log.WithField("count", imported).Info("Completed SIP profile import")
+	if imported > 0 || updated > 0 {
+		log.WithFields(log.Fields{"imported": imported, "updated": updated}).Info("Completed SIP profile sync")
 	} else {
-		log.Debug("No new SIP profiles to import")
+		log.Debug("No changes made to SIP profiles")
 	}
 	return nil
 }
@@ -190,6 +203,64 @@ func (i *ProfileImporter) expandVariables(content string) string {
 	}
 
 	return content
+}
+
+// updateProfile updates an existing profile records from a parsed XML profile
+func (i *ProfileImporter) updateProfile(existing *models.SIPProfile, xmlProfile *XMLProfile) error {
+	// Start a transaction
+	return i.DB.Transaction(func(tx *gorm.DB) error {
+		// Delete existing settings
+		if err := tx.Where("sip_profile_uuid = ?", existing.UUID).Delete(&models.SIPProfileSetting{}).Error; err != nil {
+			return fmt.Errorf("failed to clear existing settings: %w", err)
+		}
+
+		// Delete existing domains
+		if err := tx.Where("sip_profile_uuid = ?", existing.UUID).Delete(&models.SIPProfileDomain{}).Error; err != nil {
+			return fmt.Errorf("failed to clear existing domains: %w", err)
+		}
+
+		// Import settings
+		for _, param := range xmlProfile.Settings.Params {
+			// Check if setting is enabled
+			enabled := true
+			if param.Enabled == "false" {
+				enabled = false
+			}
+
+			setting := &models.SIPProfileSetting{
+				SIPProfileUUID: existing.UUID,
+				SettingName:    param.Name,
+				SettingValue:   param.Value,
+				Enabled:        enabled,
+			}
+
+			if err := tx.Create(setting).Error; err != nil {
+				log.WithError(err).WithField("setting", param.Name).Warn("Failed to import setting")
+			}
+		}
+
+		// Import domains
+		for _, xmlDomain := range xmlProfile.Domains.Domains {
+			domain := &models.SIPProfileDomain{
+				SIPProfileUUID: existing.UUID,
+				DomainName:     xmlDomain.Name,
+				Alias:          xmlDomain.Alias == "true",
+				Parse:          xmlDomain.Parse == "true",
+			}
+
+			if err := tx.Create(domain).Error; err != nil {
+				log.WithError(err).WithField("domain", xmlDomain.Name).Warn("Failed to import domain")
+			}
+		}
+
+		log.WithFields(log.Fields{
+			"profile":  xmlProfile.Name,
+			"settings": len(xmlProfile.Settings.Params),
+			"domains":  len(xmlProfile.Domains.Domains),
+		}).Debug("Profile updated in database")
+
+		return nil
+	})
 }
 
 // importProfile creates database records for a parsed profile
