@@ -143,10 +143,10 @@ const routes = [
 
       { path: 'provisioning-templates', component: () => import('./views/system/ProvisioningTemplates.vue'), name: 'ProvisioningTemplates' },
       { path: 'firmware', component: () => import('./views/system/FirmwareUpdates.vue'), name: 'FirmwareUpdates' },
-      { path: 'media', component: () => import('./views/system/SystemMedia.vue'), name: 'SystemMedia' },
-      { path: 'sounds', redirect: '/system/media' }, // legacy redirect
-      { path: 'moh', redirect: '/system/media' },    // legacy redirect
-      { path: 'phrases', redirect: '/system/media' },// legacy redirect
+      { path: 'sounds', component: () => import('./views/system/SystemSounds.vue'), name: 'SystemSounds' },
+      { path: 'media', redirect: '/system/sounds' }, // legacy redirect
+      { path: 'moh', redirect: '/system/sounds' },    // legacy redirect
+      { path: 'phrases', redirect: '/system/sounds' },// legacy redirect
 
       { path: 'infrastructure', component: () => import('./views/system/Infrastructure.vue'), name: 'Infrastructure' },
       { path: 'trunks', component: () => import('./views/system/SystemGateways.vue'), name: 'SystemTrunks' },
