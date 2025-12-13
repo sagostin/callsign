@@ -530,27 +530,22 @@ func (h *FSHandler) buildTimeConditionDialplans(req *XMLCurlRequest) string {
 		b.WriteString(fmt.Sprintf(`        <condition field="destination_number" expression="^%s$">`, xmlEscape(cf.Extension)))
 		b.WriteString("\n")
 
-		// Route based on current status
+		// Route based on current state index
 		var destType, destValue string
-		switch cf.Status {
-		case "night":
-			destType = cf.NightDestType
-			destValue = cf.NightDestValue
-		case "holiday":
-			destType = cf.HolidayDestType
-			destValue = cf.HolidayDestValue
-		default: // "day"
-			destType = cf.DayDestType
-			destValue = cf.DayDestValue
+		if len(cf.Destinations) > 0 && cf.CurrentState < len(cf.Destinations) {
+			dest := cf.Destinations[cf.CurrentState]
+			destType = dest.DestType
+			destValue = dest.DestValue
 		}
 
 		action := h.buildDestinationAction(destType, destValue, domain)
 		b.WriteString(fmt.Sprintf(`          <action application="set" data="call_flow_uuid=%s"/>`, cf.UUID.String()))
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf(`          <action application="set" data="call_flow_status=%s"/>`, cf.Status))
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="call_flow_state=%d"/>`, cf.CurrentState))
 		b.WriteString("\n")
 		b.WriteString(fmt.Sprintf(`          <action application="%s" data="%s"/>`,
 			action.App, xmlEscape(action.Data)))
+
 		b.WriteString("\n")
 
 		b.WriteString(`        </condition>`)

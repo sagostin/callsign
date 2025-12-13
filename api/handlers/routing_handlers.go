@@ -661,18 +661,25 @@ func (h *Handler) ToggleCallFlow(ctx iris.Context) {
 		return
 	}
 
-	// Toggle status: day -> night -> holiday -> day
-	switch flow.Status {
-	case "day":
-		flow.Status = "night"
-	case "night":
-		flow.Status = "holiday"
-	default:
-		flow.Status = "day"
+	// Cycle through states: 0 -> 1 -> 2 -> ... -> 0
+	numStates := len(flow.Destinations)
+	if numStates > 0 {
+		flow.CurrentState = (flow.CurrentState + 1) % numStates
 	}
 
 	h.DB.Save(&flow)
-	ctx.JSON(flow)
+
+	// Return current state label
+	stateLabel := ""
+	if numStates > 0 && flow.CurrentState < numStates {
+		stateLabel = flow.Destinations[flow.CurrentState].Label
+	}
+
+	ctx.JSON(iris.Map{
+		"data":        flow,
+		"state_index": flow.CurrentState,
+		"state_label": stateLabel,
+	})
 }
 
 // =====================

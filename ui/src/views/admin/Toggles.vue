@@ -54,23 +54,21 @@
       <p class="toggle-desc">{{ toggle.description }}</p>
 
       <div class="toggle-modes">
-        <div class="mode-row" :class="{ active: toggle.status === 'A' }">
-          <div class="mode-indicator">A</div>
+        <div 
+          class="mode-row" 
+          v-for="(dest, i) in toggle.destinations" 
+          :key="i"
+          :class="{ active: toggle.currentState === i }"
+        >
+          <div class="mode-indicator">{{ String.fromCharCode(65 + i) }}</div>
           <div class="mode-content">
-            <span class="mode-label">{{ toggle.modeALabel }}</span>
-            <span class="mode-dest">→ {{ toggle.modeADestination }}</span>
+            <span class="mode-label">{{ dest.label || `State ${i + 1}` }}</span>
+            <span class="mode-dest">→ {{ dest.dest_type }}: {{ dest.dest_value || '-' }}</span>
           </div>
-          <VolumeIcon v-if="toggle.modeASound" class="icon-sm sound-icon" />
-        </div>
-        <div class="mode-row" :class="{ active: toggle.status === 'B' }">
-          <div class="mode-indicator">B</div>
-          <div class="mode-content">
-            <span class="mode-label">{{ toggle.modeBLabel }}</span>
-            <span class="mode-dest">→ {{ toggle.modeBDestination }}</span>
-          </div>
-          <VolumeIcon v-if="toggle.modeBSound" class="icon-sm sound-icon" />
+          <VolumeIcon v-if="dest.sound" class="icon-sm sound-icon" />
         </div>
       </div>
+
 
       <div class="toggle-footer">
         <span class="toggle-meta">Last changed: {{ toggle.lastChanged }}</span>
@@ -123,69 +121,71 @@
 
         <hr class="divider">
 
-        <h4 class="section-title">Mode A (Default)</h4>
-        <div class="form-row">
-          <div class="form-group flex-1">
-            <label>Label</label>
-            <input v-model="form.modeALabel" class="input-field" placeholder="Day Mode">
+        <!-- Dynamic Destinations -->
+        <div class="destinations-section">
+          <div class="section-header">
+            <h4 class="section-title">Toggle States (Minimum 2)</h4>
+            <button type="button" class="btn-sm" @click="addDestination">
+              <PlusIcon class="btn-icon-sm" /> Add State
+            </button>
           </div>
-          <div class="form-group flex-1">
-            <label>Sound</label>
-            <select v-model="form.modeASound" class="input-field">
-              <option value="">None</option>
-              <option value="day_mode.wav">Day Mode Activated</option>
-              <option value="night_mode.wav">Night Mode Activated</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Destination</label>
-          <div class="dest-selector">
-            <select v-model="form.modeAType" class="input-field">
-              <option value="ivr">IVR Menu</option>
-              <option value="time_condition">Time Condition</option>
-              <option value="extension">Extension</option>
-              <option value="ring_group">Ring Group</option>
-              <option value="queue">Queue</option>
-              <option value="external">External</option>
-            </select>
-            <input v-model="form.modeAValue" class="input-field" placeholder="Main Menu">
-          </div>
-        </div>
 
-        <hr class="divider">
-
-        <h4 class="section-title">Mode B (Alternate)</h4>
-        <div class="form-row">
-          <div class="form-group flex-1">
-            <label>Label</label>
-            <input v-model="form.modeBLabel" class="input-field" placeholder="Night Mode">
-          </div>
-          <div class="form-group flex-1">
-            <label>Sound</label>
-            <select v-model="form.modeBSound" class="input-field">
-              <option value="">None</option>
-              <option value="day_mode.wav">Day Mode Activated</option>
-              <option value="night_mode.wav">Night Mode Activated</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Destination</label>
-          <div class="dest-selector">
-            <select v-model="form.modeBType" class="input-field">
-              <option value="ivr">IVR Menu</option>
-              <option value="time_condition">Time Condition</option>
-              <option value="extension">Extension</option>
-              <option value="ring_group">Ring Group</option>
-              <option value="queue">Queue</option>
-              <option value="voicemail">Voicemail</option>
-              <option value="external">External</option>
-            </select>
-            <input v-model="form.modeBValue" class="input-field" placeholder="After Hours VM">
+          <div class="destinations-list">
+            <div 
+              class="destination-card" 
+              v-for="(dest, i) in form.destinations" 
+              :key="i"
+              :class="{ 'first': i === 0 }"
+            >
+              <div class="dest-header">
+                <span class="dest-index">State {{ i + 1 }}</span>
+                <button 
+                  v-if="form.destinations.length > 2" 
+                  type="button" 
+                  class="btn-icon remove-btn" 
+                  @click="removeDestination(i)"
+                  title="Remove state"
+                >
+                  <TrashIcon class="icon-sm text-bad" />
+                </button>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label>Label</label>
+                  <input v-model="dest.label" class="input-field" :placeholder="i === 0 ? 'Day Mode' : 'Night Mode'">
+                </div>
+                <div class="form-group flex-1">
+                  <label>Sound (optional)</label>
+                  <select v-model="dest.sound" class="input-field">
+                    <option value="">None</option>
+                    <option value="day_mode.wav">Day Mode Activated</option>
+                    <option value="night_mode.wav">Night Mode Activated</option>
+                    <option value="holiday_mode.wav">Holiday Mode Activated</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div class="form-group">
+                <label>Destination</label>
+                <div class="dest-selector">
+                  <select v-model="dest.dest_type" class="input-field">
+                    <option value="ivr">IVR Menu</option>
+                    <option value="time_condition">Time Condition</option>
+                    <option value="extension">Extension</option>
+                    <option value="ring_group">Ring Group</option>
+                    <option value="queue">Queue</option>
+                    <option value="voicemail">Voicemail</option>
+                    <option value="external">External Number</option>
+                  </select>
+                  <input v-model="dest.dest_value" class="input-field flex-1" :placeholder="i === 0 ? 'Main Menu' : 'After Hours VM'">
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
 
       <div class="modal-actions">
         <button class="btn-secondary" @click="closeModal">Cancel</button>
@@ -199,7 +199,8 @@
 import { ref, onMounted, computed } from 'vue'
 import { 
   ToggleLeft as ToggleLeftIcon, ToggleRight as ToggleRightIcon, X as XIcon,
-  PhoneCall as PhoneCallIcon, PhoneForwarded as PhoneForwardedIcon, Volume2 as VolumeIcon, RefreshCw
+  PhoneCall as PhoneCallIcon, PhoneForwarded as PhoneForwardedIcon, Volume2 as VolumeIcon, 
+  RefreshCw, Plus as PlusIcon, Trash2 as TrashIcon
 } from 'lucide-vue-next'
 import { togglesAPI } from '../../services/api'
 
@@ -209,24 +210,33 @@ const loading = ref(false)
 const error = ref(null)
 const toggles = ref([])
 
+// Default destinations (minimum 2)
+const defaultDestinations = () => [
+  { label: 'Day Mode', dest_type: 'ivr', dest_value: '', sound: '' },
+  { label: 'Night Mode', dest_type: 'voicemail', dest_value: '', sound: '' }
+]
+
 const form = ref({
   name: '', extension: '', feature_code: '', description: '',
-  day_dest_type: 'ivr', day_dest_value: '',
-  night_dest_type: 'voicemail', night_dest_value: '',
+  destinations: defaultDestinations(),
   enabled: true
 })
 
 // Map backend CallFlow model to UI format
-const mappedToggles = computed(() => toggles.value.map(t => ({
-  ...t,
-  status: t.status === 'night' ? 'B' : 'A',
-  featureCode: t.feature_code,
-  modeALabel: 'Day Mode',
-  modeADestination: `${t.day_dest_type || 'None'}: ${t.day_dest_value || '-'}`,
-  modeBLabel: 'Night Mode', 
-  modeBDestination: `${t.night_dest_type || 'None'}: ${t.night_dest_value || '-'}`,
-  lastChanged: t.updated_at ? new Date(t.updated_at).toLocaleDateString() : 'Unknown'
-})))
+const mappedToggles = computed(() => toggles.value.map(t => {
+  const dests = t.destinations || []
+  const currentDest = dests[t.current_state] || dests[0] || {}
+  return {
+    ...t,
+    status: t.current_state === 0 ? 'A' : String.fromCharCode(65 + t.current_state), // A, B, C...
+    currentState: t.current_state || 0,
+    featureCode: t.feature_code,
+    currentLabel: currentDest.label || `State ${(t.current_state || 0) + 1}`,
+    stateCount: dests.length,
+    destinations: dests,
+    lastChanged: t.updated_at ? new Date(t.updated_at).toLocaleDateString() : 'Unknown'
+  }
+}))
 
 onMounted(() => loadToggles())
 
@@ -263,23 +273,37 @@ const closeModal = () => {
 const resetForm = () => {
   form.value = {
     name: '', extension: '', feature_code: '', description: '',
-    day_dest_type: 'ivr', day_dest_value: '',
-    night_dest_type: 'voicemail', night_dest_value: '',
+    destinations: defaultDestinations(),
     enabled: true
+  }
+}
+
+const addDestination = () => {
+  const num = form.value.destinations.length + 1
+  form.value.destinations.push({
+    label: `State ${num}`,
+    dest_type: 'extension',
+    dest_value: '',
+    sound: ''
+  })
+}
+
+const removeDestination = (index) => {
+  if (form.value.destinations.length > 2) {
+    form.value.destinations.splice(index, 1)
   }
 }
 
 const editToggle = (toggle) => {
   editingToggle.value = toggle
+  // Clone destinations to avoid reactivity issues
+  const dests = (toggle.destinations || []).map(d => ({ ...d }))
   form.value = {
     name: toggle.name,
     extension: toggle.extension,
     feature_code: toggle.feature_code || '',
     description: toggle.description || '',
-    day_dest_type: toggle.day_dest_type || 'ivr',
-    day_dest_value: toggle.day_dest_value || '',
-    night_dest_type: toggle.night_dest_type || 'voicemail',
-    night_dest_value: toggle.night_dest_value || '',
+    destinations: dests.length >= 2 ? dests : defaultDestinations(),
     enabled: toggle.enabled !== false
   }
   showModal.value = true
@@ -293,10 +317,7 @@ async function saveToggle() {
       extension: form.value.extension,
       feature_code: form.value.feature_code,
       description: form.value.description,
-      day_dest_type: form.value.day_dest_type,
-      day_dest_value: form.value.day_dest_value,
-      night_dest_type: form.value.night_dest_type,
-      night_dest_value: form.value.night_dest_value,
+      destinations: form.value.destinations,
       enabled: form.value.enabled
     }
 
@@ -325,6 +346,7 @@ async function deleteToggle(toggle) {
   }
 }
 </script>
+
 
 
 <style scoped>

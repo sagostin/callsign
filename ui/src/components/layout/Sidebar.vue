@@ -111,11 +111,8 @@
             <Phone class="nav-icon" />
             <span class="nav-label">Extensions</span>
           </router-link>
-          <router-link to="/admin/extension-profiles" class="nav-item sub-item" v-tooltip="isCollapsed ? 'Extension Profiles' : ''">
-            <Users class="nav-icon" />
-            <span class="nav-label">Extension Profiles</span>
-          </router-link>
           <router-link to="/admin/devices" class="nav-item" v-tooltip="isCollapsed ? 'Devices' : ''">
+
             <MonitorSmartphone class="nav-icon" />
             <span class="nav-label">Devices</span>
           </router-link>

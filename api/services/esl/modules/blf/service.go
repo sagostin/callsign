@@ -151,9 +151,10 @@ func (s *Service) handleCallFlowProbe(conn *eventsocket.Connection, user, domain
 		return nil
 	}
 
-	// Lamp on = night mode
-	isNightMode := flow.Status != "day"
-	return s.turnLamp(conn, isNightMode, fullUser, "flow")
+	// Lamp on = not at first state (0)
+	isNotDefault := flow.CurrentState > 0
+	return s.turnLamp(conn, isNotDefault, fullUser, "flow")
+
 }
 
 // handleAgentProbe checks call center agent status

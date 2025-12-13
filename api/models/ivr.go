@@ -1,6 +1,9 @@
 package models
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -131,7 +134,7 @@ func (t *TimeCondition) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// CallFlow represents a day/night toggle switch
+// CallFlow represents a multi-state toggle switch (day/night, or N custom states)
 type CallFlow struct {
 	ID        uint           `json:"id" gorm:"primaryKey"`
 	UUID      uuid.UUID      `json:"uuid" gorm:"type:uuid;uniqueIndex;not null"`
@@ -140,26 +143,55 @@ type CallFlow struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Ownership
-	TenantID uint   `json:"tenant_id" gorm:"index;not null"`
-	Name     string `json:"name" gorm:"not null"`
+	TenantID    uint   `json:"tenant_id" gorm:"index;not null"`
+	Name        string `json:"name" gorm:"not null"`
+	Description string `json:"description"`
 
 	// Extension/feature code to toggle
 	Extension   string `json:"extension" gorm:"index"`
 	FeatureCode string `json:"feature_code"` // *30
 
-	// Current status
-	Status string `json:"status" gorm:"default:'day'"` // day, night, holiday
+	// Current state index (0 = first state, 1 = second, etc.)
+	CurrentState int `json:"current_state" gorm:"default:0"`
 
-	// Destinations for each mode
-	DayDestType      string `json:"day_dest_type"`
-	DayDestValue     string `json:"day_dest_value"`
-	NightDestType    string `json:"night_dest_type"`
-	NightDestValue   string `json:"night_dest_value"`
-	HolidayDestType  string `json:"holiday_dest_type"`
-	HolidayDestValue string `json:"holiday_dest_value"`
+	// Destinations array - minimum 2 states, can add more
+	// Example: [{"label": "Day Mode", "dest_type": "ivr", "dest_value": "Main Menu"},
+	//           {"label": "Night Mode", "dest_type": "voicemail", "dest_value": "100"}]
+	Destinations CallFlowDestinations `json:"destinations" gorm:"type:jsonb;default:'[]'"`
+
+	// Optional: Sound to play when toggling
+	ToggleSound string `json:"toggle_sound"`
 
 	// Status
 	Enabled bool `json:"enabled" gorm:"default:true"`
+}
+
+// CallFlowDestination represents a single toggle state/destination
+type CallFlowDestination struct {
+	Label     string `json:"label"`      // e.g., "Day Mode", "Night Mode", "Holiday"
+	DestType  string `json:"dest_type"`  // ivr, queue, ring_group, extension, voicemail, external
+	DestValue string `json:"dest_value"` // The target value
+	Sound     string `json:"sound"`      // Optional sound to play when entering this state
+}
+
+// CallFlowDestinations is a slice for JSONB storage
+type CallFlowDestinations []CallFlowDestination
+
+// GORM Value/Scan for CallFlowDestinations
+func (d CallFlowDestinations) Value() (driver.Value, error) {
+	return json.Marshal(d)
+}
+
+func (d *CallFlowDestinations) Scan(value interface{}) error {
+	if value == nil {
+		*d = CallFlowDestinations{}
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		return errors.New("type assertion to []byte failed")
+	}
+	return json.Unmarshal(b, d)
 }
 
 // BeforeCreate generates UUID

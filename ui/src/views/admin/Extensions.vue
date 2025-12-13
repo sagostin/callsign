@@ -63,9 +63,18 @@
       <button class="btn-primary" @click="showProfileModal = true">+ New Profile</button>
     </div>
 
-    <div class="profiles-grid">
+    <!-- Empty State -->
+    <div v-if="profiles.length === 0" class="empty-state">
+      <div class="empty-icon">👤</div>
+      <h4>No Extension Profiles</h4>
+      <p>Create extension profiles to define permission sets and calling rules that can be applied to multiple extensions.</p>
+      <button class="btn-primary" @click="showProfileModal = true">Create First Profile</button>
+    </div>
+
+    <div v-else class="profiles-grid">
       <div class="profile-card" v-for="profile in profiles" :key="profile.id">
         <div class="profile-header">
+
           <div class="profile-icon" :style="{ background: profile.color }">
             {{ profile.name.charAt(0) }}
           </div>

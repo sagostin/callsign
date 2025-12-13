@@ -170,7 +170,13 @@ func GetUserID(ctx iris.Context) uint {
 }
 
 // GetTenantID extracts the tenant ID from the context
+// It first checks scoped_tenant_id (set from X-Tenant-ID header for system_admin)
+// then falls back to tenant_id from JWT claims
 func GetTenantID(ctx iris.Context) uint {
+	// Check scoped tenant ID first (system admin with X-Tenant-ID header)
+	if scopedID := ctx.Values().GetUintDefault("scoped_tenant_id", 0); scopedID > 0 {
+		return scopedID
+	}
 	return ctx.Values().GetUintDefault("tenant_id", 0)
 }
 
