@@ -133,7 +133,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { Building, Users, Phone, AlertTriangle, Monitor as MonitorIcon, Smartphone as SmartphoneIcon, Phone as PhoneIcon, Server as ServerIcon } from 'lucide-vue-next'
-import { systemAPI } from '../services/api'
+import { systemAPI } from '../../services/api'
 
 // Stats data
 const stats = ref({

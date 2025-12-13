@@ -58,7 +58,7 @@
 </template>
 
 <script setup>
-import StatusBadge from '../components/common/StatusBadge.vue'
+import StatusBadge from '../../components/common/StatusBadge.vue'
 </script>
 
 <style scoped>
