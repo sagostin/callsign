@@ -122,6 +122,13 @@ func (r *Router) Init() {
 					extensions.Put("/{ext}", r.Handler.UpdateExtension)
 					extensions.Delete("/{ext}", r.Handler.DeleteExtension)
 					extensions.Get("/{ext}/status", r.Handler.GetExtensionStatus)
+
+					// Call Handling Rules for Extension
+					extensions.Get("/{ext}/call-rules", r.Handler.ListCallHandlingRules)
+					extensions.Post("/{ext}/call-rules", r.Handler.CreateCallHandlingRule)
+					extensions.Put("/{ext}/call-rules/{ruleId}", r.Handler.UpdateCallHandlingRule)
+					extensions.Delete("/{ext}/call-rules/{ruleId}", r.Handler.DeleteCallHandlingRule)
+					extensions.Post("/{ext}/call-rules/reorder", r.Handler.ReorderCallHandlingRules)
 				}
 
 				// Extension Profiles
@@ -132,6 +139,13 @@ func (r *Router) Init() {
 					extProfiles.Get("/{id}", r.Handler.GetExtensionProfile)
 					extProfiles.Put("/{id}", r.Handler.UpdateExtensionProfile)
 					extProfiles.Delete("/{id}", r.Handler.DeleteExtensionProfile)
+
+					// Call Handling Rules for Profile
+					extProfiles.Get("/{id}/call-rules", r.Handler.ListProfileCallHandlingRules)
+					extProfiles.Post("/{id}/call-rules", r.Handler.CreateProfileCallHandlingRule)
+					extProfiles.Put("/{id}/call-rules/{ruleId}", r.Handler.UpdateProfileCallHandlingRule)
+					extProfiles.Delete("/{id}/call-rules/{ruleId}", r.Handler.DeleteProfileCallHandlingRule)
+					extProfiles.Post("/{id}/call-rules/reorder", r.Handler.ReorderProfileCallHandlingRules)
 				}
 
 				// Devices

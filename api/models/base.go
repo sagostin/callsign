@@ -145,6 +145,9 @@ func AutoMigrate(db *gorm.DB) error {
 
 		// Speed Dials
 		&SpeedDialGroup{},
+
+		// Call Handling Rules
+		&CallHandlingRule{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)

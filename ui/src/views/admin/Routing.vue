@@ -478,6 +478,7 @@ const activeTab = ref('inbound')
 // Call Blocks State
 const callBlocks = ref([])
 const showBlockModal = ref(false)
+const showOutboundModal = ref(false)
 const blockForm = ref({ number: '', match_type: 'exact', action: 'reject', notes: '' })
 
 const loadCallBlocks = async () => {

@@ -176,6 +176,7 @@ router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
   const userStr = localStorage.getItem('user')
   const user = userStr ? JSON.parse(userStr) : null
+  const tenantId = localStorage.getItem('tenantId')
 
   // Public routes that don't need auth
   const publicRoutes = ['Login', 'AdminLogin']
@@ -207,6 +208,12 @@ router.beforeEach((to, from, next) => {
     // Block system admin from user portal routes
     const userPortalRoutes = ['', '/', '/dialer', '/messages', '/voicemail', '/conferences', '/fax', '/contacts', '/recordings', '/history', '/settings']
     if (userPortalRoutes.includes(to.path) || to.path.match(/^\/(?!admin|system)/)) {
+      return next('/system')
+    }
+
+    // System admin accessing /admin routes needs a tenant selected
+    if (to.path.startsWith('/admin') && !tenantId) {
+      console.warn('System admin accessing admin panel without tenant selected, redirecting to /system')
       return next('/system')
     }
   }

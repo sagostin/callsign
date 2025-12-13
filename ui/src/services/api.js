@@ -106,6 +106,12 @@ export const extensionsAPI = {
     update: (id, data) => api.put(`/extensions/${id}`, data),
     delete: (id) => api.delete(`/extensions/${id}`),
     getStatus: (id) => api.get(`/extensions/${id}/status`),
+    // Call Handling Rules
+    listCallRules: (extId) => api.get(`/extensions/${extId}/call-rules`),
+    createCallRule: (extId, data) => api.post(`/extensions/${extId}/call-rules`, data),
+    updateCallRule: (extId, ruleId, data) => api.put(`/extensions/${extId}/call-rules/${ruleId}`, data),
+    deleteCallRule: (extId, ruleId) => api.delete(`/extensions/${extId}/call-rules/${ruleId}`),
+    reorderCallRules: (extId, ruleIds) => api.post(`/extensions/${extId}/call-rules/reorder`, { rule_ids: ruleIds }),
 }
 
 // =====================
@@ -117,7 +123,14 @@ export const extensionProfilesAPI = {
     create: (data) => api.post('/extension-profiles', data),
     update: (id, data) => api.put(`/extension-profiles/${id}`, data),
     delete: (id) => api.delete(`/extension-profiles/${id}`),
+    // Call Handling Rules
+    listCallRules: (profileId) => api.get(`/extension-profiles/${profileId}/call-rules`),
+    createCallRule: (profileId, data) => api.post(`/extension-profiles/${profileId}/call-rules`, data),
+    updateCallRule: (profileId, ruleId, data) => api.put(`/extension-profiles/${profileId}/call-rules/${ruleId}`, data),
+    deleteCallRule: (profileId, ruleId) => api.delete(`/extension-profiles/${profileId}/call-rules/${ruleId}`),
+    reorderCallRules: (profileId, ruleIds) => api.post(`/extension-profiles/${profileId}/call-rules/reorder`, { rule_ids: ruleIds }),
 }
+
 
 // =====================
 // Speed Dials API

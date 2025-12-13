@@ -249,11 +249,19 @@
           <input v-model="callHandling.forwardNumber" class="input-field" placeholder="(555) 555-1234">
         </div>
       </div>
+
+      <!-- Advanced Call Handling Rules -->
+      <CallHandlingRules 
+        v-if="extension.id"
+        :extensionId="extension.id" 
+        :api="extensionsAPI" 
+      />
       
       <div class="form-actions">
         <button class="btn-primary" @click="saveCallHandling">Save Call Handling</button>
       </div>
     </div>
+
 
     <!-- VOICEMAIL TAB -->
     <div v-else-if="activeTab === 'voicemail'" class="form-single">
@@ -410,6 +418,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Check as CheckIcon, X as XIcon, Phone as PhoneIcon, PhoneCall as PhoneCallIcon, ListOrdered as ListOrderedIcon, GripVertical as GripVerticalIcon, Monitor as MonitorIcon, Smartphone as SmartphoneIcon, Headphones as HeadphonesIcon } from 'lucide-vue-next'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
+import CallHandlingRules from '../../components/common/CallHandlingRules.vue'
 import { extensionsAPI, extensionProfilesAPI, usersAPI } from '@/services/api'
 
 const route = useRoute()
