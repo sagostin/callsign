@@ -727,36 +727,72 @@ func (h *Handler) UpdateSIPProfile(ctx iris.Context) {
 		return
 	}
 
-	if err := ctx.ReadJSON(&profile); err != nil {
+	var input models.SIPProfile
+	if err := ctx.ReadJSON(&input); err != nil {
 		ctx.StatusCode(http.StatusBadRequest)
 		ctx.JSON(iris.Map{"error": "Invalid request payload"})
 		return
 	}
 
-	profile.ID = uint(id)
-	if err := h.DB.Save(&profile).Error; err != nil {
+	// Use a transaction to ensure atomicity
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		input.ID = uint(id)
+		input.UUID = profile.UUID // Ensure UUID doesn't change
+
+		// Update profile fields ONLY, ignoring associations to prevent auto-save duplication
+		if err := tx.Omit("Settings", "Domains").Save(&input).Error; err != nil {
+			return err
+		}
+
+		// Update settings if provided
+		// Note: We always replace all settings if the list is present
+		if input.Settings != nil {
+			// Delete existing settings
+			if err := tx.Where("sip_profile_uuid = ?", profile.UUID).Delete(&models.SIPProfileSetting{}).Error; err != nil {
+				return err
+			}
+
+			// Create new settings
+			if len(input.Settings) > 0 {
+				for i := range input.Settings {
+					input.Settings[i].SIPProfileUUID = profile.UUID
+					// Ensure ID is zero to force create
+					input.Settings[i].ID = 0
+				}
+				if err := tx.Create(&input.Settings).Error; err != nil {
+					return err
+				}
+			}
+		}
+
+		// Update domains if provided
+		if input.Domains != nil {
+			// Delete existing domains
+			if err := tx.Where("sip_profile_uuid = ?", profile.UUID).Delete(&models.SIPProfileDomain{}).Error; err != nil {
+				return err
+			}
+
+			// Create new domains
+			if len(input.Domains) > 0 {
+				for i := range input.Domains {
+					input.Domains[i].SIPProfileUUID = profile.UUID
+					input.Domains[i].ID = 0
+				}
+				if err := tx.Create(&input.Domains).Error; err != nil {
+					return err
+				}
+			}
+		}
+
+		// Update the profile object with the new associations for response
+		profile = input
+		return nil
+	})
+
+	if err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update SIP profile"})
+		ctx.JSON(iris.Map{"error": "Failed to update SIP profile: " + err.Error()})
 		return
-	}
-
-	// Update settings if provided
-	if len(profile.Settings) > 0 {
-		// Delete existing settings and recreate
-		h.DB.Where("sip_profile_uuid = ?", profile.UUID).Delete(&models.SIPProfileSetting{})
-		for i := range profile.Settings {
-			profile.Settings[i].SIPProfileUUID = profile.UUID
-		}
-		h.DB.Create(&profile.Settings)
-	}
-
-	// Update domains if provided
-	if len(profile.Domains) > 0 {
-		h.DB.Where("sip_profile_uuid = ?", profile.UUID).Delete(&models.SIPProfileDomain{})
-		for i := range profile.Domains {
-			profile.Domains[i].SIPProfileUUID = profile.UUID
-		}
-		h.DB.Create(&profile.Domains)
 	}
 
 	// Write updated profile XML to disk (required for Sofia X-PRE-PROCESS)

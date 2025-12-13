@@ -519,7 +519,7 @@ async function fetchExtension() {
   isLoading.value = true
   try {
     const response = await extensionsAPI.get(route.params.id)
-    const ext = response.data
+    const ext = response.data.data
     extension.value = {
       id: ext.id,
       ext: ext.extension,
