@@ -54,8 +54,8 @@
         <span v-if="value" class="sms-provider-badge">{{ value }}</span>
         <span v-else class="sms-na">N/A</span>
       </template>
-      <template #status="{ value }">
-        <StatusBadge :status="value" />
+      <template #status="{ row }">
+        <StatusBadge :status="row.enabled ? 'Active' : 'Disabled'" />
       </template>
       <template #actions="{ row }">
         <button class="btn-link" @click="editNumber(row)">Edit</button>
