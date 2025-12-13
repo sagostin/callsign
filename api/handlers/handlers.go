@@ -15,12 +15,13 @@ import (
 
 // Handler holds all HTTP handlers and their dependencies
 type Handler struct {
-	DB             *gorm.DB
-	Config         *config.Config
-	Auth           *middleware.AuthMiddleware
-	ESLManager     *esl.Manager
-	ConsoleManager *ConsoleManager
-	LogManager     *logging.LogManager
+	DB                  *gorm.DB
+	Config              *config.Config
+	Auth                *middleware.AuthMiddleware
+	ESLManager          *esl.Manager
+	ConsoleManager      *ConsoleManager
+	NotificationManager *NotificationManager
+	LogManager          *logging.LogManager
 }
 
 // NewHandler creates a new Handler instance

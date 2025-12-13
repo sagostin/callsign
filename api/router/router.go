@@ -80,6 +80,7 @@ func (r *Router) Init() {
 
 		// Public WebSocket routes (auth handled inside handler via first message)
 		api.Get("/system/console", r.Handler.FreeSwitchConsole)
+		api.Get("/ws/notifications", r.Handler.NotificationWebSocket)
 
 		// Device provisioning (public, authenticated via tenant secret in URL)
 		// URL format: /provision/{tenant_uuid}/{secret}/{mac}.cfg
