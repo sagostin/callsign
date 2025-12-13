@@ -451,6 +451,39 @@ export const provisioningAPI = {
 }
 
 // =====================
+// Tenant Settings API (current tenant)
+// =====================
+export const tenantSettingsAPI = {
+    // Get current tenant settings
+    get: () => api.get('/tenant/settings'),
+    update: (data) => api.put('/tenant/settings', data),
+
+    // Branding
+    getBranding: () => api.get('/tenant/branding'),
+    updateBranding: (data) => api.put('/tenant/branding', data),
+
+    // SMTP settings
+    getSmtp: () => api.get('/tenant/smtp'),
+    updateSmtp: (data) => api.put('/tenant/smtp', data),
+    testSmtp: () => api.post('/tenant/smtp/test'),
+
+    // Messaging (SMS/MMS)
+    getMessaging: () => api.get('/tenant/messaging'),
+    updateMessaging: (data) => api.put('/tenant/messaging', data),
+
+    // Hospitality
+    getHospitality: () => api.get('/tenant/hospitality'),
+    updateHospitality: (data) => api.put('/tenant/hospitality', data),
+
+    // Locations
+    listLocations: () => api.get('/tenant/locations'),
+    getLocation: (id) => api.get(`/tenant/locations/${id}`),
+    createLocation: (data) => api.post('/tenant/locations', data),
+    updateLocation: (id, data) => api.put(`/tenant/locations/${id}`, data),
+    deleteLocation: (id) => api.delete(`/tenant/locations/${id}`),
+}
+
+// =====================
 // System Admin API
 // =====================
 export const systemAPI = {

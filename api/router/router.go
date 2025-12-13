@@ -113,6 +113,22 @@ func (r *Router) Init() {
 			tenantScoped := protected.Party("")
 			tenantScoped.Use(r.Tenant.RequireTenant())
 			{
+				// Tenant Settings
+				tenant := tenantScoped.Party("/tenant")
+				{
+					tenant.Get("/settings", r.Handler.GetTenantSettings)
+					tenant.Put("/settings", r.Handler.UpdateTenantSettings)
+					tenant.Get("/branding", r.Handler.GetTenantBranding)
+					tenant.Put("/branding", r.Handler.UpdateTenantBranding)
+					tenant.Get("/smtp", r.Handler.GetTenantSMTP)
+					tenant.Put("/smtp", r.Handler.UpdateTenantSMTP)
+					tenant.Post("/smtp/test", r.Handler.TestTenantSMTP)
+					tenant.Get("/messaging", r.Handler.GetTenantMessaging)
+					tenant.Put("/messaging", r.Handler.UpdateTenantMessaging)
+					tenant.Get("/hospitality", r.Handler.GetTenantHospitality)
+					tenant.Put("/hospitality", r.Handler.UpdateTenantHospitality)
+				}
+
 				// Extensions
 				extensions := tenantScoped.Party("/extensions")
 				{

@@ -518,24 +518,27 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import { 
-  Settings as SettingsIcon, Hash as HashIcon, MapPin as MapPinIcon,
-  MessageSquare as MessageSquareIcon, Server as ServerIcon, Building as HotelIcon,
+  Settings as SettingsIcon, MapPin as MapPinIcon,
+  MessageSquare as MessageSquareIcon, Building as HotelIcon,
   Palette as PaletteIcon, Shield as ShieldIcon, Gauge as GaugeIcon,
   ExternalLink as ExternalLinkIcon, Mail as MailIcon
 } from 'lucide-vue-next'
 import LocationManager from './LocationManager.vue'
+import { tenantSettingsAPI } from '@/services/api'
 
+const toast = inject('toast')
+const isLoading = ref(false)
 const activeSection = ref('general')
 
 const settings = ref({
-  sipDomain: 'sip.acme.com',
-  portalDomain: 'acme.callsign.io',
+  sipDomain: '',
+  portalDomain: '',
   timezone: 'America/Los_Angeles',
   operatorExt: '0',
-  fallbackCallerId: '(415) 555-9111',
-  panicEnabled: true
+  fallbackCallerId: '',
+  panicEnabled: false
 })
 
 const smtpSettings = ref({
@@ -548,43 +551,23 @@ const smtpSettings = ref({
   encryption: 'tls'
 })
 
-const testSmtp = () => alert('Test email sent!')
-
-const featureCodes = ref([
-  { key: 'vm', name: 'Voicemail Access', description: 'Check voicemail', value: '*97' },
-  { key: 'park', name: 'Call Park', description: 'Park a call', value: '*700' },
-  { key: 'pickup', name: 'Call Pickup', description: 'Pick up ringing call', value: '*8' },
-  { key: 'block', name: 'Block Last', description: 'Block last caller', value: '*69' },
-  { key: 'login', name: 'Agent Login', description: 'Log into queue', value: '*22' },
-  { key: 'logout', name: 'Agent Logout', description: 'Log out of queue', value: '*23' },
-  { key: 'fwdon', name: 'Forward Enable', description: 'Turn on forwarding', value: '*72' },
-  { key: 'fwdoff', name: 'Forward Disable', description: 'Turn off forwarding', value: '*73' },
-  { key: 'dndon', name: 'DND Enable', description: 'Turn on Do Not Disturb', value: '*78' },
-  { key: 'dndoff', name: 'DND Disable', description: 'Turn off Do Not Disturb', value: '*79' },
-])
-
 const messaging = ref({
   provider: 'twilio',
-  accountSid: 'ACsaf234...',
+  accountSid: '',
   authToken: ''
 })
 
-const provisioning = ref({
-  protocol: 'https',
-  auth: 'mac',
-  secret: 'k9s8d7f6g5h4j3k2'
-})
-
-const hospitality = ref({ enabled: true })
+const hospitality = ref({ enabled: false })
 
 const branding = ref({
-  name: 'CallSign',
+  whitelabelEnabled: false,
+  name: '',
   logoUrl: '',
   primaryColor: '#6366f1'
 })
 
 const security = ref({
-  sslEnabled: true,
+  sslEnabled: false,
   forceHttps: true
 })
 
@@ -593,12 +576,139 @@ const limits = ref({
   faxRetention: '30'
 })
 
-const saveSettings = () => alert('Settings saved!')
-const resetCodes = () => alert('Feature codes reset to defaults')
-const copyWebhook = () => alert('Copied to clipboard')
-const copyProvUrl = () => alert('Copied to clipboard')
+onMounted(async () => {
+  await loadSettings()
+})
+
+async function loadSettings() {
+  isLoading.value = true
+  try {
+    // Load all settings in parallel
+    const [settingsRes, brandingRes, smtpRes, messagingRes, hospitalityRes] = await Promise.allSettled([
+      tenantSettingsAPI.get(),
+      tenantSettingsAPI.getBranding(),
+      tenantSettingsAPI.getSmtp(),
+      tenantSettingsAPI.getMessaging(),
+      tenantSettingsAPI.getHospitality()
+    ])
+
+    if (settingsRes.status === 'fulfilled' && settingsRes.value.data?.data) {
+      const s = settingsRes.value.data.data.settings || {}
+      settings.value = {
+        sipDomain: s.sip_domain || '',
+        portalDomain: s.portal_domain || '',
+        timezone: s.timezone || 'America/Los_Angeles',
+        operatorExt: s.operator_ext || '0',
+        fallbackCallerId: s.fallback_caller_id || '',
+        panicEnabled: s.panic_enabled || false
+      }
+      security.value.sslEnabled = settingsRes.value.data.data.ssl_enabled || false
+    }
+
+    if (brandingRes.status === 'fulfilled' && brandingRes.value.data?.data) {
+      const b = brandingRes.value.data.data
+      branding.value = {
+        whitelabelEnabled: b.whitelabel_enabled || false,
+        name: b.name || '',
+        logoUrl: b.logo_url || '',
+        primaryColor: b.primary_color || '#6366f1'
+      }
+    }
+
+    if (smtpRes.status === 'fulfilled' && smtpRes.value.data?.data) {
+      const sm = smtpRes.value.data.data
+      smtpSettings.value = {
+        override: sm.override || false,
+        host: sm.host || '',
+        port: sm.port || '587',
+        username: sm.username || '',
+        password: '', // Never expose password
+        fromEmail: sm.from_email || '',
+        encryption: sm.encryption || 'tls'
+      }
+    }
+
+    if (messagingRes.status === 'fulfilled' && messagingRes.value.data?.data) {
+      const m = messagingRes.value.data.data
+      messaging.value = {
+        provider: m.provider || 'twilio',
+        accountSid: m.account_sid || '',
+        authToken: ''
+      }
+    }
+
+    if (hospitalityRes.status === 'fulfilled' && hospitalityRes.value.data?.data) {
+      hospitality.value.enabled = hospitalityRes.value.data.data.enabled || false
+    }
+  } catch (error) {
+    console.error('Failed to load tenant settings:', error)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const saveSettings = async () => {
+  try {
+    // Save all settings sections
+    await Promise.all([
+      tenantSettingsAPI.update({
+        sip_domain: settings.value.sipDomain,
+        portal_domain: settings.value.portalDomain,
+        timezone: settings.value.timezone,
+        operator_ext: settings.value.operatorExt,
+        fallback_caller_id: settings.value.fallbackCallerId,
+        panic_enabled: settings.value.panicEnabled,
+        force_https: security.value.forceHttps,
+        vm_limit: limits.value.vmLimit,
+        fax_retention: limits.value.faxRetention
+      }),
+      tenantSettingsAPI.updateBranding({
+        whitelabel_enabled: branding.value.whitelabelEnabled,
+        name: branding.value.name,
+        logo_url: branding.value.logoUrl,
+        primary_color: branding.value.primaryColor
+      }),
+      tenantSettingsAPI.updateSmtp({
+        override: smtpSettings.value.override,
+        host: smtpSettings.value.host,
+        port: smtpSettings.value.port,
+        username: smtpSettings.value.username,
+        password: smtpSettings.value.password,
+        from_email: smtpSettings.value.fromEmail,
+        encryption: smtpSettings.value.encryption
+      }),
+      tenantSettingsAPI.updateMessaging({
+        provider: messaging.value.provider,
+        account_sid: messaging.value.accountSid,
+        auth_token: messaging.value.authToken
+      }),
+      tenantSettingsAPI.updateHospitality({
+        enabled: hospitality.value.enabled
+      })
+    ])
+    toast?.success('All settings saved successfully')
+  } catch (error) {
+    toast?.error(error.message, 'Failed to save settings')
+  }
+}
+
+const testSmtp = async () => {
+  try {
+    await tenantSettingsAPI.testSmtp()
+    toast?.success('Test email sent successfully')
+  } catch (error) {
+    toast?.error(error.message, 'Failed to send test email')
+  }
+}
+
+const copyWebhook = () => {
+  navigator.clipboard.writeText('https://api.callsign.io/webhooks/sms/tenant_123')
+  toast?.info('Webhook URL copied to clipboard')
+}
+
 const regenerateSecret = () => {
-  provisioning.value.secret = Math.random().toString(36).substring(2, 18)
+  // This would need an API endpoint
+  toast?.info('Secret regeneration requires system admin')
 }
 </script>
 
