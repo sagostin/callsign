@@ -196,15 +196,7 @@
           </select>
           <span class="help-text">Defines 10/11 digit interpretation.</span>
         </div>
-        <div class="form-group">
-          <label>Outbound Format</label>
-          <select class="input-field" v-model="settings.format">
-            <option value="e164">E.164 (Global Standard, +1...)</option>
-            <option value="national">National (10-digit)</option>
-            <option value="passthrough">Passthrough (As Dialed)</option>
-          </select>
-          <span class="help-text">Convert dialed digits for carrier.</span>
-        </div>
+        <!-- Outbound Format removed - system-wide setting only -->
       </div>
     </div>
 
@@ -505,7 +497,7 @@ const saveBlock = async () => {
     blockForm.value = { number: '', match_type: 'exact', action: 'reject', notes: '' }
   } catch (e) {
     console.error(e)
-    alert('Failed to create call block')
+    console.error('Failed to create call block')
   }
 }
 
@@ -525,7 +517,7 @@ const deleteBlock = async (block) => {
     await loadCallBlocks()
   } catch (e) {
     console.error(e)
-    alert('Failed to delete block')
+    console.error('Failed to delete block')
   }
 }
 
@@ -648,8 +640,7 @@ const saveNewNumber = async () => {
       showAddNumberModal.value = false
       newNumber.value = { number: '', voice: true, sms: false, fax: false, context: 'public', routeType: 'extension', target: '' }
   } catch (e) {
-      console.error(e)
-      alert('Failed to create number')
+      console.error('Failed to create number:', e.response?.data || e.message)
   }
 }
 
@@ -681,7 +672,7 @@ const deleteOutboundRoute = async (route) => {
             await loadOutboundRoutes()
         } catch (e) {
             console.error(e)
-            alert('Failed to delete route')
+            console.error('Failed to delete route')
         }
     }
 }
@@ -732,8 +723,7 @@ const saveOutboundRoute = async () => {
         editingOutbound.value = false
         outboundForm.value = { name: '', pattern: '', strip: 0, prepend: '', gateway: '', continue: true, international: false, enabled: true }
     } catch (e) {
-        console.error(e)
-        alert('Failed to save outbound route')
+        console.error('Failed to save outbound route', e)
     }
 }
 
@@ -744,7 +734,7 @@ const createDefaultRoutes = async () => {
             await loadOutboundRoutes()
         } catch (e) {
             console.error(e)
-            alert('Failed to create default routes')
+            console.error('Failed to create default routes')
         }
     }
 }
@@ -774,7 +764,7 @@ const deleteInboundRoute = async (route) => {
       await loadInboundRoutes()
     } catch (e) {
       console.error(e)
-      alert('Failed to delete route')
+      console.error('Failed to delete route')
     }
   }
 }
@@ -792,7 +782,7 @@ const saveInboundRoute = async () => {
     inboundForm.value = { name: '', context: 'public', conditions: [{ variable: 'destination_number', operator: '=~', value: '' }], actions: [{ app: 'transfer', data: '' }] }
   } catch (e) {
     console.error(e)
-    alert('Failed to save route')
+    console.error('Failed to save route')
   }
 }
 

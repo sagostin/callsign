@@ -1,6 +1,9 @@
 package models
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -88,9 +91,15 @@ type Destination struct {
 	Description            string `json:"description"`
 	Enabled                bool   `json:"enabled" gorm:"default:true"`
 
-	// Destination action
+	// Inbound routing - where calls TO this number go
 	DestinationType   string `json:"destination_type"`   // extension, ivr, ring_group, etc.
 	DestinationAction string `json:"destination_action"` // e.g., "transfer 1001 XML default"
+
+	// Outbound gateway associations - which trunks can use this number for outbound
+	// Empty = inbound only, numbers must be assigned to gateways for outbound use
+	// Controlled by system admin only
+	GatewayAssociations GatewayAssociations `json:"gateway_associations" gorm:"type:jsonb;default:'[]'"`
+	OutboundMode        string              `json:"outbound_mode" gorm:"default:'disabled'"` // disabled, single, bridge, round_robin
 
 	// Associated dialplan
 	DialplanUUID *uuid.UUID `json:"dialplan_uuid" gorm:"type:uuid"`
@@ -110,6 +119,34 @@ type Destination struct {
 
 	// Order
 	DestinationOrder int `json:"destination_order" gorm:"default:100"`
+}
+
+// GatewayAssociation links a number to a gateway for outbound use
+type GatewayAssociation struct {
+	GatewayUUID uuid.UUID `json:"gateway_uuid"`
+	GatewayName string    `json:"gateway_name"` // For display
+	Priority    int       `json:"priority"`     // Lower = higher priority (for round-robin/failover)
+	Weight      int       `json:"weight"`       // For weighted round-robin, default 1
+}
+
+// GatewayAssociations is a slice for JSONB storage
+type GatewayAssociations []GatewayAssociation
+
+// GORM Value/Scan for GatewayAssociations
+func (g GatewayAssociations) Value() (driver.Value, error) {
+	return json.Marshal(g)
+}
+
+func (g *GatewayAssociations) Scan(value interface{}) error {
+	if value == nil {
+		*g = GatewayAssociations{}
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		return errors.New("type assertion to []byte failed")
+	}
+	return json.Unmarshal(b, g)
 }
 
 // BeforeCreate generates UUID

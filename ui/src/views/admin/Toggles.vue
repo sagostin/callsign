@@ -43,13 +43,13 @@
           </div>
         </div>
         <div class="toggle-switch" @click="flipToggle(toggle)">
-          <div class="switch-track" :class="toggle.status === 'A' ? 'left' : 'right'">
-            <span class="switch-label left">A</span>
-            <span class="switch-label right">B</span>
-            <div class="switch-thumb"></div>
+          <div class="switch-track" :class="{ 'active': toggle.currentState > 0 }">
+            <span class="switch-label">{{ toggle.currentLabel }}</span>
+            <span class="switch-state">{{ toggle.currentState + 1 }}/{{ toggle.stateCount }}</span>
           </div>
         </div>
       </div>
+
 
       <p class="toggle-desc">{{ toggle.description }}</p>
 
@@ -382,13 +382,11 @@ async function deleteToggle(toggle) {
 .code-badge.feature { background: #faf5ff; color: #9333ea; }
 
 .toggle-switch { cursor: pointer; }
-.switch-track { width: 60px; height: 28px; background: linear-gradient(90deg, #3b82f6, #f59e0b); border-radius: 14px; position: relative; display: flex; align-items: center; padding: 0 8px; }
-.switch-label { font-size: 10px; font-weight: 700; color: white; opacity: 0.7; z-index: 1; }
-.switch-label.left { margin-right: auto; }
-.switch-label.right { margin-left: auto; }
-.switch-thumb { position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: left 0.3s; }
-.switch-track.left .switch-thumb { left: 3px; }
-.switch-track.right .switch-thumb { left: 35px; }
+.switch-track { min-width: 80px; height: 28px; background: linear-gradient(90deg, #3b82f6, #60a5fa); border-radius: 14px; position: relative; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; transition: background 0.3s; }
+.switch-track.active { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.switch-label { font-size: 10px; font-weight: 700; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
+.switch-state { font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.8); background: rgba(0,0,0,0.15); padding: 2px 5px; border-radius: 8px; }
+
 
 .toggle-desc { font-size: 12px; color: var(--text-muted); margin: 0 0 12px 0; }
 

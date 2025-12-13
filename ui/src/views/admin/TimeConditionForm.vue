@@ -200,18 +200,23 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { 
   Clock as ClockIcon, CheckCircle as CheckCircleIcon, XCircle as XCircleIcon,
   Play as PlayIcon, Trash2 as TrashIcon
 } from 'lucide-vue-next'
+import { timeConditionsAPI, holidaysAPI } from '../../services/api'
 
 const route = useRoute()
 const router = useRouter()
-const isNew = computed(() => route.params.id === 'new')
+const isNew = computed(() => !route.params.id || route.params.id === 'new')
+const loading = ref(false)
+const error = ref(null)
 
 const allDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const dayToNumber = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 }
+const numberToDay = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' }
 
 const form = ref({
   name: '',
@@ -223,15 +228,69 @@ const form = ref({
   matchType: 'ivr',
   matchTarget: '',
   noMatchType: 'voicemail',
-  noMatchTarget: ''
+  noMatchTarget: '',
+  timezone: 'America/New_York',
+  extension: '',
+  enabled: true
 })
 
-const holidayLists = ref([
-  { id: 1, name: 'US Federal 2025', count: 11 },
-  { id: 2, name: 'Office Closures', count: 3 }
-])
+const holidayLists = ref([])
+const testResult = ref(true)
 
-const testResult = ref(true) // Simulated
+onMounted(async () => {
+  await loadHolidayLists()
+  if (!isNew.value && route.params.id) {
+    await loadCondition(route.params.id)
+  }
+})
+
+const loadHolidayLists = async () => {
+  try {
+    const response = await holidaysAPI.list()
+    holidayLists.value = (response.data?.data || []).map(h => ({
+      id: h.id,
+      name: h.name,
+      count: (h.dates || []).length
+    }))
+  } catch (e) {
+    console.error('Failed to load holiday lists', e)
+  }
+}
+
+const loadCondition = async (id) => {
+  loading.value = true
+  try {
+    const response = await timeConditionsAPI.get(id)
+    const tc = response.data?.data || response.data
+    
+    // Map backend model to form structure
+    // Backend: weekdays (int array), start_time, end_time strings
+    const weekdays = (tc.weekdays || []).map(d => numberToDay[d])
+    
+    form.value = {
+      name: tc.name || '',
+      priority: 10,
+      rules: [{
+        days: weekdays,
+        startTime: tc.start_time || '09:00',
+        endTime: tc.end_time || '17:00'
+      }],
+      holidayOverrides: tc.holiday_overrides || [],
+      matchType: tc.match_dest_type || 'ivr',
+      matchTarget: tc.match_dest_value || '',
+      noMatchType: tc.nomatch_dest_type || 'voicemail',
+      noMatchTarget: tc.nomatch_dest_value || '',
+      timezone: tc.timezone || 'America/New_York',
+      extension: tc.extension || '',
+      enabled: tc.enabled !== false
+    }
+  } catch (e) {
+    error.value = 'Failed to load time condition'
+    console.error(e)
+  } finally {
+    loading.value = false
+  }
+}
 
 const addRule = () => {
   form.value.rules.push({ days: [], startTime: '09:00', endTime: '17:00' })
@@ -294,30 +353,52 @@ const testCondition = () => {
            currentTime >= rule.startTime && 
            currentTime <= rule.endTime
   })
-  alert(testResult.value ? 'Condition would MATCH now' : 'Condition would NOT match now')
 }
 
-const saveCondition = () => {
-  alert('Time condition saved!')
-  router.push('/admin/time-conditions')
-}
-
-// Load existing if editing
-if (!isNew.value) {
-  form.value = {
-    name: 'Business Hours',
-    priority: 10,
-    rules: [
-      { days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], startTime: '09:00', endTime: '17:00' }
-    ],
-    holidayOverrides: [1],
-    matchType: 'ivr',
-    matchTarget: 'Main Menu (8000)',
-    noMatchType: 'ivr',
-    noMatchTarget: 'After Hours (8001)'
+const saveCondition = async () => {
+  error.value = null
+  loading.value = true
+  
+  try {
+    // Collect all weekdays from all rules (flatten)
+    const allWeekdays = new Set()
+    form.value.rules.forEach(rule => {
+      rule.days.forEach(d => allWeekdays.add(dayToNumber[d]))
+    })
+    
+    // Use first rule's times (simplified - full implementation would store multiple rules)
+    const firstRule = form.value.rules[0] || { startTime: '09:00', endTime: '17:00' }
+    
+    const payload = {
+      name: form.value.name,
+      extension: form.value.extension,
+      timezone: form.value.timezone,
+      weekdays: Array.from(allWeekdays),
+      start_time: firstRule.startTime,
+      end_time: firstRule.endTime,
+      match_dest_type: form.value.matchType,
+      match_dest_value: form.value.matchTarget,
+      nomatch_dest_type: form.value.noMatchType,
+      nomatch_dest_value: form.value.noMatchTarget,
+      enabled: form.value.enabled
+    }
+    
+    if (isNew.value) {
+      await timeConditionsAPI.create(payload)
+    } else {
+      await timeConditionsAPI.update(route.params.id, payload)
+    }
+    
+    router.push('/admin/time-conditions')
+  } catch (e) {
+    error.value = e.response?.data?.error || 'Failed to save time condition'
+    console.error('Save error:', e)
+  } finally {
+    loading.value = false
   }
 }
 </script>
+
 
 <style scoped>
 .view-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--spacing-lg); }

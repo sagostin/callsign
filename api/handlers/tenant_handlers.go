@@ -145,7 +145,7 @@ func (h *Handler) GetExtension(ctx iris.Context) {
 		return
 	}
 
-	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	id, _ := strconv.Atoi(ctx.Params().Get("ext"))
 	var ext models.Extension
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(ctx)).First(&ext).Error; err != nil {
@@ -165,7 +165,7 @@ func (h *Handler) UpdateExtension(ctx iris.Context) {
 		return
 	}
 
-	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	id, _ := strconv.Atoi(ctx.Params().Get("ext"))
 	var ext models.Extension
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(ctx)).First(&ext).Error; err != nil {
@@ -197,7 +197,7 @@ func (h *Handler) DeleteExtension(ctx iris.Context) {
 		return
 	}
 
-	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	id, _ := strconv.Atoi(ctx.Params().Get("ext"))
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(ctx)).Delete(&models.Extension{}).Error; err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)

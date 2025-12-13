@@ -317,19 +317,32 @@ onMounted(async () => {
 async function fetchProfiles() {
   try {
     const response = await extensionProfilesAPI.list()
-    profiles.value = (response.data.data || []).map(p => ({
-      id: p.id,
-      name: p.name,
-      color: p.color,
-      extensionCount: p.extension_count || 0,
-      permissions: p.permissions || {},
-      callHandling: p.call_handling || {},
-      routingOverride: p.routing_override || ''
-    }))
+    profiles.value = (response.data.data || []).map(p => {
+      const ch = p.call_handling || {}
+      return {
+        id: p.id,
+        name: p.name,
+        color: p.color,
+        extensionCount: p.extension_count || 0,
+        permissions: p.permissions || {},
+        callHandling: {
+          overrideStrategy: ch.override_strategy || false,
+          strategy: ch.strategy || 'simultaneous',
+          overrideDevices: ch.override_devices || false,
+          devices: {
+            softphone: ch.devices?.softphone !== false,
+            deskPhone: ch.devices?.desk_phone !== false,
+            mobile: ch.devices?.mobile !== false
+          }
+        },
+        routingOverride: p.routing_override || ''
+      }
+    })
   } catch (error) {
     console.error('Failed to load profiles', error)
   }
 }
+
 
 async function fetchExtensions() {
   isLoading.value = true
@@ -430,12 +443,22 @@ const deleteProfile = async (profile) => {
 
 const saveProfile = async () => {
   try {
+    const ch = profileForm.value.callHandling || {}
     const payload = {
       name: profileForm.value.name,
       color: profileForm.value.color,
       permissions: profileForm.value.permissions,
-      call_handling: profileForm.value.callHandling,
-      routing_override: profileForm.value.routingOverride
+      call_handling: {
+        override_strategy: ch.overrideStrategy || false,
+        strategy: ch.strategy || 'simultaneous',
+        override_devices: ch.overrideDevices || false,
+        devices: {
+          softphone: ch.devices?.softphone !== false,
+          desk_phone: ch.devices?.deskPhone !== false,
+          mobile: ch.devices?.mobile !== false
+        }
+      },
+      routing_override: profileForm.value.routingOverride || ''
     }
     
     if (isEditingProfile.value) {
@@ -452,6 +475,7 @@ const saveProfile = async () => {
     toast?.error(error.message, 'Failed to save profile')
   }
 }
+
 
 const resetProfileForm = () => {
   profileForm.value = {
