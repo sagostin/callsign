@@ -112,15 +112,22 @@ type TimeCondition struct {
 	Extension string `json:"extension" gorm:"index"`
 
 	// Schedule
-	Timezone  string         `json:"timezone" gorm:"default:'America/New_York'"`
-	Weekdays  pq.Int32Array  `json:"weekdays" gorm:"type:integer[]"` // 0=Sun, 1=Mon, etc.
-	StartTime string         `json:"start_time"`                     // HH:MM
-	EndTime   string         `json:"end_time"`                       // HH:MM
-	Holidays  pq.StringArray `json:"holidays" gorm:"type:text[]"`    // YYYY-MM-DD dates
+	Timezone  string        `json:"timezone" gorm:"default:'America/New_York'"`
+	Weekdays  pq.Int32Array `json:"weekdays" gorm:"type:integer[]"` // 0=Sun, 1=Mon, etc.
+	StartTime string        `json:"start_time"`                     // HH:MM
+	EndTime   string        `json:"end_time"`                       // HH:MM
 
-	// Destinations
+	// Holiday Override - links to HolidayList for override
+	HolidayListID    *uint  `json:"holiday_list_id" gorm:"index"` // Optional link to HolidayList
+	HolidayDestType  string `json:"holiday_dest_type"`            // extension, ivr, queue, etc.
+	HolidayDestValue string `json:"holiday_dest_value"`           // Destination ID/number when holiday matches
+
+	// Legacy: inline holiday dates (deprecated in favor of HolidayListID)
+	Holidays pq.StringArray `json:"holidays" gorm:"type:text[]"` // YYYY-MM-DD dates
+
+	// Destinations - using extension/feature code format
 	MatchDestType    string `json:"match_dest_type"`  // extension, ivr, queue, etc.
-	MatchDestValue   string `json:"match_dest_value"` // Destination ID/number
+	MatchDestValue   string `json:"match_dest_value"` // Destination extension/number
 	NoMatchDestType  string `json:"nomatch_dest_type"`
 	NoMatchDestValue string `json:"nomatch_dest_value"`
 

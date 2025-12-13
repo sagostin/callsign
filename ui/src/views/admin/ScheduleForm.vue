@@ -30,16 +30,25 @@
                 <label>Holiday List</label>
                 <select v-model="form.holiday_list_id" class="input-field">
                    <option value="">-- None --</option>
-                   <option value="1">US Federal Holidays</option>
-                   <option value="2">Office Closures</option>
+                   <option v-for="list in holidayLists" :key="list.id" :value="list.id">
+                     {{ list.name }}
+                   </option>
                 </select>
              </div>
              <div class="form-group" v-if="form.holiday_list_id">
-                <label>If Holiday Matches</label>
-                <div class="input-group">
-                   <span class="prefix-icon">🏖️</span>
-                   <input v-model="form.action_holiday" type="text" class="input-field" placeholder="e.g. 9901 (Holiday VM)">
-                </div>
+                <label>Route Calls To (on Holiday)</label>
+                <select v-model="form.holiday_dest" class="input-field">
+                   <option value="">-- Select Destination --</option>
+                   <optgroup label="Extensions">
+                     <option v-for="ext in extensions" :key="ext.extension" :value="`extension:${ext.extension}`">
+                       {{ ext.extension }} {{ ext.name ? `- ${ext.name}` : '' }}
+                     </option>
+                   </optgroup>
+                   <optgroup label="Voicemail">
+                     <option value="voicemail:general">General Voicemail</option>
+                     <option value="voicemail:operator">Operator Voicemail</option>
+                   </optgroup>
+                </select>
              </div>
           </div>
           <p class="text-xs text-muted" style="margin-top: 8px">
@@ -97,16 +106,49 @@
          <div class="route-item match">
             <div class="icon-indicator">✅</div>
             <div class="route-content">
-               <label>Destination if MATCH (Open / In Schedule)</label>
-               <input v-model="form.action_match" type="text" class="input-field" placeholder="e.g. 5000 (IVR)">
+               <label>Route To When MATCH (Open / In Schedule)</label>
+               <select v-model="form.match_dest" class="input-field">
+                  <option value="">-- Select Destination --</option>
+                  <optgroup label="Extensions">
+                    <option v-for="ext in extensions" :key="ext.extension" :value="`extension:${ext.extension}`">
+                      {{ ext.extension }} {{ ext.name ? `- ${ext.name}` : '' }}
+                    </option>
+                  </optgroup>
+                  <optgroup label="IVR Menus">
+                    <option v-for="ivr in ivrs" :key="ivr.id" :value="`ivr:${ivr.id}`">
+                      {{ ivr.name }}
+                    </option>
+                  </optgroup>
+                  <optgroup label="Ring Groups">
+                    <option v-for="rg in ringGroups" :key="rg.id" :value="`ring_group:${rg.id}`">
+                      {{ rg.name }}
+                    </option>
+                  </optgroup>
+               </select>
             </div>
          </div>
          
          <div class="route-item nomatch">
             <div class="icon-indicator">❌</div>
             <div class="route-content">
-               <label>Destination if NO MATCH (Closed / Outside Schedule)</label>
-               <input v-model="form.action_nomatch" type="text" class="input-field" placeholder="e.g. 9900 (Voicemail)">
+               <label>Route To When NO MATCH (Closed / Outside Schedule)</label>
+               <select v-model="form.nomatch_dest" class="input-field">
+                  <option value="">-- Select Destination --</option>
+                  <optgroup label="Extensions">
+                    <option v-for="ext in extensions" :key="ext.extension" :value="`extension:${ext.extension}`">
+                      {{ ext.extension }} {{ ext.name ? `- ${ext.name}` : '' }}
+                    </option>
+                  </optgroup>
+                  <optgroup label="Voicemail">
+                    <option value="voicemail:general">General Voicemail</option>
+                    <option value="voicemail:operator">Operator Voicemail</option>
+                  </optgroup>
+                  <optgroup label="IVR Menus">
+                    <option v-for="ivr in ivrs" :key="ivr.id" :value="`ivr:${ivr.id}`">
+                      {{ ivr.name }}
+                    </option>
+                  </optgroup>
+               </select>
             </div>
          </div>
       </div>
@@ -119,24 +161,31 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { holidaysAPI, extensionsAPI, ivrAPI, ringGroupsAPI } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
 const isNew = computed(() => !route.params.id)
+
+// Data for dropdowns
+const holidayLists = ref([])
+const extensions = ref([])
+const ivrs = ref([])
+const ringGroups = ref([])
 
 const form = ref({
   name: '',
   extension: '',
   description: '',
   holiday_list_id: '',
-  action_holiday: '',
+  holiday_dest: '',
   time_blocks: [
      { dow: [1,2,3,4,5], start: '09:00', end: '17:00' }
   ],
-  action_match: '',
-  action_nomatch: ''
+  match_dest: '',
+  nomatch_dest: ''
 })
 
 const daysOfWeek = [
@@ -148,6 +197,25 @@ const daysOfWeek = [
    { label: 'Sat', val: 6 },
    { label: 'Sun', val: 0 }
 ]
+
+// Load data on mount
+onMounted(async () => {
+  try {
+    const [holidayRes, extRes, ivrRes, rgRes] = await Promise.all([
+      holidaysAPI.list().catch(() => ({ data: [] })),
+      extensionsAPI.list().catch(() => ({ data: [] })),
+      ivrAPI.list().catch(() => ({ data: [] })),
+      ringGroupsAPI.list().catch(() => ({ data: [] }))
+    ])
+    
+    holidayLists.value = holidayRes.data?.data || holidayRes.data || []
+    extensions.value = extRes.data?.data || extRes.data || []
+    ivrs.value = ivrRes.data?.data || ivrRes.data || []
+    ringGroups.value = rgRes.data?.data || rgRes.data || []
+  } catch (e) {
+    console.error('Failed to load form data:', e)
+  }
+})
 
 const addTimeBlock = () => {
    form.value.time_blocks.push({ dow: [], start: '08:00', end: '17:00' })
@@ -166,7 +234,29 @@ const toggleDow = (block, dayVal) => {
 }
 
 const save = () => {
-  console.log('Saving schedule:', form.value)
+  // Parse dest values (format: "type:value") for API
+  const parseDestination = (dest) => {
+    if (!dest) return { type: '', value: '' }
+    const [type, value] = dest.split(':')
+    return { type, value: value || '' }
+  }
+  
+  const matchDest = parseDestination(form.value.match_dest)
+  const nomatchDest = parseDestination(form.value.nomatch_dest)
+  const holidayDest = parseDestination(form.value.holiday_dest)
+  
+  const payload = {
+    ...form.value,
+    match_dest_type: matchDest.type,
+    match_dest_value: matchDest.value,
+    nomatch_dest_type: nomatchDest.type,
+    nomatch_dest_value: nomatchDest.value,
+    holiday_dest_type: holidayDest.type,
+    holiday_dest_value: holidayDest.value,
+    holiday_list_id: form.value.holiday_list_id ? parseInt(form.value.holiday_list_id) : null
+  }
+  
+  console.log('Saving schedule:', payload)
   router.back()
 }
 </script>

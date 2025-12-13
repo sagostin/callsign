@@ -242,14 +242,17 @@ const form = ref({
   content: ''
 })
 
-const manufacturers = ref([
-  { id: 'yealink', name: 'Yealink', logo: null },
-  { id: 'poly', name: 'Poly', logo: null },
-  { id: 'cisco', name: 'Cisco', logo: null },
-  { id: 'grandstream', name: 'Grandstream', logo: null },
-  { id: 'fanvil', name: 'Fanvil', logo: null },
-  { id: 'generic', name: 'Generic SIP', logo: null },
-])
+const manufacturers = ref([])
+
+// Default manufacturers if API returns empty
+const defaultManufacturers = [
+  { id: 'yealink', code: 'yealink', name: 'Yealink', logo_url: null },
+  { id: 'poly', code: 'poly', name: 'Poly', logo_url: null },
+  { id: 'cisco', code: 'cisco', name: 'Cisco', logo_url: null },
+  { id: 'grandstream', code: 'grandstream', name: 'Grandstream', logo_url: null },
+  { id: 'fanvil', code: 'fanvil', name: 'Fanvil', logo_url: null },
+  { id: 'generic', code: 'generic', name: 'Generic SIP', logo_url: null },
+]
 
 const allTemplates = ref([])
 
@@ -257,12 +260,30 @@ const allTemplates = ref([])
 const loadTemplates = async () => {
   loading.value = true
   try {
+    // Load manufacturers first
+    try {
+      const mfgRes = await systemAPI.listDeviceManufacturers()
+      const mfgList = mfgRes.data?.data || mfgRes.data || []
+      if (mfgList.length > 0) {
+        manufacturers.value = mfgList.map(m => ({
+          id: m.code,
+          name: m.name,
+          logo: m.logo_url
+        }))
+      } else {
+        manufacturers.value = defaultManufacturers
+      }
+    } catch (e) {
+      console.log('Using default manufacturers')
+      manufacturers.value = defaultManufacturers
+    }
+
     const response = await systemAPI.listDeviceTemplates()
     const templates = response.data?.data || response.data || []
     allTemplates.value = templates.map(t => ({
       id: t.id,
       uuid: t.uuid,
-      manufacturer: t.vendor?.toLowerCase() || 'generic',
+      manufacturer: t.manufacturer?.toLowerCase() || 'generic',
       model: t.model || t.device_model || 'Unknown',
       name: t.name,
       version: t.version || 'v1.0',

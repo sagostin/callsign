@@ -819,3 +819,131 @@ func (h *Handler) AssignDeviceToProfile(ctx iris.Context) {
 
 	ctx.JSON(iris.Map{"message": "Device assigned to profile"})
 }
+
+// ==================
+// Device Manufacturer Handlers (System Admin)
+// ==================
+
+// ListDeviceManufacturers returns all device manufacturers
+func (h *Handler) ListDeviceManufacturers(ctx iris.Context) {
+	var manufacturers []models.DeviceManufacturer
+	h.DB.Where("enabled = ?", true).Order("sort_order ASC, name ASC").Find(&manufacturers)
+
+	// Get template counts per manufacturer
+	for i := range manufacturers {
+		var count int64
+		h.DB.Model(&models.DeviceTemplate{}).
+			Where("LOWER(manufacturer) = ?", manufacturers[i].Code).
+			Count(&count)
+		// We can add this as a computed field in response
+		manufacturers[i].SortOrder = int(count) // Reusing SortOrder for count (temporary)
+	}
+
+	ctx.JSON(iris.Map{"data": manufacturers})
+}
+
+// CreateDeviceManufacturer creates a new manufacturer (system admin only)
+func (h *Handler) CreateDeviceManufacturer(ctx iris.Context) {
+	var mfg models.DeviceManufacturer
+	if err := ctx.ReadJSON(&mfg); err != nil {
+		ctx.StatusCode(iris.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request body"})
+		return
+	}
+
+	// Normalize code to lowercase
+	mfg.Code = strings.ToLower(mfg.Code)
+	if mfg.Code == "" || mfg.Name == "" {
+		ctx.StatusCode(iris.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Code and name are required"})
+		return
+	}
+
+	// Check for duplicate code
+	var existing models.DeviceManufacturer
+	if err := h.DB.Where("code = ?", mfg.Code).First(&existing).Error; err == nil {
+		ctx.StatusCode(iris.StatusConflict)
+		ctx.JSON(iris.Map{"error": "Manufacturer code already exists"})
+		return
+	}
+
+	if err := h.DB.Create(&mfg).Error; err != nil {
+		ctx.StatusCode(iris.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create manufacturer"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": mfg, "message": "Manufacturer created"})
+}
+
+// UpdateDeviceManufacturer updates a manufacturer
+func (h *Handler) UpdateDeviceManufacturer(ctx iris.Context) {
+	id := ctx.Params().Get("id")
+
+	var mfg models.DeviceManufacturer
+	if err := h.DB.Where("id = ?", id).First(&mfg).Error; err != nil {
+		ctx.StatusCode(iris.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Manufacturer not found"})
+		return
+	}
+
+	var input models.DeviceManufacturer
+	if err := ctx.ReadJSON(&input); err != nil {
+		ctx.StatusCode(iris.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request body"})
+		return
+	}
+
+	updates := map[string]interface{}{
+		"name":               input.Name,
+		"description":        input.Description,
+		"logo_url":           input.LogoURL,
+		"color":              input.Color,
+		"user_agent_pattern": input.UserAgentPattern,
+		"mac_prefix":         input.MACPrefix,
+		"sort_order":         input.SortOrder,
+		"is_default":         input.IsDefault,
+		"enabled":            input.Enabled,
+	}
+
+	// Only update code if changing and not in use
+	if input.Code != "" && input.Code != mfg.Code {
+		var count int64
+		h.DB.Model(&models.DeviceTemplate{}).Where("LOWER(manufacturer) = ?", mfg.Code).Count(&count)
+		if count > 0 {
+			ctx.StatusCode(iris.StatusConflict)
+			ctx.JSON(iris.Map{"error": "Cannot change code while templates exist"})
+			return
+		}
+		updates["code"] = strings.ToLower(input.Code)
+	}
+
+	h.DB.Model(&mfg).Updates(updates)
+
+	ctx.JSON(iris.Map{"data": mfg, "message": "Manufacturer updated"})
+}
+
+// DeleteDeviceManufacturer deletes a manufacturer
+func (h *Handler) DeleteDeviceManufacturer(ctx iris.Context) {
+	id := ctx.Params().Get("id")
+
+	// Check if any templates are using this manufacturer
+	var mfg models.DeviceManufacturer
+	if err := h.DB.Where("id = ?", id).First(&mfg).Error; err != nil {
+		ctx.StatusCode(iris.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Manufacturer not found"})
+		return
+	}
+
+	var count int64
+	h.DB.Model(&models.DeviceTemplate{}).Where("LOWER(manufacturer) = ?", mfg.Code).Count(&count)
+	if count > 0 {
+		ctx.StatusCode(iris.StatusConflict)
+		ctx.JSON(iris.Map{"error": "Manufacturer has templates", "template_count": count})
+		return
+	}
+
+	h.DB.Delete(&mfg)
+
+	ctx.JSON(iris.Map{"message": "Manufacturer deleted"})
+}

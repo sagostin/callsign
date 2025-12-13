@@ -590,6 +590,12 @@ export const systemAPI = {
     updateDeviceTemplate: (id, data) => api.put(`/system/device-templates/${id}`, data),
     deleteDeviceTemplate: (id) => api.delete(`/system/device-templates/${id}`),
 
+    // Device Manufacturers (configurable groupings)
+    listDeviceManufacturers: () => api.get('/system/device-manufacturers'),
+    createDeviceManufacturer: (data) => api.post('/system/device-manufacturers', data),
+    updateDeviceManufacturer: (id, data) => api.put(`/system/device-manufacturers/${id}`, data),
+    deleteDeviceManufacturer: (id) => api.delete(`/system/device-manufacturers/${id}`),
+
     // Firmware Management
     listFirmware: (params) => api.get('/system/firmware', { params }),
     getFirmware: (id) => api.get(`/system/firmware/${id}`),

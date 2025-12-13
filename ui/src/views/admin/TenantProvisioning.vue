@@ -17,10 +17,6 @@
         <div class="stat-value">{{ devices.total }}</div>
         <div class="stat-label">Total Devices</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value">{{ customTemplates.length }}</div>
-        <div class="stat-label">Custom Templates</div>
-      </div>
     </div>
 
     <!-- Provisioning URL Section -->
@@ -33,9 +29,14 @@
             <p class="text-muted text-sm">Use this URL to configure your IP phones for auto-provisioning.</p>
           </div>
         </div>
-        <button class="btn-secondary" @click="regenerateSecret" :disabled="regenerating">
+        <button 
+          class="btn-secondary" 
+          @click="regenerateSecret" 
+          :disabled="regenerating || hasExistingSecret"
+          :title="hasExistingSecret ? 'Secret already exists. Delete existing secret first.' : 'Generate provisioning secret'"
+        >
           <RefreshCwIcon class="btn-icon" />
-          {{ regenerating ? 'Regenerating...' : 'Regenerate Secret' }}
+          {{ regenerating ? 'Generating...' : (hasExistingSecret ? 'Secret Exists' : 'Generate Secret') }}
         </button>
       </div>
       
@@ -113,170 +114,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Custom Templates Section -->
-    <div class="section-card">
-      <div class="section-header">
-        <div class="section-title">
-          <FileCodeIcon class="section-icon" />
-          <div>
-            <h3>Custom Template Overrides</h3>
-            <p class="text-muted text-sm">Templates customized for your organization, overriding system defaults.</p>
-          </div>
-        </div>
-        <button class="btn-primary" @click="showTemplateModal = true">
-          <PlusIcon class="btn-icon" />
-          New Template Override
-        </button>
-      </div>
-
-      <div v-if="loading" class="loading-state">
-        <div class="spinner"></div>
-        Loading templates...
-      </div>
-
-      <div v-else-if="customTemplates.length === 0" class="empty-state">
-        <FileCodeIcon class="empty-icon" />
-        <h4>No Custom Templates</h4>
-        <p>Create template overrides to customize device configurations for your organization.</p>
-        <button class="btn-primary" @click="showTemplateModal = true">Create Override</button>
-      </div>
-
-      <div v-else class="template-grid">
-        <div v-for="template in customTemplates" :key="template.id" class="template-card">
-          <div class="template-header">
-            <div class="template-info">
-              <span class="manufacturer-badge">{{ template.manufacturer }}</span>
-              <h4>{{ template.name }}</h4>
-              <p class="text-muted text-sm">{{ template.model || 'All Models' }}</p>
-            </div>
-            <div class="template-actions">
-              <button class="btn-icon" @click="editTemplate(template)" v-tooltip="'Edit'">
-                <EditIcon class="icon-sm" />
-              </button>
-              <button class="btn-icon danger" @click="deleteTemplate(template)" v-tooltip="'Delete'">
-                <TrashIcon class="icon-sm" />
-              </button>
-            </div>
-          </div>
-          <div class="template-meta">
-            <span><CalendarIcon class="icon-xs" /> {{ formatDate(template.updated_at) }}</span>
-            <span v-if="template.basedOn" class="based-on">
-              <LinkIcon class="icon-xs" /> Based on: {{ template.basedOn }}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Available System Templates -->
-    <div class="section-card">
-      <div class="section-header">
-        <div class="section-title">
-          <MonitorIcon class="section-icon" />
-          <div>
-            <h3>Available System Templates</h3>
-            <p class="text-muted text-sm">Master templates available to clone for customization.</p>
-          </div>
-        </div>
-        <div class="filter-tabs">
-          <button 
-            v-for="mfg in manufacturers" 
-            :key="mfg"
-            class="filter-tab"
-            :class="{ active: selectedManufacturer === mfg }"
-            @click="selectedManufacturer = mfg"
-          >
-            {{ mfg }}
-          </button>
-        </div>
-      </div>
-
-      <div class="system-templates-grid">
-        <div v-for="template in filteredSystemTemplates" :key="template.id" class="system-template-card">
-          <div class="template-info">
-            <h5>{{ template.name }}</h5>
-            <p class="text-muted text-xs">{{ template.model || 'Generic' }}</p>
-          </div>
-          <button class="btn-sm" @click="cloneTemplate(template)">
-            <CopyIcon class="icon-xs" /> Clone
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Template Editor Modal -->
-    <div v-if="showTemplateModal" class="modal-overlay" @click.self="showTemplateModal = false">
-      <div class="modal-card large">
-        <div class="modal-header">
-          <h3>{{ editingTemplate ? 'Edit Template Override' : 'New Template Override' }}</h3>
-          <button class="close-btn" @click="showTemplateModal = false">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="editor-layout">
-            <div class="editor-sidebar">
-              <div class="form-group">
-                <label>Manufacturer</label>
-                <select v-model="templateForm.manufacturer" class="input-field">
-                  <option value="yealink">Yealink</option>
-                  <option value="poly">Poly</option>
-                  <option value="grandstream">Grandstream</option>
-                  <option value="cisco">Cisco</option>
-                  <option value="fanvil">Fanvil</option>
-                  <option value="generic">Generic SIP</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Model</label>
-                <input v-model="templateForm.model" class="input-field" placeholder="T54W, T57W (optional)">
-              </div>
-              <div class="form-group">
-                <label>Template Name</label>
-                <input v-model="templateForm.name" class="input-field" placeholder="Custom T5 Series">
-              </div>
-              <div class="form-group">
-                <label>Config Format</label>
-                <select v-model="templateForm.config_type" class="input-field">
-                  <option value="cfg">CFG</option>
-                  <option value="xml">XML</option>
-                  <option value="ini">INI</option>
-                </select>
-              </div>
-              
-              <div class="divider"></div>
-              
-              <div class="variables-hint">
-                <h5>Available Variables</h5>
-                <div class="var-list" v-pre>
-                  <code>{{.MAC}}</code>
-                  <code>{{.Lines.1.UserID}}</code>
-                  <code>{{.Lines.1.Password}}</code>
-                  <code>{{.Server}}</code>
-                  <code>{{.Domain}}</code>
-                </div>
-              </div>
-            </div>
-            <div class="editor-main">
-              <div class="code-header">
-                <span>Configuration Template</span>
-              </div>
-              <textarea 
-                v-model="templateForm.config_template" 
-                class="code-editor" 
-                spellcheck="false" 
-                placeholder="# Enter your device configuration template..."
-              ></textarea>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="showTemplateModal = false">Cancel</button>
-          <button class="btn-primary" @click="saveTemplate" :disabled="saving || !templateForm.name">
-            {{ saving ? 'Saving...' : (editingTemplate ? 'Update Template' : 'Create Template') }}
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -284,21 +121,14 @@
 import { ref, computed, onMounted, inject } from 'vue'
 import { 
   Link as LinkIcon, Copy as CopyIcon, RefreshCw as RefreshCwIcon,
-  FileText as FileTextIcon, FileCode as FileCodeIcon, Plus as PlusIcon,
-  Edit as EditIcon, Trash2 as TrashIcon, Calendar as CalendarIcon,
-  Monitor as MonitorIcon
+  FileText as FileTextIcon
 } from 'lucide-vue-next'
-import { deviceTemplatesAPI, devicesAPI } from '@/services/api'
+import { devicesAPI } from '@/services/api'
 
 const toast = inject('toast')
-const loading = ref(true)
-const saving = ref(false)
+const loading = ref(false)
 const savingSyslog = ref(false)
 const regenerating = ref(false)
-
-const showTemplateModal = ref(false)
-const editingTemplate = ref(null)
-const selectedManufacturer = ref('all')
 
 // Get tenant info from localStorage
 const getTenantInfo = () => {
@@ -333,26 +163,11 @@ const syslogSettings = ref({
   level: 'info'
 })
 
-// Templates
-const customTemplates = ref([])
-const systemTemplates = ref([])
-
-const templateForm = ref({
-  manufacturer: 'yealink',
-  model: '',
-  name: '',
-  config_type: 'cfg',
-  config_template: ''
+// Check if provisioning secret already exists
+const hasExistingSecret = computed(() => {
+  return tenantInfo.secret && tenantInfo.secret !== 'secret' && tenantInfo.secret !== ''
 })
 
-const manufacturers = ['all', 'Yealink', 'Poly', 'Grandstream', 'Cisco', 'Fanvil']
-
-const filteredSystemTemplates = computed(() => {
-  if (selectedManufacturer.value === 'all') return systemTemplates.value
-  return systemTemplates.value.filter(t => 
-    t.manufacturer?.toLowerCase() === selectedManufacturer.value.toLowerCase()
-  )
-})
 
 // Load data
 const loadData = async () => {
@@ -365,32 +180,6 @@ const loadData = async () => {
       registered: deviceList.filter(d => d.status === 'Registered').length,
       total: deviceList.length
     }
-
-    // Load tenant templates (custom overrides)
-    const templatesResponse = await deviceTemplatesAPI.list()
-    const allTemplates = templatesResponse.data?.data || templatesResponse.data || []
-    
-    // Separate system vs tenant templates
-    customTemplates.value = allTemplates.filter(t => t.tenant_id).map(t => ({
-      id: t.id,
-      name: t.name,
-      manufacturer: t.manufacturer || t.vendor,
-      model: t.model,
-      config_type: t.config_type,
-      config_template: t.config_template,
-      updated_at: t.updated_at,
-      basedOn: t.based_on_name
-    }))
-    
-    systemTemplates.value = allTemplates.filter(t => !t.tenant_id && t.is_system).map(t => ({
-      id: t.id,
-      name: t.name,
-      manufacturer: t.manufacturer || t.vendor,
-      model: t.model,
-      config_type: t.config_type,
-      config_template: t.config_template
-    }))
-
   } catch (e) {
     console.error('Failed to load data:', e)
     toast?.error('Failed to load provisioning data')
@@ -411,15 +200,19 @@ const copyUrl = async () => {
   }
 }
 
-// Regenerate secret (placeholder - would need backend support)
+// Generate secret (only if no existing secret)
 const regenerateSecret = async () => {
+  if (hasExistingSecret.value) {
+    toast?.warning('Provisioning secret already exists')
+    return
+  }
   regenerating.value = true
   try {
-    // TODO: Call API to regenerate tenant secret
+    // TODO: Call API to generate tenant secret
     await new Promise(r => setTimeout(r, 1000))
-    toast?.success('Secret regenerated. Update your device configurations.')
+    toast?.success('Secret generated. Configure your devices with the new URL.')
   } catch (e) {
-    toast?.error('Failed to regenerate secret')
+    toast?.error('Failed to generate secret')
   } finally {
     regenerating.value = false
   }
@@ -436,85 +229,6 @@ const saveSyslogSettings = async () => {
     toast?.error('Failed to save syslog settings')
   } finally {
     savingSyslog.value = false
-  }
-}
-
-// Template CRUD
-const editTemplate = (template) => {
-  editingTemplate.value = template
-  templateForm.value = {
-    manufacturer: template.manufacturer?.toLowerCase() || 'generic',
-    model: template.model || '',
-    name: template.name,
-    config_type: template.config_type || 'cfg',
-    config_template: template.config_template || ''
-  }
-  showTemplateModal.value = true
-}
-
-const cloneTemplate = (template) => {
-  editingTemplate.value = null
-  templateForm.value = {
-    manufacturer: template.manufacturer?.toLowerCase() || 'generic',
-    model: template.model || '',
-    name: template.name + ' (Custom)',
-    config_type: template.config_type || 'cfg',
-    config_template: template.config_template || ''
-  }
-  showTemplateModal.value = true
-}
-
-const saveTemplate = async () => {
-  saving.value = true
-  try {
-    const payload = {
-      manufacturer: templateForm.value.manufacturer,
-      model: templateForm.value.model,
-      name: templateForm.value.name,
-      config_type: templateForm.value.config_type,
-      config_template: templateForm.value.config_template
-    }
-    
-    if (editingTemplate.value?.id) {
-      await deviceTemplatesAPI.update(editingTemplate.value.id, payload)
-      toast?.success('Template updated')
-    } else {
-      await deviceTemplatesAPI.create(payload)
-      toast?.success('Template created')
-    }
-    
-    showTemplateModal.value = false
-    editingTemplate.value = null
-    templateForm.value = { manufacturer: 'yealink', model: '', name: '', config_type: 'cfg', config_template: '' }
-    await loadData()
-  } catch (e) {
-    toast?.error('Failed to save template', e.message)
-  } finally {
-    saving.value = false
-  }
-}
-
-const deleteTemplate = async (template) => {
-  if (!confirm(`Delete template "${template.name}"?`)) return
-  try {
-    await deviceTemplatesAPI.delete(template.id)
-    toast?.success('Template deleted')
-    await loadData()
-  } catch (e) {
-    toast?.error('Failed to delete template', e.message)
-  }
-}
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleDateString()
-}
-
-// Tooltip directive
-const vTooltip = {
-  mounted(el, binding) {
-    if (!binding.value) return
-    el.setAttribute('title', binding.value)
   }
 }
 </script>

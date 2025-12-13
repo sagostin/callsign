@@ -135,6 +135,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&Device{},
 		&DeviceLine{},
 		&DeviceTemplate{},
+		&DeviceManufacturer{},
 		&DeviceProfile{},
 		&Firmware{},
 

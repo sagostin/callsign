@@ -16,6 +16,39 @@ const (
 	DeviceTypeSoftphone   DeviceType = "softphone"   // WebRTC/mobile app
 )
 
+// DeviceManufacturer represents a configurable device manufacturer grouping
+type DeviceManufacturer struct {
+	ID        uint           `json:"id" gorm:"primaryKey"`
+	UUID      uuid.UUID      `json:"uuid" gorm:"type:uuid;uniqueIndex;not null"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+
+	// Identity
+	Code        string `json:"code" gorm:"uniqueIndex;not null"` // e.g., "yealink", "poly", "generic"
+	Name        string `json:"name" gorm:"not null"`             // Display name: "Yealink", "Poly"
+	Description string `json:"description"`
+
+	// Branding
+	LogoURL string `json:"logo_url"` // URL to manufacturer logo
+	Color   string `json:"color"`    // Brand color for UI
+
+	// Device detection patterns
+	UserAgentPattern string `json:"user_agent_pattern"` // Regex to detect devices
+	MACPrefix        string `json:"mac_prefix"`         // Common MAC prefixes (comma-separated)
+
+	// Sorting/display
+	SortOrder int  `json:"sort_order" gorm:"default:100"`
+	IsDefault bool `json:"is_default" gorm:"default:false"` // Show by default
+	Enabled   bool `json:"enabled" gorm:"default:true"`
+}
+
+// BeforeCreate generates UUID
+func (m *DeviceManufacturer) BeforeCreate(tx *gorm.DB) error {
+	m.UUID = uuid.New()
+	return nil
+}
+
 // Device represents a provisioned SIP endpoint
 type Device struct {
 	ID        uint           `json:"id" gorm:"primaryKey"`

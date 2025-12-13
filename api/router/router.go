@@ -636,6 +636,15 @@ func (r *Router) Init() {
 					deviceTemplates.Delete("/{id}", r.Handler.DeleteSystemDeviceTemplate)
 				}
 
+				// Device Manufacturers (configurable groupings)
+				manufacturers := system.Party("/device-manufacturers")
+				{
+					manufacturers.Get("/", r.Handler.ListDeviceManufacturers)
+					manufacturers.Post("/", r.Handler.CreateDeviceManufacturer)
+					manufacturers.Put("/{id}", r.Handler.UpdateDeviceManufacturer)
+					manufacturers.Delete("/{id}", r.Handler.DeleteDeviceManufacturer)
+				}
+
 				// Firmware Management
 				firmware := system.Party("/firmware")
 				{
