@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/kataras/iris/v12"
@@ -33,11 +34,17 @@ func (t *TenantMiddleware) RequireTenant() iris.Handler {
 			tenantIDHeader := ctx.GetHeader("X-Tenant-ID")
 			tenantIDQuery := ctx.URLParam("tenant_id")
 
-			if tenantIDHeader != "" {
-				// Parse and validate tenant ID from header
-				ctx.Values().Set("scoped_tenant_id", tenantIDHeader)
-			} else if tenantIDQuery != "" {
-				ctx.Values().Set("scoped_tenant_id", tenantIDQuery)
+			tenantIDStr := tenantIDHeader
+			if tenantIDStr == "" {
+				tenantIDStr = tenantIDQuery
+			}
+
+			if tenantIDStr != "" {
+				// Parse string to uint and store as uint (not string)
+				var tenantID uint64
+				if _, err := fmt.Sscanf(tenantIDStr, "%d", &tenantID); err == nil && tenantID > 0 {
+					ctx.Values().Set("scoped_tenant_id", uint(tenantID))
+				}
 			}
 			// System admins can proceed without tenant scope for global operations
 			ctx.Next()

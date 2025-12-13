@@ -354,7 +354,7 @@ import {
   Terminal as TerminalIcon, Layers as LayersIcon, FileCode as FileCodeIcon,
   Globe as GlobeIcon, Zap as ZapIcon, ToggleLeft as ToggleIcon, PhoneCall as PhoneCallIcon,
   Download as DownloadIcon, Volume2 as VolumeIcon, FileAudio as FileAudioIcon,
-  Shield as ShieldIcon
+  Shield as ShieldIcon, Settings as SettingsIcon
 } from 'lucide-vue-next'
 
 const route = useRoute()
