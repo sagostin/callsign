@@ -228,11 +228,6 @@
             <ArrowLeftIcon class="nav-icon" />
             <span class="nav-label">User Portal</span>
           </router-link>
-          <router-link to="/system" class="nav-item portal-link system" v-tooltip="isCollapsed ? 'System Admin' : ''">
-            <ServerCogIcon class="nav-icon" />
-            <span class="nav-label">System Admin</span>
-            <ArrowRightIcon class="arrow-icon" v-if="!isCollapsed" />
-          </router-link>
         </div>
       </template>
 
