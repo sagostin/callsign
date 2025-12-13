@@ -9,6 +9,7 @@
         <RefreshCwIcon class="btn-icon" :class="{ spinning: syncing }" />
         Sync from Disk
       </button>
+
       <button class="btn-secondary" @click="refreshAll" :disabled="refreshing">
         <RefreshCwIcon class="btn-icon" :class="{ spinning: refreshing }" />
         Refresh
@@ -19,6 +20,22 @@
       </button>
       <!-- Note: SIP profiles can only be edited, not created/deleted via UI.
            To add a new profile, place an XML file in sip_profiles/ directory. -->
+    </div>
+  </div>
+
+  <!-- Command Output Modal -->
+  <div v-if="showOutputModal" class="modal-overlay" @click.self="showOutputModal = false">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Command Output</h3>
+        <button class="btn-icon" @click="showOutputModal = false"><XIcon class="icon-sm" /></button>
+      </div>
+      <div class="modal-body">
+        <pre class="command-output">{{ commandOutput }}</pre>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-primary" @click="showOutputModal = false">Close</button>
+      </div>
     </div>
   </div>
 
@@ -339,6 +356,15 @@ const activeTab = ref('Basic')
 const settingsSearch = ref('')
 const profileDomains = ref([])
 
+// Command Output Modal
+const showOutputModal = ref(false)
+const commandOutput = ref('')
+
+function showCommandOutput(output) {
+  commandOutput.value = output
+  showOutputModal.value = true
+}
+
 // Quick settings for Basic tab (most common ones)
 const quickSettings = ref({
   'sip-ip': '$${local_ip_v4}',
@@ -475,9 +501,11 @@ async function loadRegistrations(profile) {
 
 async function restartProfile(profile) {
   try {
-    await systemAPI.restartSofiaProfile(profile.profile_name)
-    toast?.success(`Profile ${profile.profile_name} restarted`)
+    const response = await systemAPI.restartSofiaProfile(profile.profile_name)
+    showCommandOutput(response.data.data)
+    toast?.success(`Profile ${profile.profile_name} restart command sent`)
     await refreshAll()
+
   } catch (error) {
     toast?.error('Failed to restart profile', error.message)
   }
@@ -485,9 +513,11 @@ async function restartProfile(profile) {
 
 async function startProfile(profile) {
   try {
-    await systemAPI.startSofiaProfile(profile.profile_name)
-    toast?.success(`Profile ${profile.profile_name} started`)
+    const response = await systemAPI.startSofiaProfile(profile.profile_name)
+    showCommandOutput(response.data.data)
+    toast?.success(`Profile ${profile.profile_name} start command sent`)
     await refreshAll()
+
   } catch (error) {
     toast?.error('Failed to start profile', error.message)
   }
@@ -496,9 +526,11 @@ async function startProfile(profile) {
 async function stopProfile(profile) {
   if (!confirm(`Stop profile ${profile.profile_name}? Active calls may be dropped.`)) return
   try {
-    await systemAPI.stopSofiaProfile(profile.profile_name)
-    toast?.success(`Profile ${profile.profile_name} stopped`)
+    const response = await systemAPI.stopSofiaProfile(profile.profile_name)
+    showCommandOutput(response.data.data)
+    toast?.success(`Profile ${profile.profile_name} stop command sent`)
     await refreshAll()
+
   } catch (error) {
     toast?.error('Failed to stop profile', error.message)
   }
@@ -507,8 +539,13 @@ async function stopProfile(profile) {
 async function reloadXML() {
   reloadingXML.value = true
   try {
-    await systemAPI.reloadSofiaXML()
-    toast?.success('XML configuration reloaded')
+    const response = await systemAPI.reloadSofiaXML()
+    // reloadSofiaXML returns just a message usually, but let's check if it returns data
+    if (response.data?.data) {
+        showCommandOutput(response.data.data)
+    } else {
+        toast?.success('XML configuration reloaded')
+    }
   } catch (error) {
     toast?.error('Failed to reload XML', error.message)
   } finally {
@@ -798,6 +835,18 @@ async function deleteProfile(profile) {
 .settings-table tr:hover { background: var(--bg-secondary); }
 .setting-input { width: 100%; padding: 6px 10px; font-size: 12px; font-family: monospace; }
 .center { text-align: center; }
+
+.command-output {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: monospace;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  max-height: 500px;
+}
 
 /* Toggle Switch */
 .toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; }
