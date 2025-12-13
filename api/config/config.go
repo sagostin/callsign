@@ -61,10 +61,11 @@ type Config struct {
 	InternalAPIKey string // Key for internal service auth (fail2ban, etc.)
 
 	// Storage Paths
-	FirmwarePath     string // Path for firmware file storage
-	MediaBasePath    string // Base path for media files (sounds, music)
-	ProvisioningPath string // Path for provisioning config files
-	SIPProfilesPath  string // Path for FreeSWITCH SIP profile XML files
+	FirmwarePath       string // Path for firmware file storage
+	MediaBasePath      string // Base path for media files (sounds, music)
+	ProvisioningPath   string // Path for provisioning config files
+	SIPProfilesPath    string // Path for FreeSWITCH SIP profile XML files
+	FreeSwitchConfPath string // Path for FreeSWITCH configuration directory
 }
 
 // Load reads configuration from environment variables
@@ -124,10 +125,11 @@ func Load() *Config {
 		InternalAPIKey: getEnv("INTERNAL_API_KEY", "callsign-internal-key"),
 
 		// Storage Paths
-		FirmwarePath:     getEnv("FIRMWARE_PATH", "/usr/share/freeswitch/firmware"),
-		MediaBasePath:    getEnv("MEDIA_PATH", "/usr/share/freeswitch/sounds"),
-		ProvisioningPath: getEnv("PROVISIONING_PATH", "/var/lib/freeswitch/provisioning"),
-		SIPProfilesPath:  getEnv("SIP_PROFILES_PATH", "/etc/freeswitch/sip_profiles"),
+		FirmwarePath:       getEnv("FIRMWARE_PATH", "/usr/share/freeswitch/firmware"),
+		MediaBasePath:      getEnv("MEDIA_PATH", "/usr/share/freeswitch/sounds"),
+		ProvisioningPath:   getEnv("PROVISIONING_PATH", "/var/lib/freeswitch/provisioning"),
+		SIPProfilesPath:    getEnv("SIP_PROFILES_PATH", "/etc/freeswitch/sip_profiles"),
+		FreeSwitchConfPath: getEnv("FREESWITCH_CONF_PATH", "/etc/freeswitch"),
 	}
 }
 

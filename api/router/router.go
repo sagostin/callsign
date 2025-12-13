@@ -659,6 +659,8 @@ func (r *Router) Init() {
 
 				// Config Inspector (System)
 				system.Get("/xml/debug", r.FSHandler.DebugXML)
+				system.Get("/config/files", r.FSHandler.ListConfigDirectory)
+				system.Get("/config/file", r.FSHandler.ReadConfigFile)
 
 			}
 

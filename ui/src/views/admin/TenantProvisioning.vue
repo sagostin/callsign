@@ -123,30 +123,26 @@ import {
   Link as LinkIcon, Copy as CopyIcon, RefreshCw as RefreshCwIcon,
   FileText as FileTextIcon
 } from 'lucide-vue-next'
-import { devicesAPI } from '@/services/api'
+import { devicesAPI, tenantSettingsAPI } from '@/services/api'
 
 const toast = inject('toast')
 const loading = ref(false)
 const savingSyslog = ref(false)
 const regenerating = ref(false)
 
-// Get tenant info from localStorage
-const getTenantInfo = () => {
-  const userStr = localStorage.getItem('user')
-  const user = userStr ? JSON.parse(userStr) : null
-  return {
-    uuid: user?.tenant_uuid || 'unknown',
-    secret: user?.tenant_secret || 'secret',
-    domain: user?.tenant_domain || window.location.hostname
-  }
-}
+// Tenant info loaded from API
+const tenantInfo = ref({
+  uuid: '',
+  secret: '',
+  domain: window.location.hostname
+})
 
-const tenantInfo = getTenantInfo()
-
-// Provisioning URL
+// Provisioning URL - computed from tenant info
 const provisioningUrl = computed(() => {
   const baseUrl = window.location.origin
-  return `${baseUrl}/api/provision/${tenantInfo.uuid}/${tenantInfo.secret}/{MAC}.cfg`
+  const uuid = tenantInfo.value.uuid || 'unknown'
+  const secret = tenantInfo.value.secret || 'secret'
+  return `${baseUrl}/api/provision/${uuid}/${secret}/{MAC}.cfg`
 })
 
 // Device stats
@@ -165,20 +161,38 @@ const syslogSettings = ref({
 
 // Check if provisioning secret already exists
 const hasExistingSecret = computed(() => {
-  return tenantInfo.secret && tenantInfo.secret !== 'secret' && tenantInfo.secret !== ''
+  return tenantInfo.value.secret && tenantInfo.value.secret !== '' && tenantInfo.value.secret !== 'secret'
 })
-
 
 // Load data
 const loadData = async () => {
   loading.value = true
   try {
+    // Load tenant settings (includes UUID and provisioning secret)
+    const settingsResponse = await tenantSettingsAPI.get()
+    const settings = settingsResponse.data?.data || settingsResponse.data || {}
+    tenantInfo.value = {
+      uuid: settings.uuid || '',
+      secret: settings.provisioning_secret || '',
+      domain: settings.domain || window.location.hostname
+    }
+    
     // Load devices
     const deviceResponse = await devicesAPI.list()
     const deviceList = deviceResponse.data?.data || deviceResponse.data || []
     devices.value = {
       registered: deviceList.filter(d => d.status === 'Registered').length,
       total: deviceList.length
+    }
+    
+    // Load syslog settings if available
+    if (settings.syslog_server) {
+      syslogSettings.value = {
+        server: settings.syslog_server || '',
+        port: settings.syslog_port || '514',
+        protocol: settings.syslog_protocol || 'udp',
+        level: settings.syslog_level || 'info'
+      }
     }
   } catch (e) {
     console.error('Failed to load data:', e)

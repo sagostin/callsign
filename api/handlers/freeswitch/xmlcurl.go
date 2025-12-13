@@ -5,6 +5,9 @@ import (
 	"callsign/services/xmlcache"
 	"encoding/base64"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -268,4 +271,155 @@ var CacheTTL = struct {
 	Configuration: 1 * time.Hour,
 	Directory:     5 * time.Minute,
 	Dialplan:      30 * time.Minute,
+}
+
+// ==================
+// File Browser Handlers for Config Inspector
+// ==================
+
+// FileEntry represents a file or directory in the config file browser
+type FileEntry struct {
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+	IsDir bool   `json:"is_dir"`
+	Size  int64  `json:"size,omitempty"`
+}
+
+// ListConfigDirectory lists files and directories in the FreeSWITCH config directory
+func (h *FSHandler) ListConfigDirectory(ctx iris.Context) {
+	basePath := h.Config.FreeSwitchConfPath
+	relativePath := ctx.URLParam("path")
+
+	// Clean and validate the path to prevent directory traversal
+	if relativePath != "" {
+		relativePath = filepath.Clean(relativePath)
+		if strings.HasPrefix(relativePath, "..") || filepath.IsAbs(relativePath) {
+			ctx.StatusCode(http.StatusBadRequest)
+			ctx.JSON(iris.Map{"error": "Invalid path"})
+			return
+		}
+	}
+
+	targetPath := filepath.Join(basePath, relativePath)
+
+	// Verify path is within the base path
+	if !strings.HasPrefix(targetPath, basePath) {
+		ctx.StatusCode(http.StatusForbidden)
+		ctx.JSON(iris.Map{"error": "Access denied"})
+		return
+	}
+
+	// Check if path exists
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Path not found"})
+		return
+	}
+
+	if !info.IsDir() {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Not a directory"})
+		return
+	}
+
+	// Read directory contents
+	entries, err := os.ReadDir(targetPath)
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to read directory"})
+		return
+	}
+
+	var files []FileEntry
+	for _, entry := range entries {
+		entryInfo, _ := entry.Info()
+		file := FileEntry{
+			Name:  entry.Name(),
+			Path:  filepath.Join(relativePath, entry.Name()),
+			IsDir: entry.IsDir(),
+		}
+		if entryInfo != nil && !entry.IsDir() {
+			file.Size = entryInfo.Size()
+		}
+		files = append(files, file)
+	}
+
+	// Sort: directories first, then alphabetically
+	sort.Slice(files, func(i, j int) bool {
+		if files[i].IsDir != files[j].IsDir {
+			return files[i].IsDir
+		}
+		return files[i].Name < files[j].Name
+	})
+
+	ctx.JSON(iris.Map{
+		"path":  relativePath,
+		"files": files,
+	})
+}
+
+// ReadConfigFile returns the content of a config file
+func (h *FSHandler) ReadConfigFile(ctx iris.Context) {
+	basePath := h.Config.FreeSwitchConfPath
+	relativePath := ctx.URLParam("path")
+
+	if relativePath == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Path required"})
+		return
+	}
+
+	// Clean and validate the path
+	relativePath = filepath.Clean(relativePath)
+	if strings.HasPrefix(relativePath, "..") || filepath.IsAbs(relativePath) {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid path"})
+		return
+	}
+
+	targetPath := filepath.Join(basePath, relativePath)
+
+	// Verify path is within the base path
+	if !strings.HasPrefix(targetPath, basePath) {
+		ctx.StatusCode(http.StatusForbidden)
+		ctx.JSON(iris.Map{"error": "Access denied"})
+		return
+	}
+
+	// Check if file exists
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "File not found"})
+		return
+	}
+
+	if info.IsDir() {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Cannot read directory"})
+		return
+	}
+
+	// Limit file size to prevent large memory usage (max 1MB)
+	if info.Size() > 1024*1024 {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "File too large"})
+		return
+	}
+
+	// Read file content
+	content, err := os.ReadFile(targetPath)
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to read file"})
+		return
+	}
+
+	ctx.JSON(iris.Map{
+		"path":    relativePath,
+		"name":    info.Name(),
+		"size":    info.Size(),
+		"content": string(content),
+	})
 }

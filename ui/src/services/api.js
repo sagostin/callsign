@@ -318,6 +318,13 @@ export const cdrAPI = {
 }
 
 // =====================
+// Audit Log API
+// =====================
+export const auditLogAPI = {
+    list: (params) => api.get('/audit-logs', { params }),
+}
+
+// =====================
 // Messaging API
 // =====================
 export const messagingAPI = {
@@ -606,6 +613,11 @@ export const systemAPI = {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
     setDefaultFirmware: (id) => api.post(`/system/firmware/${id}/set-default`),
+
+    // FreeSWITCH Config Files (for Config Inspector)
+    listConfigFiles: (path = '') => api.get('/system/config/files', { params: { path } }),
+    readConfigFile: (path) => api.get('/system/config/file', { params: { path } }),
+
 }
 
 // =====================

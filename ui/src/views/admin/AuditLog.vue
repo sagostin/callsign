@@ -146,7 +146,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import {
   Activity as ActivityIcon, Clock as ClockIcon, Shield as ShieldIcon, 
   Settings as SettingsIcon, Search as SearchIcon, Download as DownloadIcon,
@@ -154,23 +154,97 @@ import {
   ChevronDown as ChevronDownIcon, ChevronLeft as ChevronLeftIcon, 
   ChevronRight as ChevronRightIcon, ArrowRight as ArrowRightIcon
 } from 'lucide-vue-next'
+import { auditLogAPI } from '@/services/api'
 
+const toast = inject('toast')
+const loading = ref(false)
 const searchQuery = ref('')
 const categoryFilter = ref('')
 const severityFilter = ref('')
 const dateFilter = ref('week')
+const page = ref(1)
+const total = ref(0)
+const limit = 50
 
-const logs = ref([
-  { id: 1, action: 'User Login', user: 'admin@company.com', category: 'security', severity: 'info', time: '10:45 AM', date: 'today', ip: '192.168.1.100', description: 'Successful login from admin portal' },
-  { id: 2, action: 'Extension Modified', user: 'admin@company.com', category: 'configuration', severity: 'info', time: '10:32 AM', date: 'today', resource: 'Extension 101', changes: { 'Forward to': { old: 'Disabled', new: '(415) 555-1234' }, 'Ring timeout': { old: '20', new: '30' } } },
-  { id: 3, action: 'Failed Login Attempt', user: 'unknown@test.com', category: 'security', severity: 'warning', time: '10:15 AM', date: 'today', ip: '203.0.113.50', description: 'Invalid credentials - account locked after 3 attempts' },
-  { id: 4, action: 'User Created', user: 'admin@company.com', category: 'user', severity: 'info', time: '9:30 AM', date: 'today', resource: 'jane.doe@company.com', description: 'New tenant admin user created' },
-  { id: 5, action: 'Gateway Configuration Changed', user: 'system@company.com', category: 'configuration', severity: 'warning', time: '9:00 AM', date: 'today', resource: 'Primary SIP Gateway', changes: { 'Codec priority': { old: 'G711,G729', new: 'G729,G711,OPUS' } } },
-  { id: 6, action: 'Dial Plan Modified', user: 'admin@company.com', category: 'telephony', severity: 'info', time: 'Yesterday, 4:30 PM', date: 'week', resource: 'International Outbound', description: 'Updated international dial plan routing' },
-  { id: 7, action: 'Bulk Extension Import', user: 'admin@company.com', category: 'configuration', severity: 'info', time: 'Yesterday, 2:00 PM', date: 'week', description: '15 extensions imported from CSV' },
-  { id: 8, action: 'System Backup Completed', user: 'system', category: 'configuration', severity: 'info', time: 'Dec 8, 11:00 PM', date: 'week', description: 'Automated nightly backup completed successfully' },
-  { id: 9, action: 'API Key Generated', user: 'admin@company.com', category: 'security', severity: 'critical', time: 'Dec 8, 10:00 AM', date: 'week', description: 'New API key generated for CRM integration' },
-])
+const logs = ref([])
+
+// Demo fallback data
+const demoLogs = [
+  { id: 1, action: 'User Login', user: 'admin@company.com', category: 'security', severity: 'info', created_at: new Date().toISOString(), ip_address: '192.168.1.100', description: 'Successful login from admin portal' },
+  { id: 2, action: 'Extension Modified', user: 'admin@company.com', category: 'configuration', severity: 'info', created_at: new Date().toISOString(), resource: 'Extension 101', changes: { 'Forward to': { old: 'Disabled', new: '(415) 555-1234' } } },
+  { id: 3, action: 'Failed Login Attempt', user: 'unknown@test.com', category: 'security', severity: 'warning', created_at: new Date().toISOString(), ip_address: '203.0.113.50', description: 'Invalid credentials' },
+]
+
+// Load audit logs from API
+const loadAuditLogs = async () => {
+  loading.value = true
+  try {
+    const params = { page: page.value, limit }
+    if (categoryFilter.value) params.category = categoryFilter.value
+    if (severityFilter.value) params.severity = severityFilter.value
+    
+    const response = await auditLogAPI.list(params)
+    const data = response.data
+    
+    if (data?.data?.length) {
+      logs.value = data.data.map(log => ({
+        id: log.id,
+        action: log.action || 'Unknown Action',
+        user: log.user_email || log.user_name || `User #${log.user_id}`,
+        category: log.category || 'system',
+        severity: log.severity || 'info',
+        time: formatTime(log.created_at),
+        date: getDateCategory(log.created_at),
+        ip: log.ip_address || '',
+        resource: log.resource_type ? `${log.resource_type} ${log.resource_id || ''}` : '',
+        description: log.description || '',
+        changes: log.changes ? JSON.parse(log.changes) : null,
+        expanded: false
+      }))
+      total.value = data.total || logs.value.length
+    } else {
+      // Use demo data if no logs found
+      logs.value = demoLogs.map(log => ({
+        ...log,
+        time: formatTime(log.created_at),
+        date: 'today',
+        ip: log.ip_address,
+        expanded: false
+      }))
+    }
+  } catch (e) {
+    console.error('Failed to load audit logs:', e)
+    // Use demo data on error
+    logs.value = demoLogs.map(log => ({
+      ...log,
+      time: formatTime(log.created_at),
+      date: 'today',
+      ip: log.ip_address,
+      expanded: false
+    }))
+  } finally {
+    loading.value = false
+  }
+}
+
+const formatTime = (dateStr) => {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+}
+
+const getDateCategory = (dateStr) => {
+  if (!dateStr) return 'all'
+  const date = new Date(dateStr)
+  const today = new Date()
+  const diffDays = Math.floor((today - date) / (1000 * 60 * 60 * 24))
+  if (diffDays === 0) return 'today'
+  if (diffDays <= 7) return 'week'
+  if (diffDays <= 30) return 'month'
+  return 'all'
+}
+
+onMounted(loadAuditLogs)
 
 const todayCount = computed(() => logs.value.filter(l => l.date === 'today').length)
 const securityCount = computed(() => logs.value.filter(l => l.category === 'security').length)
@@ -194,7 +268,9 @@ const filteredLogs = computed(() => {
   })
 })
 
-const exportLogs = () => alert('Exporting audit logs...')
+const exportLogs = () => {
+  toast?.info('Export functionality coming soon')
+}
 </script>
 
 <style scoped>

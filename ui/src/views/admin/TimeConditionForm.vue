@@ -92,14 +92,29 @@
       <!-- Holiday Override -->
       <div class="form-section">
         <h3>Holiday Override</h3>
-        <p class="text-muted text-sm mb-md">Select holiday lists that should override this condition.</p>
+        <p class="text-muted text-sm mb-md">Select a holiday list that should override this condition.</p>
         
-        <div class="holiday-checkboxes">
-          <label v-for="list in holidayLists" :key="list.id" class="checkbox-row">
-            <input type="checkbox" :value="list.id" v-model="form.holidayOverrides">
-            <span>{{ list.name }}</span>
-            <span class="holiday-count">{{ list.count }} dates</span>
-          </label>
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>Holiday List</label>
+            <select v-model="form.holiday_list_id" class="input-field">
+              <option value="">-- None --</option>
+              <option v-for="list in holidayLists" :key="list.id" :value="list.id">
+                {{ list.name }}
+              </option>
+            </select>
+          </div>
+          <div class="form-group flex-1" v-if="form.holiday_list_id">
+            <label>Holiday Destination</label>
+            <div class="dest-form">
+              <select v-model="form.holidayDestType" class="input-field">
+                <option value="voicemail">Voicemail</option>
+                <option value="extension">Extension</option>
+                <option value="ivr">IVR Menu</option>
+              </select>
+              <input v-model="form.holidayDestValue" class="input-field" placeholder="e.g. 5900">
+            </div>
+          </div>
         </div>
       </div>
 
@@ -224,7 +239,9 @@ const form = ref({
   rules: [
     { days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], startTime: '09:00', endTime: '17:00' }
   ],
-  holidayOverrides: [],
+  holiday_list_id: '',
+  holidayDestType: 'voicemail',
+  holidayDestValue: '',
   matchType: 'ivr',
   matchTarget: '',
   noMatchType: 'voicemail',
@@ -275,7 +292,9 @@ const loadCondition = async (id) => {
         startTime: tc.start_time || '09:00',
         endTime: tc.end_time || '17:00'
       }],
-      holidayOverrides: tc.holiday_overrides || [],
+      holiday_list_id: tc.holiday_list_id || '',
+      holidayDestType: tc.holiday_dest_type || 'voicemail',
+      holidayDestValue: tc.holiday_dest_value || '',
       matchType: tc.match_dest_type || 'ivr',
       matchTarget: tc.match_dest_value || '',
       noMatchType: tc.nomatch_dest_type || 'voicemail',
@@ -376,6 +395,9 @@ const saveCondition = async () => {
       weekdays: Array.from(allWeekdays),
       start_time: firstRule.startTime,
       end_time: firstRule.endTime,
+      holiday_list_id: form.value.holiday_list_id ? parseInt(form.value.holiday_list_id) : null,
+      holiday_dest_type: form.value.holiday_list_id ? form.value.holidayDestType : '',
+      holiday_dest_value: form.value.holiday_list_id ? form.value.holidayDestValue : '',
       match_dest_type: form.value.matchType,
       match_dest_value: form.value.matchTarget,
       nomatch_dest_type: form.value.noMatchType,
