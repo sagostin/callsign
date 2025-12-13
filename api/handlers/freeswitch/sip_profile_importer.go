@@ -209,13 +209,13 @@ func (i *ProfileImporter) expandVariables(content string) string {
 func (i *ProfileImporter) updateProfile(existing *models.SIPProfile, xmlProfile *XMLProfile) error {
 	// Start a transaction
 	return i.DB.Transaction(func(tx *gorm.DB) error {
-		// Delete existing settings
-		if err := tx.Where("sip_profile_uuid = ?", existing.UUID).Delete(&models.SIPProfileSetting{}).Error; err != nil {
+		// Delete existing settings using struct for correct column name resolution
+		if err := tx.Where(&models.SIPProfileSetting{SIPProfileUUID: existing.UUID}).Delete(&models.SIPProfileSetting{}).Error; err != nil {
 			return fmt.Errorf("failed to clear existing settings: %w", err)
 		}
 
-		// Delete existing domains
-		if err := tx.Where("sip_profile_uuid = ?", existing.UUID).Delete(&models.SIPProfileDomain{}).Error; err != nil {
+		// Delete existing domains using struct for correct column name resolution
+		if err := tx.Where(&models.SIPProfileDomain{SIPProfileUUID: existing.UUID}).Delete(&models.SIPProfileDomain{}).Error; err != nil {
 			return fmt.Errorf("failed to clear existing domains: %w", err)
 		}
 

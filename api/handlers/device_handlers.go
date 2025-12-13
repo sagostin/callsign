@@ -129,7 +129,45 @@ func (h *Handler) GetDevice(ctx iris.Context) {
 		}
 	}
 
-	ctx.JSON(iris.Map{"data": device})
+	// Return device data with ProvisionToken exposed
+	ctx.JSON(iris.Map{
+		"data": iris.Map{
+			"id":                  device.ID,
+			"uuid":                device.UUID,
+			"created_at":          device.CreatedAt,
+			"updated_at":          device.UpdatedAt,
+			"tenant_id":           device.TenantID,
+			"mac":                 device.MAC,
+			"name":                device.Name,
+			"device_type":         device.DeviceType,
+			"manufacturer":        device.Manufacturer,
+			"model":               device.Model,
+			"template_id":         device.TemplateID,
+			"template":            device.Template,
+			"profile_id":          device.ProfileID,
+			"profile":             device.Profile,
+			"user_id":             device.UserID,
+			"user":                device.User,
+			"lines":               device.Lines,
+			"registration_prefix": device.RegistrationPrefix,
+			"registration_user":   device.RegistrationUser,
+			"sip_server":          device.SIPServer,
+			"sip_proxy":           device.SIPProxy,
+			"sip_transport":       device.SIPTransport,
+			"sip_port":            device.SIPPort,
+			"provision_url":       device.ProvisionURL,
+			"provision_token":     device.ProvisionToken, // Exposed for admin
+			"last_provision":      device.LastProvision,
+			"provision_count":     device.ProvisionCount,
+			"status":              device.Status,
+			"registered":          device.Registered,
+			"registration_ip":     device.RegistrationIP,
+			"user_agent":          device.UserAgent,
+			"last_seen":           device.LastSeen,
+			"location_id":         device.LocationID,
+			"enabled":             device.Enabled,
+		},
+	})
 }
 
 // UpdateDevice updates a device
@@ -144,7 +182,11 @@ func (h *Handler) UpdateDevice(ctx iris.Context) {
 		return
 	}
 
-	var input models.Device
+	// Parse input with ProvisionToken exposed
+	var input struct {
+		models.Device
+		ProvisionToken string `json:"provision_token"`
+	}
 	if err := ctx.ReadJSON(&input); err != nil {
 		ctx.StatusCode(iris.StatusBadRequest)
 		ctx.JSON(iris.Map{"error": "Invalid request body"})
@@ -165,6 +207,11 @@ func (h *Handler) UpdateDevice(ctx iris.Context) {
 		"sip_port":      input.SIPPort,
 		"location_id":   input.LocationID,
 		"enabled":       input.Enabled,
+	}
+
+	// Only update token if provided and non-empty (allow generation)
+	if input.ProvisionToken != "" {
+		updates["provision_token"] = input.ProvisionToken
 	}
 
 	h.DB.Model(&device).Updates(updates)

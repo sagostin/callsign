@@ -747,8 +747,8 @@ func (h *Handler) UpdateSIPProfile(ctx iris.Context) {
 		// Update settings if provided
 		// Note: We always replace all settings if the list is present
 		if input.Settings != nil {
-			// Delete existing settings
-			if err := tx.Where("sip_profile_uuid = ?", profile.UUID).Delete(&models.SIPProfileSetting{}).Error; err != nil {
+			// Delete existing settings using struct for correct column name resolution
+			if err := tx.Where(&models.SIPProfileSetting{SIPProfileUUID: profile.UUID}).Delete(&models.SIPProfileSetting{}).Error; err != nil {
 				return err
 			}
 
@@ -767,8 +767,8 @@ func (h *Handler) UpdateSIPProfile(ctx iris.Context) {
 
 		// Update domains if provided
 		if input.Domains != nil {
-			// Delete existing domains
-			if err := tx.Where("sip_profile_uuid = ?", profile.UUID).Delete(&models.SIPProfileDomain{}).Error; err != nil {
+			// Delete existing domains using struct for correct column name resolution
+			if err := tx.Where(&models.SIPProfileDomain{SIPProfileUUID: profile.UUID}).Delete(&models.SIPProfileDomain{}).Error; err != nil {
 				return err
 			}
 

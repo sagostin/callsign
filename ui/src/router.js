@@ -59,6 +59,7 @@ const routes = [
       { path: 'cdr', component: () => import('./views/admin/CDR.vue'), name: 'CDR' },
 
       { path: 'routing', component: () => import('./views/admin/Routing.vue'), name: 'Routing' },
+      { path: 'routing/debug', component: () => import('./views/admin/RoutingDebug.vue'), name: 'RoutingDebug' },
       { path: 'feature-codes', component: () => import('./views/admin/FeatureCodes.vue'), name: 'TenantFeatureCodes' },
       // Legacy routes kept for form access
       { path: 'numbers/new', component: () => import('./views/admin/NumberForm.vue'), name: 'NumberForm' },
@@ -154,14 +155,16 @@ const routes = [
       { path: 'acls', component: () => import('./views/system/ACLProfiles.vue'), name: 'ACLProfiles' },
       { path: 'routing', component: () => import('./views/system/SystemRoutes.vue'), name: 'SystemRoutes' },
       { path: 'dial-plans', redirect: '/system/routing' }, // legacy redirect
-      { path: 'phrases', component: () => import('./views/system/Phrases.vue'), name: 'SystemPhrases' },
-      { path: 'phrases/new', component: () => import('./views/admin/PhraseForm.vue'), name: 'SystemPhraseFormNew' },
-      { path: 'phrases/:id', component: () => import('./views/admin/PhraseForm.vue'), name: 'SystemPhraseFormEdit' },
+      // Temporarily disabled phrases routes
+      // { path: 'phrases', component: () => import('./views/system/Phrases.vue'), name: 'SystemPhrases' },
+      // { path: 'phrases/new', component: () => import('./views/admin/PhraseForm.vue'), name: 'SystemPhraseFormNew' },
+      // { path: 'phrases/:id', component: () => import('./views/admin/PhraseForm.vue'), name: 'SystemPhraseFormEdit' },
       { path: 'logs', component: () => import('./views/system/SystemLogs.vue'), name: 'SystemLogs' },
       { path: 'messaging', component: () => import('./views/system/MessagingProviders.vue'), name: 'MessagingProviders' },
       { path: 'audit-log', component: () => import('./views/admin/AuditLog.vue'), name: 'SystemAuditLog' },
       { path: 'settings', component: () => import('./views/system/SystemSettings.vue'), name: 'SystemSettings' },
       { path: 'security', component: () => import('./views/system/SystemSecurity.vue'), name: 'SystemSecurity' },
+      { path: 'config-inspector', component: () => import('./views/system/ConfigInspector.vue'), name: 'ConfigInspector' },
     ]
   }
 ]

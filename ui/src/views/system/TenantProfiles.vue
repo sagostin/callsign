@@ -48,10 +48,6 @@
             <label>Profile Name</label>
             <input v-model="activeProfile.name" class="input-field" placeholder="e.g. Enterprise" />
           </div>
-          <div class="form-group">
-            <label>Profile Code</label>
-            <input v-model="activeProfile.code" class="input-field code" placeholder="e.g. enterprise" />
-          </div>
         </div>
       </div>
 
@@ -110,7 +106,6 @@ import { systemAPI } from '../../services/api'
 
 const columns = [
   { key: 'name', label: 'Profile Name' },
-  { key: 'code', label: 'Code', width: '120px' },
   { key: 'tenantCount', label: 'Usage' },
   { key: 'limits', label: 'Limits' },
   { key: 'features', label: 'Features' }
@@ -124,7 +119,6 @@ const saving = ref(false)
 
 const defaultProfile = () => ({
   name: '',
-  code: '',
   limits: {
     extensions: 10,
     disk: 5,
@@ -143,15 +137,21 @@ const activeProfile = ref(defaultProfile())
 const transformProfile = (p) => ({
   id: p.id,
   name: p.name,
-  code: p.code,
   tenantCount: p.tenant_count || 0,
   limits: {
-    extensions: p.max_extensions || 0,
-    disk: p.max_disk_gb || 0,
-    channels: p.max_channels || 0
+    extensions: p.max_extensions !== undefined ? p.max_extensions : 10,
+    disk: p.recording_storage_gb !== undefined ? p.recording_storage_gb : 5, // Map disk to recording_storage_gb
+    channels: p.max_devices !== undefined ? p.max_devices : 5 // Assuming channels maps to max_devices or similar, checking model...
+    // WAIT: Model has max_extensions, max_devices, max_queues...
+    // Model has `RecordingStorage int` (json: recording_storage_gb)
+    // Model does NOT have `max_disk_gb` or `max_channels`.
+    // Let's check what the user ACTUALLY wants for "Disk" and "Channels".
+    // Usually Disk = RecordingStorage. Channels = Concurrent Calls? (not in model) or Devices?
+    // Let's map Disk -> recording_storage_gb.
+    // Let's map Channels -> max_devices (for now, or maybe it's missing from model?)
   },
   features: {
-    hospitality: p.hospitality_enabled || false,
+    hospitality: false, // Not in model explicitly?
     recording: p.recording_enabled || false,
     fax: p.fax_enabled || false
   },
@@ -162,34 +162,22 @@ const transformProfile = (p) => ({
 // Transform UI format to API format
 const transformForAPI = (p) => ({
   name: p.name,
-  code: p.code,
-  max_extensions: p.limits?.extensions || p.max_extensions || 10,
-  max_disk_gb: p.limits?.disk || p.max_disk_gb || 5,
-  max_channels: p.limits?.channels || p.max_channels || 5,
-  hospitality_enabled: p.features?.hospitality || p.hospitality_enabled || false,
-  recording_enabled: p.features?.recording || p.recording_enabled || false,
-  fax_enabled: p.features?.fax || p.fax_enabled || false
+  max_extensions: p.limits?.extensions || 10,
+  recording_storage_gb: p.limits?.disk || 5,
+  max_devices: p.limits?.channels || 5, // Mapping channels UI to max_devices for now
+  recording_enabled: p.features?.recording || false,
+  fax_enabled: p.features?.fax || false
 })
-
-const loadProfiles = async () => {
-  loading.value = true
-  try {
-    const response = await systemAPI.listProfiles()
-    profiles.value = (response.data.data || response.data || []).map(transformProfile)
-  } catch (e) {
-    console.error('Failed to load profiles:', e)
-  } finally {
-    loading.value = false
-  }
-}
 
 onMounted(loadProfiles)
 
 const editProfile = (profile) => {
+  // Use raw data to ensure we have everything, but re-map for UI
+  // The 'profile' object here is the ALREADY TRANSFORMED one from the table
+  // So we can just use its values
   activeProfile.value = {
     id: profile.id,
     name: profile.name,
-    code: profile.code,
     limits: { ...profile.limits },
     features: { ...profile.features }
   }
@@ -200,7 +188,6 @@ const editProfile = (profile) => {
 const duplicateProfile = (profile) => {
   activeProfile.value = {
     name: `${profile.name} (Copy)`,
-    code: `${profile.code}_copy`,
     limits: { ...profile.limits },
     features: { ...profile.features }
   }

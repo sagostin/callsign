@@ -293,6 +293,9 @@ func (r *Router) Init() {
 					routing.Post("/blocks", r.Handler.CreateCallBlock)
 					routing.Put("/blocks/{id}", r.Handler.UpdateCallBlock)
 					routing.Delete("/blocks/{id}", r.Handler.DeleteCallBlock)
+
+					// Debugger
+					routing.Get("/debug", r.FSHandler.DebugDialplanTenant)
 				}
 
 				// Dial Plans
@@ -643,6 +646,9 @@ func (r *Router) Init() {
 					firmware.Post("/{id}/upload", r.Handler.UploadFirmware)
 					firmware.Post("/{id}/set-default", r.Handler.SetDefaultFirmware)
 				}
+
+				// Config Inspector (System)
+				system.Get("/xml/debug", r.FSHandler.DebugXML)
 
 			}
 

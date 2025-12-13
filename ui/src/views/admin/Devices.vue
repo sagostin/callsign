@@ -334,7 +334,8 @@ async function fetchDevices() {
   isLoading.value = true
   try {
     const response = await devicesAPI.list()
-    devices.value = (response.data || []).map(d => ({
+    const data = response.data.data || response.data || []
+    devices.value = data.map(d => ({
       id: d.id,
       mac: formatMac(d.mac),
       model: d.model || 'Unknown',

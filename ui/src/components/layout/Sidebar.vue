@@ -132,6 +132,10 @@
             <GitMerge class="nav-icon" />
             <span class="nav-label">DIDs & Routing</span>
           </router-link>
+          <router-link to="/admin/routing/debug" class="nav-item sub-item" v-tooltip="isCollapsed ? 'Routing Debugger' : ''">
+            <SearchIcon class="nav-icon" />
+            <span class="nav-label">Routing Debugger</span>
+          </router-link>
           <router-link to="/admin/feature-codes" class="nav-item" v-tooltip="isCollapsed ? 'Feature Codes' : ''">
             <Hash class="nav-icon" />
             <span class="nav-label">Feature Codes</span>
@@ -304,6 +308,10 @@
             <MessageSquare class="nav-icon" />
             <span class="nav-label">Messaging Providers</span>
           </router-link>
+          <router-link to="/system/config-inspector" class="nav-item" v-tooltip="isCollapsed ? 'Config Inspector' : ''">
+            <ContainerIcon class="nav-icon" />
+            <span class="nav-label">Config Inspector</span>
+          </router-link>
         </div>
 
         <div class="nav-section">
@@ -323,12 +331,7 @@
         </div>
 
         <div class="nav-spacer"></div>
-        <div class="nav-section bottom" v-if="hasSelectedTenant">
-          <router-link to="/admin" class="nav-item portal-link" v-tooltip="isCollapsed ? 'Tenant Admin' : ''">
-            <ArrowLeftIcon class="nav-icon" />
-            <span class="nav-label">Tenant Admin</span>
-          </router-link>
-        </div>
+        <!-- "Back to Admin" link removed as per user request to use Top Nav for context switching -->
       </template>
 
     </nav>
@@ -351,7 +354,7 @@ import {
   Terminal as TerminalIcon, Layers as LayersIcon, FileCode as FileCodeIcon,
   Globe as GlobeIcon, Zap as ZapIcon, ToggleLeft as ToggleIcon, PhoneCall as PhoneCallIcon,
   Download as DownloadIcon, Volume2 as VolumeIcon, FileAudio as FileAudioIcon,
-  Shield as ShieldIcon, Settings as SettingsIcon
+  Shield as ShieldIcon, Settings as SettingsIcon, Search as SearchIcon, Container as ContainerIcon
 } from 'lucide-vue-next'
 
 const route = useRoute()

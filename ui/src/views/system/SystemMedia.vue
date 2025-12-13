@@ -3,7 +3,7 @@
     <div class="view-header">
       <div class="header-content">
         <h2>Sounds</h2>
-        <p class="text-muted text-sm">Manage global audio resources: sounds, music on hold, and phrases.</p>
+        <p class="text-muted text-sm">Manage global audio resources: sounds and music on hold.</p>
       </div>
       <div class="header-actions">
         <!-- Dynamic Actions based on active tab -->
@@ -22,11 +22,12 @@
           </button>
         </template>
 
-        <template v-if="activeTab === 'phrases'">
+        <!-- Phrases actions hidden temporarily -->
+        <!-- <template v-if="activeTab === 'phrases'">
           <button class="btn-primary" @click="createPhrase">
             <PlusIcon class="btn-icon" /> New Phrase
           </button>
-        </template>
+        </template> -->
       </div>
     </div>
 
@@ -38,9 +39,10 @@
       <button class="tab" :class="{ active: activeTab === 'music' }" @click="activeTab = 'music'">
         <MusicIcon class="tab-icon" /> Music On Hold
       </button>
-      <button class="tab" :class="{ active: activeTab === 'phrases' }" @click="activeTab = 'phrases'">
+      <!-- Phrases tab hidden temporarily -->
+      <!-- <button class="tab" :class="{ active: activeTab === 'phrases' }" @click="activeTab = 'phrases'">
         <MessageSquare class="tab-icon" /> Phrases
-      </button>
+      </button> -->
     </div>
 
     <!-- CONTENT: SYSTEM SOUNDS -->
@@ -51,12 +53,13 @@
              <div class="sidebar-section">
                 <div class="section-title">LANGUAGES</div>
                 <div class="lang-list">
-                   <div v-for="lang in availableLanguages" :key="lang.code" 
+                   <!-- Root folders (typically languages) from tree -->
+                   <div v-for="folder in soundRootFolders" :key="folder.path" 
                         class="lang-item" 
-                        :class="{ active: currentSoundPath.startsWith(lang.code) }"
-                        @click="navigateToSoundLang(lang.code)">
-                        <span class="flag">{{ lang.flag }}</span>
-                        <span class="name">{{ lang.name }}</span>
+                        :class="{ active: currentSoundPath.startsWith(folder.name) }"
+                        @click="navigateToSoundRoot(folder)">
+                        <span class="flag">{{ getFlagForLang(folder.name) }}</span>
+                        <span class="name">{{ formatLangName(folder.name) }}</span>
                    </div>
                 </div>
              </div>
@@ -66,13 +69,21 @@
           <div class="browser-main">
              <div class="browser-toolbar">
                 <div class="breadcrumbs">
-                   <span v-for="(part, idx) in currentSoundPath.split('/')" :key="idx" class="crumb">
-                      {{ part }} <span class="sep">/</span>
+                   <span class="crumb root" @click="resetSoundPath">Sounds</span>
+                   <span class="sep" v-if="currentSoundPath">/</span>
+                   <span v-for="(part, idx) in currentSoundPathParts" :key="idx" class="crumb" @click="navigateToSoundBreadcrumb(idx)">
+                      {{ part }} <span class="sep" v-if="idx < currentSoundPathParts.length - 1">/</span>
                    </span>
                 </div>
              </div>
              
              <div class="file-grid">
+               <!-- Parent Folder -->
+               <div v-if="currentSoundPath" class="file-card folder back-folder" @click="navigateUpSound">
+                  <FolderIcon class="icon" />
+                  <span class="name">..</span>
+               </div>
+
                <!-- Folders -->
                <div v-for="folder in currentSoundFolders" :key="folder.name" class="file-card folder" @click="enterSoundFolder(folder)">
                   <FolderIcon class="icon" />
@@ -80,17 +91,19 @@
                </div>
                
                <!-- Files -->
-               <div v-for="file in currentSoundFiles" :key="file.name" class="file-card file">
-                  <div class="file-icon-wrapper">
-                    <FileAudioIcon class="icon" />
+               <div v-for="file in currentSoundFiles" :key="file.name" class="file-card file" @click="togglePlaySound(file)">
+                  <div class="file-icon-wrapper" :class="{ playing: isFilePlaying(file) }">
+                    <PauseIcon v-if="isFilePlaying(file) && isPlaying" class="icon" />
+                    <PlayIcon v-else class="icon" />
                   </div>
                   <div class="file-info">
                      <span class="name">{{ file.name }}</span>
                      <span class="size">{{ formatSize(file.size) }}</span>
                   </div>
-                  <div class="file-actions">
-                     <button class="btn-icon small" @click="playSound(file)"><PlayIcon class="icon-sm" /></button>
-                  </div>
+               </div>
+               
+               <div v-if="!currentSoundFolders.length && !currentSoundFiles.length" class="empty-state">
+                  <span class="text-muted">Empty folder</span>
                </div>
              </div>
           </div>
@@ -139,16 +152,20 @@
 
                 <!-- Music Files -->
                 <div v-for="file in currentMusicFiles" :key="file.name" class="file-card file">
-                   <div class="file-icon-wrapper music">
-                     <MusicIcon class="icon" />
+                   <div class="file-icon-wrapper music" :class="{ playing: isFilePlaying(file) }">
+                     <PauseIcon v-if="isFilePlaying(file) && isPlaying" class="icon" />
+                     <MusicIcon v-else class="icon" />
                    </div>
                    <div class="file-info">
                       <span class="name">{{ file.name }}</span>
                       <span class="size">{{ formatSize(file.size) }}</span>
                    </div>
                    <div class="file-actions">
-                      <button class="btn-icon small" @click="playMusic(file)"><PlayIcon class="icon-sm" /></button>
-                      <button class="btn-icon small danger" @click="deleteMusic(file)"><Trash2Icon class="icon-sm" /></button>
+                      <button class="btn-icon small" @click.stop="togglePlayMusic(file)">
+                        <PauseIcon v-if="isFilePlaying(file) && isPlaying" class="icon-sm" />
+                        <PlayIcon v-else class="icon-sm" />
+                      </button>
+                      <button class="btn-icon small danger" @click.stop="deleteMusic(file)"><Trash2Icon class="icon-sm" /></button>
                    </div>
                 </div>
              </div>
@@ -156,44 +173,15 @@
        </div>
     </div>
 
-    <!-- CONTENT: PHRASES -->
-    <div v-if="activeTab === 'phrases'" class="tab-content">
+    <!-- CONTENT: PHRASES (Hidden) -->
+    <!-- <div v-if="activeTab === 'phrases'" class="tab-content">
        <div class="phrases-layout">
-          <div class="filter-bar">
-            <div class="search-box">
-               <SearchIcon class="search-icon" />
-               <input v-model="phrasesSearchQuery" placeholder="Search phrases..." class="search-input">
-            </div>
-            <select v-model="phrasesFilterLanguage" class="filter-select">
-               <option value="">All Languages</option>
-               <option value="en-us">English (US)</option>
-               <option value="es-mx">Spanish (MX)</option>
-               <option value="fr-ca">French (CA)</option>
-            </select>
-          </div>
-
-          <div class="phrases-grid">
-             <div v-for="phrase in filteredPhrases" :key="phrase.id" class="phrase-card" :class="{ disabled: !phrase.enabled }">
-                <div class="phrase-header">
-                  <div class="phrase-info">
-                     <h4>{{ phrase.name }}</h4>
-                     <span class="phrase-desc">{{ phrase.description }}</span>
-                  </div>
-                  <div class="phrase-badges">
-                     <span class="lang-badge">{{ phrase.language }}</span>
-                     <span class="status-badge" :class="phrase.enabled ? 'enabled' : 'disabled'">
-                        {{ phrase.enabled ? 'Enabled' : 'Disabled' }}
-                     </span>
-                  </div>
-                </div>
-                <div class="phrase-actions">
-                   <button class="btn-link" @click="editPhrase(phrase)"><EditIcon class="icon-xs" /> Edit</button>
-                   <button class="btn-link danger" @click="deletePhrase(phrase)"><Trash2Icon class="icon-xs" /> Delete</button>
-                </div>
-             </div>
-          </div>
+           ...
        </div>
-    </div>
+    </div> -->
+
+    <!-- API Audio Player (Hidden) -->
+    <audio ref="audioPlayer" @ended="onAudioEnded" @error="onAudioError"></audio>
 
     <!-- Modals (Placeholders for now) -->
     <div v-if="showImportModal || showUploadSoundModal || showUploadMusicModal" class="modal-overlay" @click.self="closeModals">
@@ -216,7 +204,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { 
   Volume2, Music as MusicIcon, MessageSquare, Download as DownloadIcon, 
   Upload as UploadIcon, Plus as PlusIcon, Folder as FolderIcon,
-  FileAudio as FileAudioIcon, Play as PlayIcon, Trash2 as Trash2Icon,
+  FileAudio as FileAudioIcon, Play as PlayIcon, Pause as PauseIcon, Trash2 as Trash2Icon,
   Search as SearchIcon, Edit as EditIcon
 } from 'lucide-vue-next'
 import { systemAPI } from '../../services/api'
@@ -232,6 +220,9 @@ const phrases = ref([])
 // State
 const currentSoundPath = ref('en/us/callie') 
 const currentMusicPath = ref('8000') 
+const currentlyPlayingFile = ref(null) // { path: '...' }
+const isPlaying = ref(false)
+const audioPlayer = ref(null)
 
 // UI State
 const showImportModal = ref(false)
@@ -247,63 +238,121 @@ const closeModals = () => {
 }
 
 // -- SOUNDS LOGIC --
-const availableLanguages = [
-    { code: 'en/us/callie', name: 'English (US)', flag: '🇺🇸' },
-    { code: 'en/gb', name: 'English (UK)', flag: '🇬🇧' },
-    { code: 'fr/ca', name: 'French (CA)', flag: '🇨🇦' },
-    // Add more as needed or derive from tree
-]
+// Root folders are derived from tree
+const soundRootFolders = computed(() => {
+    // Check if we have data
+    if (!soundsTree.value) return []
+    // If array, just filter
+    if (Array.isArray(soundsTree.value)) {
+        return soundsTree.value.filter(n => n.type === 'directory')
+    }
+    // If it's single root node
+    if (soundsTree.value.children) {
+        return soundsTree.value.children.filter(n => n.type === 'directory')
+    }
+    return []
+})
 
-const navigateToSoundLang = (path) => { currentSoundPath.value = path }
+const getFlagForLang = (name) => {
+    if (name === 'en') return '🇺🇸' // Default assumption or check children
+    if (name === 'fr') return '🇫🇷'
+    if (name === 'es') return '🇪🇸'
+    if (name === 'ru') return '🇷🇺'
+    if (name === 'it') return '🇮🇹'
+    if (name === 'pt') return '🇵🇹'
+    return '📁'
+}
+
+const formatLangName = (name) => {
+    const map = {
+        'en': 'English', 'fr': 'French', 'es': 'Spanish', 'ru': 'Russian', 
+        'it': 'Italian', 'pt': 'Portuguese'
+    }
+    return map[name] || name
+}
+
+const navigateToSoundRoot = (folder) => { 
+    currentSoundPath.value = folder.name
+    // Try to auto-navigate to common subfolders if they exist (e.g. us/callie)
+    // Actually, user wants full file viewer, so respecting hierarchy is better.
+    // But preserving 'en/us/callie' default behavior might be good if it exists.
+    if (folder.name === 'en') {
+         // Check if 'us' exists
+         const us = folder.children?.find(c => c.name === 'us')
+         if (us) {
+             currentSoundPath.value = 'en/us'
+             const callie = us.children?.find(c => c.name === 'callie')
+             if (callie) {
+                 currentSoundPath.value = 'en/us/callie'
+             }
+         }
+    }
+}
+
+const resetSoundPath = () => { currentSoundPath.value = '' }
+
+const currentSoundPathParts = computed(() => {
+    return currentSoundPath.value ? currentSoundPath.value.split('/') : []
+})
+
+const navigateToSoundBreadcrumb = (index) => {
+    const parts = currentSoundPathParts.value
+    currentSoundPath.value = parts.slice(0, index + 1).join('/')
+}
+
+const navigateUpSound = () => {
+    if (!currentSoundPath.value) return
+    const parts = currentSoundPath.value.split('/')
+    parts.pop()
+    currentSoundPath.value = parts.join('/')
+}
 
 const getNodeByPath = (tree, path) => {
-    if (!path) return tree
+    if (!tree) return null
+    
+    // Standardise: tree is array of nodes.
+    let currentChildren = Array.isArray(tree) ? tree : (tree.children || [])
+    
+    if (!path) return { children: currentChildren }
+
     const parts = path.split('/')
-    let current = tree
+    let currentNode = { children: currentChildren }
+    
     for (const part of parts) {
-        if (!current) return null
-        // If current is array (root), find child
-        if (Array.isArray(current)) {
-            current = current.find(n => n.name === part)
-        } else if (current.children) {
-             current = current.children.find(n => n.name === part)
-        } else {
-            return null
-        }
+        if (!currentNode) return null
+        if (!currentNode.children) return null
+        
+        currentNode = currentNode.children.find(n => n.name === part)
     }
-    return current
+    return currentNode
 }
 
 const currentSoundNode = computed(() => {
-    // Navigate soundsTree using currentSoundPath
-    // Tree root is array of languages? Or root folder?
-    // ListSystemSounds returns children of /usr/share/freeswitch/sounds
-    // So root is array of children [en, fr, ru, etc]
     return getNodeByPath(soundsTree.value, currentSoundPath.value)
 })
 
 const currentSoundFolders = computed(() => {
     const node = currentSoundNode.value
-    if (!node) return []
-    const children = node.children || []
-    return children.filter(c => c.type === 'directory')
+    if (!node || !node.children) return []
+    return node.children.filter(c => c.type === 'directory')
 })
 
 const currentSoundFiles = computed(() => {
     const node = currentSoundNode.value
-    if (!node) return []
-    const children = node.children || []
-    return children.filter(c => c.type === 'file')
+    if (!node || !node.children) return []
+    return node.children.filter(c => c.type === 'file')
 })
 
 const enterSoundFolder = (folder) => {
-    currentSoundPath.value = currentSoundPath.value + '/' + folder.name
+    if (currentSoundPath.value) {
+        currentSoundPath.value = currentSoundPath.value + '/' + folder.name
+    } else {
+        currentSoundPath.value = folder.name
+    }
 }
 
 // -- MUSIC LOGIC --
 const musicRootFolders = computed(() => {
-    // ListSystemMusic returns children of /usr/share/freeswitch/sounds/music
-    // Expected to be [8000, 16000, 32000, 48000]
     return musicTree.value
         .filter(n => n.type === 'directory')
         .map(n => ({ name: n.name, childCount: countMusicFiles(n) }))
@@ -327,16 +376,14 @@ const currentMusicNode = computed(() => {
 
 const currentMusicFolders = computed(() => {
     const node = currentMusicNode.value
-    if (!node) return []
-    const children = node.children || []
-    return children.filter(c => c.type === 'directory')
+    if (!node || !node.children) return []
+    return node.children.filter(c => c.type === 'directory')
 })
 
 const currentMusicFiles = computed(() => {
     const node = currentMusicNode.value
-    if (!node) return []
-    const children = node.children || []
-    return children.filter(c => c.type === 'file')
+    if (!node || !node.children) return []
+    return node.children.filter(c => c.type === 'file')
 })
 
 const enterMusicFolder = (folder) => {
@@ -344,79 +391,91 @@ const enterMusicFolder = (folder) => {
 }
 
 
-// -- PHRASES LOGIC --
-const filteredPhrases = computed(() => {
-    return phrases.value.filter(p => {
-        const matchSearch = p.name.toLowerCase().includes(phrasesSearchQuery.value.toLowerCase()) || 
-                            p.description.toLowerCase().includes(phrasesSearchQuery.value.toLowerCase())
-        const matchLang = !phrasesFilterLanguage.value || p.language === phrasesFilterLanguage.value
-        return matchSearch && matchLang
-    })
-})
-
-const createPhrase = () => { alert('Create phrase') }
-const editPhrase = (p) => { alert('Edit ' + p.name) }
-const deletePhrase = (p) => { alert('Delete ' + p.name) }
-
 // -- PLAYBACK STATE --
-const currentAudioObj = ref(null)
-const isPlaying = ref(false)
 
-const stopCurrentAudio = () => {
-    if (currentAudioObj.value) {
-        currentAudioObj.value.pause()
-        currentAudioObj.value = null
+const isFilePlaying = (file) => {
+    return currentlyPlayingFile.value?.path === file.path
+}
+
+const togglePlaySound = (file) => {
+    if (isFilePlaying(file)) {
+        // Toggle pause/play
+        if (isPlaying.value) {
+            audioPlayer.value.pause()
+            isPlaying.value = false
+        } else {
+            audioPlayer.value.play()
+            isPlaying.value = true
+        }
+    } else {
+        playFile('sounds', file)
     }
+}
+
+const togglePlayMusic = (file) => {
+    if (isFilePlaying(file)) {
+        if (isPlaying.value) {
+            audioPlayer.value.pause()
+            isPlaying.value = false
+        } else {
+            audioPlayer.value.play()
+            isPlaying.value = true
+        }
+    } else {
+        playFile('music', file)
+    }
+}
+
+const playFile = async (type, file) => {
+    // Stop current if any
+    if (audioPlayer.value) {
+        audioPlayer.value.pause()
+    }
+    
+    currentlyPlayingFile.value = file
+    isPlaying.value = false // Loading...
+
+    try {
+        const token = localStorage.getItem('token')
+        const endpoint = type === 'music' ? '/api/system/media/music/stream' : '/api/system/media/sounds/stream'
+        
+        // Use fetch to get blob to pass auth header, unless we can pass token in url
+        const response = await fetch(`${endpoint}?path=${encodeURIComponent(file.path)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        
+        if (!response.ok) throw new Error(`Failed: ${response.status}`)
+        
+        const blob = await response.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        
+        if (audioPlayer.value) {
+            audioPlayer.value.src = blobUrl
+            audioPlayer.value.play()
+            isPlaying.value = true
+        }
+        
+    } catch (e) {
+        console.error('Failed to play', e)
+        currentlyPlayingFile.value = null
+        isPlaying.value = false
+        alert('Failed to play file')
+    }
+}
+
+const onAudioEnded = () => {
     isPlaying.value = false
+    // we keep currentlyPlayingFile set so user knows what was playing, 
+    // or we can clear it. Let's keep it but show as paused (or just stopped).
+    // Usually nice to reset to Play icon.
+    // If we want it to look "stopped", we can clear it.
+    currentlyPlayingFile.value = null 
 }
 
-// -- ACTIONS --
-const playSound = async (file) => {
-    stopCurrentAudio()
-    try {
-        const token = localStorage.getItem('token')
-        const response = await fetch(`/api/system/media/sounds/stream?path=${encodeURIComponent(file.path)}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-        if (!response.ok) throw new Error(`Failed: ${response.status}`)
-        const blob = await response.blob()
-        const blobUrl = URL.createObjectURL(blob)
-        
-        currentAudioObj.value = new Audio(blobUrl)
-        currentAudioObj.value.addEventListener('ended', () => {
-            isPlaying.value = false
-            URL.revokeObjectURL(blobUrl)
-        })
-        currentAudioObj.value.play()
-        isPlaying.value = true
-    } catch (e) {
-        console.error('Failed to play sound', e)
-        alert('Failed to play sound')
-    }
-}
-
-const playMusic = async (file) => {
-    stopCurrentAudio()
-    try {
-        const token = localStorage.getItem('token')
-        const response = await fetch(`/api/system/media/music/stream?path=${encodeURIComponent(file.path)}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-        if (!response.ok) throw new Error(`Failed: ${response.status}`)
-        const blob = await response.blob()
-        const blobUrl = URL.createObjectURL(blob)
-        
-        currentAudioObj.value = new Audio(blobUrl)
-        currentAudioObj.value.addEventListener('ended', () => {
-            isPlaying.value = false
-            URL.revokeObjectURL(blobUrl)
-        })
-        currentAudioObj.value.play()
-        isPlaying.value = true
-    } catch (e) {
-        console.error('Failed to play music', e)
-        alert('Failed to play music')
-    }
+const onAudioError = (e) => {
+    console.error("Audio error", e)
+    isPlaying.value = false
+    currentlyPlayingFile.value = null
 }
 
 const deleteMusic = async (file) => {
@@ -449,11 +508,7 @@ const loadData = async () => {
         soundsTree.value = soundsRes.data.data
         musicTree.value = musicRes.data.data
         
-        // Mock phrases for now
-        phrases.value = [
-            { id: 1, name: 'welcome_ivr', description: 'Main IVR Welcome', language: 'en-us', enabled: true },
-            { id: 2, name: 'out_of_hours', description: 'Closed message', language: 'en-us', enabled: true }
-        ]
+        // phrases.value = ...
     } catch(e) {
         console.error("Failed to load media", e)
     } finally {
@@ -507,38 +562,25 @@ onMounted(() => {
 
 /* File Grid */
 .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; padding: 24px; overflow-y: auto; align-content: start; }
-.file-card { border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; transition: all 0.2s; cursor: pointer; position: relative; }
+.file-card { border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; transition: all 0.2s; cursor: pointer; position: relative; user-select: none; }
 .file-card:hover { border-color: var(--primary-color); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-.file-card .icon { width: 32px; height: 32px; color: var(--text-muted); }
+.file-card.back-folder { background: #f8fafc; border-style: dashed; }
+
+.file-card .icon { width: 32px; height: 32px; color: var(--text-muted); transition: color 0.2s; }
 .file-card.folder .icon { color: #fbbf24; }
-.file-card.file .icon { color: var(--primary-color); }
+.file-card .file-icon-wrapper.playing .icon { color: var(--primary-color); }
+
+.file-card .file-icon-wrapper.music { position: relative; }
 .file-card .file-icon-wrapper.music .icon { color: #8b5cf6; }
+.file-card .file-icon-wrapper.music.playing .icon { color: var(--primary-color); }
+
 .file-card .name { font-size: 13px; font-weight: 500; word-break: break-word; line-height: 1.3; }
 .file-card .size { font-size: 11px; color: var(--text-muted); }
+
 .file-card .file-actions { position: absolute; top: 8px; right: 8px; display: none; gap: 4px; }
 .file-card:hover .file-actions { display: flex; }
 
-/* Phrases Layout */
-.phrases-layout { display: flex; flex-direction: column; height: 100%; width: 100%; }
-.filter-bar { display: flex; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--border-color); background: var(--bg-app); }
-.search-box { flex: 1; position: relative; }
-.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-muted); }
-.search-input { width: 100%; padding: 8px 10px 8px 32px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; box-sizing: border-box; }
-.filter-select { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; }
-
-.phrases-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; padding: 24px; overflow-y: auto; }
-.phrase-card { background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between; }
-.phrase-card.disabled { opacity: 0.6; }
-.phrase-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px; }
-.phrase-info h4 { margin: 0 0 4px; font-size: 14px; }
-.phrase-desc { font-size: 12px; color: var(--text-muted); }
-.phrase-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.lang-badge { font-size: 10px; background: var(--bg-app); padding: 2px 6px; border-radius: 4px; color: var(--text-muted); text-transform: uppercase; }
-.status-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
-.status-badge.enabled { background: #dcfce7; color: #16a34a; }
-.status-badge.disabled { background: #f3f4f6; color: #6b7280; }
-.phrase-actions { display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 12px; }
-.icon-xs { width: 12px; height: 12px; }
+.empty-state { grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted); font-size: 14px; }
 
 /* Modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; }
@@ -556,9 +598,4 @@ onMounted(() => {
 .btn-icon.small { width: 24px; height: 24px; padding: 0; justify-content: center; background: white; border: 1px solid var(--border-color); border-radius: 4px; }
 .btn-icon.small:hover { border-color: var(--primary-color); color: var(--primary-color); }
 .btn-icon.danger:hover { border-color: #ef4444; color: #ef4444; }
-.btn-link { background: none; border: none; font-size: 12px; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px; }
-.btn-link:hover { color: var(--primary-color); background: var(--bg-hover); }
-.btn-link.danger:hover { color: #ef4444; }
-
 </style>
-

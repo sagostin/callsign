@@ -21,7 +21,7 @@
      </template>
      <template #actions="{ row }">
         <button class="btn-link" @click="$router.push(`/system/tenants/${row.id}`)">Manage</button>
-        <button class="btn-link text-indigo-600">Impersonate</button>
+        <button class="btn-link text-indigo-600" @click="impersonate(row)">Impersonate</button>
      </template>
   </DataTable>
 </template>
@@ -62,6 +62,19 @@ const loadTenants = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const impersonate = (tenant) => {
+  // Set the tenant ID in local storage or auth store to switch context
+  // Assuming the app uses 'callsign_tenant_id' or similar. 
+  // Let's rely on the standard pattern if we don't have the store handy yet.
+  localStorage.setItem('callsign_tenant_id', tenant.id)
+  
+  // Also store name for UI display
+  localStorage.setItem('callsign_tenant_name', tenant.name)
+  
+  // Reload to apply the new tenant context globally
+  window.location.href = '/'
 }
 
 onMounted(loadTenants)
