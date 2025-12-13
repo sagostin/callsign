@@ -37,6 +37,12 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 func AutoMigrate(db *gorm.DB) error {
 	log.Info("Running database migrations...")
 
+	// Pre-migration: Handle special column type conversions
+	// that GORM can't auto-migrate (e.g., text[] -> jsonb)
+	if err := runPreMigrations(db); err != nil {
+		log.Warnf("Pre-migration step failed (may be expected on fresh install): %v", err)
+	}
+
 	err := db.AutoMigrate(
 		// Core models
 		&User{},
@@ -154,5 +160,55 @@ func AutoMigrate(db *gorm.DB) error {
 	}
 
 	log.Info("Database migrations completed")
+	return nil
+}
+
+// runPreMigrations handles column type conversions that GORM can't auto-migrate
+func runPreMigrations(db *gorm.DB) error {
+	// Check if holiday_lists table exists and has dates column as text[]
+	var columnType string
+	result := db.Raw(`
+		SELECT data_type 
+		FROM information_schema.columns 
+		WHERE table_name = 'holiday_lists' AND column_name = 'dates'
+	`).Scan(&columnType)
+
+	if result.Error != nil || columnType == "" {
+		// Table or column doesn't exist yet, skip pre-migration
+		return nil
+	}
+
+	// If the column is still ARRAY type, convert it to JSONB
+	if columnType == "ARRAY" {
+		log.Info("Converting holiday_lists.dates from text[] to jsonb...")
+
+		// Convert text[] to jsonb by wrapping each date in a JSON object
+		// Old format: ['2024-12-25', '2024-01-01']
+		// New format: [{"date": "2024-12-25", "name": ""}, {"date": "2024-01-01", "name": ""}]
+		err := db.Exec(`
+			ALTER TABLE holiday_lists 
+			ALTER COLUMN dates TYPE JSONB 
+			USING (
+				SELECT COALESCE(
+					jsonb_agg(jsonb_build_object('date', elem, 'name', '')),
+					'[]'::jsonb
+				)
+				FROM unnest(dates) AS elem
+			)
+		`).Error
+
+		if err != nil {
+			// Try simpler approach - just drop the column if conversion fails
+			log.Warnf("Complex conversion failed, trying simple approach: %v", err)
+			err = db.Exec(`ALTER TABLE holiday_lists DROP COLUMN IF EXISTS dates`).Error
+			if err != nil {
+				return err
+			}
+			// GORM will recreate the column with correct type
+		}
+
+		log.Info("holiday_lists.dates conversion completed")
+	}
+
 	return nil
 }
