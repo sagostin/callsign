@@ -7,131 +7,129 @@
       <button class="exit-btn" @click="exitImpersonation">Exit</button>
     </div>
     
-    <!-- Left Section: Breadcrumb / Context -->
-    <div class="topbar-left">
-      <!-- Search Bar -->
-      <div class="search-bar" :class="{ expanded: searchExpanded }">
-        <SearchIcon class="search-icon" />
-        <input 
-          type="text" 
-          v-model="searchQuery" 
-          :placeholder="searchPlaceholder"
-          @focus="searchExpanded = true"
-          @blur="searchExpanded = false"
-        >
-        <span class="search-shortcut" v-if="!searchExpanded">⌘K</span>
-      </div>
-    </div>
-
-    <!-- Center Section: Tenant Selector (Admin/System only) -->
-    <div class="topbar-center" v-if="auth.permissions.isSystemAdmin() || auth.permissions.isTenantAdmin()">
-      <div class="tenant-selector">
-        <div class="tenant-badge" :class="{ system: selectedContext === 'system' }">
-          <GlobeIcon v-if="selectedContext === 'system'" class="tenant-icon" />
-          <BuildingIcon v-else class="tenant-icon" />
+    <!-- Main TopBar Content -->
+    <div class="topbar-content">
+      <!-- Left Section: Search -->
+      <div class="topbar-left">
+        <div class="search-bar" :class="{ expanded: searchExpanded }">
+          <SearchIcon class="search-icon" />
+          <input 
+            type="text" 
+            v-model="searchQuery" 
+            :placeholder="searchPlaceholder"
+            @focus="searchExpanded = true"
+            @blur="searchExpanded = false"
+          >
+          <span class="search-shortcut" v-if="!searchExpanded">⌘K</span>
         </div>
-        <select v-model="selectedContext" @change="handleContextChange" class="tenant-select">
-          <optgroup label="System" v-if="auth.permissions.isSystemAdmin()">
-            <option value="system">System Admin (Global)</option>
-          </optgroup>
-          <optgroup label="Tenants">
-            <option v-for="tenant in auth.state.tenants" :key="tenant.id" :value="tenant.id">
-              {{ tenant.name }}
-            </option>
-          </optgroup>
-        </select>
-        <ChevronDownIcon class="select-chevron" />
-      </div>
-    </div>
-
-    <!-- Right Section: Quick Actions & User -->
-    <div class="topbar-right">
-      <!-- Quick Actions -->
-      <div class="quick-actions">
-        <button class="action-btn" @click="showHelp" title="Help & Docs">
-          <HelpCircleIcon class="action-icon" />
-        </button>
-        
-        <!-- Notification Center -->
-        <NotificationCenter />
-
-      <button class="action-btn" v-if="auth.permissions.isSystemAdmin() || auth.permissions.isTenantAdmin()" @click="showQuickAdd" title="Quick Add">
-          <PlusCircleIcon class="action-icon" />
-        </button>
       </div>
 
-      <div class="divider"></div>
-
-      <!-- Portal Links -->
-      <div class="portal-links">
-        <button 
-          v-if="!auth.permissions.isSystemAdmin()"
-          class="portal-btn" 
-          :class="{ active: mode === 'user' }"
-          @click="$router.push('/')"
-          title="User Portal"
-        >
-          <PhoneIcon class="portal-icon" />
-        </button>
-        <button 
-          class="portal-btn" 
-          :class="{ active: mode === 'admin', disabled: auth.permissions.isSystemAdmin() && !auth.state.currentTenantId }"
-          @click="navigateToTenantAdmin"
-          title="Tenant Admin"
-        >
-          <LayoutDashboardIcon class="portal-icon" />
-        </button>
-        <button 
-          v-if="auth.permissions.isSystemAdmin()"
-          class="portal-btn system" 
-          :class="{ active: mode === 'system' }"
-          @click="$router.push('/system')"
-          title="System Admin"
-        >
-          <ServerCogIcon class="portal-icon" />
-        </button>
-      </div>
-
-      <div class="divider"></div>
-
-      <!-- User Menu -->
-      <div class="user-menu" @click="showUserDropdown = !showUserDropdown">
-        <div class="user-avatar">
-          <span>{{ userInitials }}</span>
-          <span class="status-indicator online"></span>
+      <!-- Center Section: Tenant Selector -->
+      <div class="topbar-center" v-if="auth.permissions.isSystemAdmin() || auth.permissions.isTenantAdmin()">
+        <div class="tenant-selector">
+          <div class="tenant-badge" :class="{ system: selectedContext === 'system' }">
+            <GlobeIcon v-if="selectedContext === 'system'" class="tenant-icon" />
+            <BuildingIcon v-else class="tenant-icon" />
+          </div>
+          <select v-model="selectedContext" @change="handleContextChange" class="tenant-select">
+            <optgroup label="System" v-if="auth.permissions.isSystemAdmin()">
+              <option value="system">System Admin (Global)</option>
+            </optgroup>
+            <optgroup label="Tenants">
+              <option v-for="tenant in auth.state.tenants" :key="tenant.id" :value="tenant.id">
+                {{ tenant.name }}
+              </option>
+            </optgroup>
+          </select>
+          <ChevronDownIcon class="select-chevron" />
         </div>
-        <div class="user-info">
-          <span class="user-name">{{ userName }}</span>
-          <span class="user-role">{{ userRole }}</span>
-        </div>
-        <ChevronDownIcon class="menu-chevron" />
       </div>
 
-      <!-- User Dropdown -->
-      <div class="user-dropdown" v-if="showUserDropdown" @click.stop>
-        <div class="dropdown-header">
-          <div class="user-avatar large">
+      <!-- Right Section: Actions & User -->
+      <div class="topbar-right">
+        <!-- Toolbar Group: All actions together -->
+        <div class="toolbar-group">
+          <!-- Quick Actions -->
+          <button class="toolbar-btn" @click="showHelp" title="Help & Docs">
+            <HelpCircleIcon class="toolbar-icon" />
+          </button>
+          
+          <NotificationCenter />
+
+          <button class="toolbar-btn" v-if="auth.permissions.isSystemAdmin() || auth.permissions.isTenantAdmin()" @click="showQuickAdd" title="Quick Add">
+            <PlusCircleIcon class="toolbar-icon" />
+          </button>
+
+          <span class="toolbar-separator"></span>
+
+          <!-- Portal Links -->
+          <button 
+            v-if="!auth.permissions.isSystemAdmin()"
+            class="toolbar-btn" 
+            :class="{ active: mode === 'user' }"
+            @click="$router.push('/')"
+            title="User Portal"
+          >
+            <PhoneIcon class="toolbar-icon" />
+          </button>
+          <button 
+            class="toolbar-btn" 
+            :class="{ active: mode === 'admin', disabled: auth.permissions.isSystemAdmin() && !auth.state.currentTenantId }"
+            @click="navigateToTenantAdmin"
+            title="Tenant Admin"
+          >
+            <LayoutDashboardIcon class="toolbar-icon" />
+          </button>
+          <button 
+            v-if="auth.permissions.isSystemAdmin()"
+            class="toolbar-btn system" 
+            :class="{ active: mode === 'system' }"
+            @click="$router.push('/system')"
+            title="System Admin"
+          >
+            <ServerCogIcon class="toolbar-icon" />
+          </button>
+        </div>
+
+        <!-- User Menu -->
+        <div class="user-menu" @click="showUserDropdown = !showUserDropdown">
+          <div class="user-avatar">
             <span>{{ userInitials }}</span>
+            <span class="status-indicator online"></span>
           </div>
-          <div class="dropdown-user-info">
-            <span class="name">{{ userName }}</span>
-            <span class="email">{{ auth.state.user?.email }}</span>
+          <div class="user-info">
+            <span class="user-name">{{ userName }}</span>
+            <span class="user-role">{{ userRole }}</span>
           </div>
+          <ChevronDownIcon class="menu-chevron" />
         </div>
-        <div class="dropdown-divider"></div>
-        <router-link to="/settings" class="dropdown-item">
-          <UserIcon class="dropdown-icon" />
-          <span>My Account</span>
-        </router-link>
-        <router-link to="/settings" class="dropdown-item">
-          <SettingsIcon class="dropdown-icon" />
-          <span>Preferences</span>
-        </router-link>
-        <div class="dropdown-divider"></div>
-        <button class="dropdown-item logout" @click="logout">
-          <LogOutIcon class="dropdown-icon" />
-          <span>Sign Out</span>
-        </button>
+
+        <!-- User Dropdown -->
+        <div class="user-dropdown" v-if="showUserDropdown" @click.stop>
+          <div class="dropdown-header">
+            <div class="user-avatar large">
+              <span>{{ userInitials }}</span>
+            </div>
+            <div class="dropdown-user-info">
+              <span class="name">{{ userName }}</span>
+              <span class="email">{{ auth.state.user?.email }}</span>
+            </div>
+          </div>
+          <div class="dropdown-divider"></div>
+          <router-link to="/settings" class="dropdown-item">
+            <UserIcon class="dropdown-icon" />
+            <span>My Account</span>
+          </router-link>
+          <router-link to="/settings" class="dropdown-item">
+            <SettingsIcon class="dropdown-icon" />
+            <span>Preferences</span>
+          </router-link>
+          <div class="dropdown-divider"></div>
+          <button class="dropdown-item logout" @click="logout">
+            <LogOutIcon class="dropdown-icon" />
+            <span>Sign Out</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -237,21 +235,26 @@ const logout = async () => {
 
 <style scoped>
 .topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   width: 100%;
   height: 100%;
-  padding: 0 24px;
   background: white;
   border-bottom: 1px solid var(--border-color);
   position: relative;
-  gap: 16px;
 }
 
-.topbar.system { background: linear-gradient(90deg, #fffbeb 0%, white 40%); }
-.topbar.admin { background: linear-gradient(90deg, #f0fdf4 0%, white 40%); }
-.topbar.impersonating { padding-top: 36px; }
+.topbar.system { background: linear-gradient(90deg, #fffbeb 0%, white 50%); }
+.topbar.admin { background: linear-gradient(90deg, #f0fdf4 0%, white 50%); }
+.topbar.impersonating .topbar-content { margin-top: 32px; }
+
+/* Main content wrapper */
+.topbar-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  padding: 0 20px;
+  gap: 20px;
+}
 
 /* Impersonation Banner */
 .impersonate-banner {
@@ -351,26 +354,24 @@ const logout = async () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
+  padding: 6px 12px 6px 8px;
   background: white;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 8px;
   position: relative;
-  min-width: 240px;
+  min-width: 180px;
   transition: all 0.15s ease;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
 .tenant-selector:hover {
   border-color: var(--primary-color);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 
 .tenant-badge {
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, #dcfce7, #bbf7d0);
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  background: #dcfce7;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -378,30 +379,30 @@ const logout = async () => {
   flex-shrink: 0;
 }
 .tenant-badge.system { 
-  background: linear-gradient(135deg, #fef3c7, #fde68a); 
+  background: #fef3c7; 
   color: #b45309; 
 }
-.tenant-icon { width: 16px; height: 16px; }
+.tenant-icon { width: 14px; height: 14px; }
 
 .tenant-select {
   flex: 1;
   appearance: none;
   background: transparent;
   border: none;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   outline: none;
   cursor: pointer;
-  padding-right: 24px;
+  padding-right: 20px;
   min-width: 0;
 }
 
 .select-chevron {
   position: absolute;
-  right: 12px;
-  width: 14px;
-  height: 14px;
+  right: 10px;
+  width: 12px;
+  height: 12px;
   color: var(--text-muted);
   pointer-events: none;
 }
@@ -410,95 +411,79 @@ const logout = async () => {
 .topbar-right { 
   display: flex; 
   align-items: center; 
-  gap: 6px;
+  gap: 12px;
   flex-shrink: 0;
 }
 
-.quick-actions { 
+/* Unified Toolbar Group */
+.toolbar-group { 
   display: flex; 
   align-items: center; 
-  gap: 2px; 
+  gap: 2px;
+  background: var(--bg-app);
+  border-radius: 8px;
+  padding: 4px;
 }
 
-.action-btn {
-  width: 38px;
-  height: 38px;
+.toolbar-btn {
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   background: transparent;
-  border-radius: 10px;
+  border-radius: 6px;
   cursor: pointer;
   color: var(--text-muted);
-  position: relative;
   transition: all 0.15s ease;
 }
-.action-btn:hover { 
-  background: var(--bg-app); 
+.toolbar-btn:hover { 
+  background: rgba(255,255,255,0.7); 
   color: var(--text-primary); 
 }
-.action-icon { width: 18px; height: 18px; }
+.toolbar-btn.active { 
+  background: white; 
+  color: var(--primary-color); 
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08); 
+}
+.toolbar-btn.system:hover { color: #b45309; }
+.toolbar-btn.system.active { 
+  color: #b45309; 
+  background: white;
+}
+.toolbar-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.toolbar-icon { width: 16px; height: 16px; }
+
+.toolbar-separator {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
+  margin: 0 4px;
+}
+
+/* Legacy support - remove old styles */
+.quick-actions { display: none; }
+.action-btn { display: none; }
+.action-icon { display: none; }
+.divider { display: none; }
+.portal-links { display: none; }
+.portal-btn { display: none; }
+.portal-icon { display: none; }
 
 .badge-dot {
   position: absolute;
-  top: 7px;
-  right: 7px;
-  width: 8px;
-  height: 8px;
+  top: 5px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
   background: #ef4444;
   border: 2px solid white;
   border-radius: 50%;
 }
-
-.divider { 
-  width: 1px; 
-  height: 24px; 
-  background: var(--border-color); 
-  margin: 0 6px; 
-}
-
-/* Portal Links */
-.portal-links { 
-  display: flex; 
-  gap: 3px; 
-  background: var(--bg-app); 
-  border-radius: 10px; 
-  padding: 4px; 
-}
-
-.portal-btn {
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--text-muted);
-  transition: all 0.15s ease;
-}
-.portal-btn:hover { 
-  color: var(--text-primary); 
-  background: rgba(255,255,255,0.5);
-}
-.portal-btn.active { 
-  background: white; 
-  color: var(--primary-color); 
-  box-shadow: 0 1px 4px rgba(0,0,0,0.1); 
-}
-.portal-btn.system:hover { color: #b45309; }
-.portal-btn.system.active { 
-  color: #b45309; 
-  background: white;
-}
-.portal-btn.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.portal-icon { width: 17px; height: 17px; }
 
 /* User Menu */
 .user-menu {
