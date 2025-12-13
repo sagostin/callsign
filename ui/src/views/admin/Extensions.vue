@@ -47,7 +47,7 @@
         <span class="font-mono text-xs">{{ value || '—' }}</span>
       </template>
       <template #actions="{ row }">
-        <button class="btn-link" @click="$router.push(`/admin/extensions/${row.ext}`)">Edit</button>
+        <button class="btn-link" @click="$router.push(`/admin/extensions/${row.id}`)">Edit</button>
         <button class="btn-link" @click="quickChangeProfile(row)">Profile</button>
       </template>
     </DataTable>
