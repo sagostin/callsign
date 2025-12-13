@@ -103,47 +103,82 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted, inject } from 'vue'
 import { FileCode, MoreVertical, Phone as PhoneIcon, Settings as SettingsIcon, X as XIcon } from 'lucide-vue-next'
+import { deviceTemplatesAPI } from '@/services/api'
 
-const templates = ref([
-  { id: 1, name: 'Standard Yealink', model: 'Yealink T54W', firmware: '96.85.0.5', provisions: 124, masterTemplate: 'Yealink T5 Series Master' },
-  { id: 2, name: 'Executive Poly', model: 'Poly CCX 500', firmware: '7.1.2', provisions: 12, masterTemplate: 'Polycom VVX Generic' },
-  { id: 3, name: 'Reception Console', model: 'Yealink T57W + Exp', firmware: '96.85.0.5', provisions: 3, masterTemplate: 'Yealink T5 Series Master' },
-  { id: 4, name: 'Warehouse DECT', model: 'Yealink W60B', firmware: '77.83.0.10', provisions: 8, masterTemplate: null },
-])
+const toast = inject('toast')
+const templates = ref([])
+const isLoading = ref(false)
+
+onMounted(async () => {
+  await fetchTemplates()
+  document.addEventListener('click', closeDropdown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeDropdown)
+})
+
+const closeDropdown = () => {
+  activeDropdown.value = null
+}
+
+async function fetchTemplates() {
+  isLoading.value = true
+  try {
+    const response = await deviceTemplatesAPI.list()
+    templates.value = (response.data?.data || response.data || []).map(t => ({
+      id: t.id,
+      name: t.name,
+      model: t.model || t.device_model || 'Unknown',
+      firmware: t.firmware_version || 'Latest',
+      provisions: t.device_count || 0,
+      masterTemplate: t.parent_template_name || t.master_template_name || null,
+      description: t.description
+    }))
+  } catch (error) {
+    toast?.error(error.message, 'Failed to load templates')
+    templates.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
 
 const showCreateModal = ref(false)
 const newTemplateBase = ref('')
 const newTemplateName = ref('')
 const newTemplateDesc = ref('')
 
-const confirmCreate = () => {
+const modelMap = {
+  'yealink_t54': { model: 'Yealink T54W', master: 'Yealink T5 Series Master' },
+  'yealink_t57': { model: 'Yealink T57W', master: 'Yealink T5 Series Master' },
+  'yealink_w60': { model: 'Yealink W60B', master: null },
+  'poly_ccx': { model: 'Poly CCX 500', master: 'Polycom VVX Generic' },
+  'poly_vvx': { model: 'Poly VVX 450', master: 'Polycom VVX Generic' },
+  'grandstream_gxp': { model: 'Grandstream GXP2100', master: 'Grandstream GXP' }
+}
+
+const confirmCreate = async () => {
   if (!newTemplateBase.value || !newTemplateName.value) return
   
-  const modelMap = {
-    'yealink_t54': { model: 'Yealink T54W', master: 'Yealink T5 Series Master' },
-    'yealink_t57': { model: 'Yealink T57W', master: 'Yealink T5 Series Master' },
-    'yealink_w60': { model: 'Yealink W60B', master: null },
-    'poly_ccx': { model: 'Poly CCX 500', master: 'Polycom VVX Generic' },
-    'poly_vvx': { model: 'Poly VVX 450', master: 'Polycom VVX Generic' },
-    'grandstream_gxp': { model: 'Grandstream GXP2100', master: 'Grandstream GXP' }
-  }
-  
   const selected = modelMap[newTemplateBase.value]
-  templates.value.push({
-    id: Date.now(),
-    name: newTemplateName.value,
-    model: selected.model,
-    firmware: 'Latest',
-    provisions: 0,
-    masterTemplate: selected.master
-  })
-  
-  showCreateModal.value = false
-  newTemplateBase.value = ''
-  newTemplateName.value = ''
-  newTemplateDesc.value = ''
+  try {
+    await deviceTemplatesAPI.create({
+      name: newTemplateName.value,
+      device_model: selected.model,
+      description: newTemplateDesc.value,
+      master_template_key: newTemplateBase.value
+    })
+    toast?.success('Template created successfully')
+    await fetchTemplates()
+    showCreateModal.value = false
+    newTemplateBase.value = ''
+    newTemplateName.value = ''
+    newTemplateDesc.value = ''
+  } catch (error) {
+    toast?.error(error.message, 'Failed to create template')
+  }
 }
 
 const activeDropdown = ref(null)
@@ -152,32 +187,40 @@ const toggleDropdown = (id) => {
   activeDropdown.value = activeDropdown.value === id ? null : id
 }
 
-const deleteTemplate = (t) => {
+const deleteTemplate = async (t) => {
   activeDropdown.value = null
   if (confirm(`Delete "${t.name}"?`)) {
-    templates.value = templates.value.filter(x => x.id !== t.id)
+    try {
+      await deviceTemplatesAPI.delete(t.id)
+      toast?.success(`Template "${t.name}" deleted`)
+      await fetchTemplates()
+    } catch (error) {
+      toast?.error(error.message, 'Failed to delete template')
+    }
   }
 }
 
-const cloneTemplate = (t) => {
+const cloneTemplate = async (t) => {
   activeDropdown.value = null
-  templates.value.push({
-    ...t,
-    id: Date.now(),
-    name: `${t.name} (Copy)`,
-    provisions: 0
-  })
+  try {
+    await deviceTemplatesAPI.create({
+      name: `${t.name} (Copy)`,
+      device_model: t.model,
+      description: t.description,
+      clone_from_id: t.id
+    })
+    toast?.success('Template cloned successfully')
+    await fetchTemplates()
+  } catch (error) {
+    toast?.error(error.message, 'Failed to clone template')
+  }
 }
 
 const exportTemplate = (t) => {
   activeDropdown.value = null
-  alert(`Exporting ${t.name} configuration...`)
+  // TODO: Implement template export endpoint
+  toast?.info(`Exporting ${t.name} configuration...`)
 }
-
-// Close dropdown when clicking outside
-document.addEventListener('click', () => {
-  activeDropdown.value = null
-})
 </script>
 
 <style scoped>

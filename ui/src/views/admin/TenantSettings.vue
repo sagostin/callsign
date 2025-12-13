@@ -15,10 +15,7 @@
           <SettingsIcon class="nav-icon" />
           <span>General</span>
         </div>
-        <div class="nav-item" :class="{ active: activeSection === 'codes' }" @click="activeSection = 'codes'">
-          <HashIcon class="nav-icon" />
-          <span>Feature Codes</span>
-        </div>
+
         <div class="nav-item" :class="{ active: activeSection === 'locations' }" @click="activeSection = 'locations'">
           <MapPinIcon class="nav-icon" />
           <span>Locations (E911)</span>
@@ -35,10 +32,7 @@
           <MailIcon class="nav-icon" />
           <span>SMTP / Email</span>
         </div>
-        <div class="nav-item" :class="{ active: activeSection === 'provisioning' }" @click="activeSection = 'provisioning'">
-          <ServerIcon class="nav-icon" />
-          <span>Provisioning</span>
-        </div>
+
         <div class="nav-item" :class="{ active: activeSection === 'hospitality' }" @click="activeSection = 'hospitality'">
           <HotelIcon class="nav-icon" />
           <span>Hospitality</span>
@@ -149,24 +143,7 @@
         </div>
       </div>
 
-      <!-- FEATURE CODES -->
-      <div v-if="activeSection === 'codes'" class="settings-panel">
-        <div class="panel-header">
-          <h3>Feature Codes</h3>
-          <button class="btn-secondary small" @click="resetCodes">Reset to Defaults</button>
-        </div>
-        <p class="panel-desc">Dial codes for common features. These can be dialed from any registered phone.</p>
-        
-        <div class="codes-grid">
-          <div class="code-card" v-for="code in featureCodes" :key="code.key">
-            <div class="code-info">
-              <span class="code-name">{{ code.name }}</span>
-              <span class="code-desc">{{ code.description }}</span>
-            </div>
-            <input type="text" class="input-field code" v-model="code.value" style="width: 80px">
-          </div>
-        </div>
-      </div>
+
 
       <!-- LOCATIONS -->
       <div v-if="activeSection === 'locations'" class="settings-panel">
@@ -318,50 +295,7 @@
         </div>
       </div>
 
-      <!-- PROVISIONING -->
-      <div v-if="activeSection === 'provisioning'" class="settings-panel">
-        <div class="panel-header">
-          <h3>Device Provisioning</h3>
-        </div>
-        <p class="panel-desc">Configure how devices fetch their configuration files.</p>
 
-        <div class="setting-card">
-          <div class="setting-row">
-            <div class="setting-info">
-              <h4>Protocol</h4>
-              <p>Transfer protocol for provisioning.</p>
-            </div>
-            <select class="input-field" v-model="provisioning.protocol">
-              <option value="https">HTTPS (Recommended)</option>
-              <option value="http">HTTP</option>
-              <option value="tftp">TFTP (Legacy)</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="setting-card">
-          <div class="setting-row">
-            <div class="setting-info">
-              <h4>Authentication</h4>
-              <p>How devices authenticate.</p>
-            </div>
-            <select class="input-field" v-model="provisioning.auth">
-              <option value="none">None (Public)</option>
-              <option value="mac">MAC Address Validation</option>
-              <option value="basic">Basic Auth (User/Pass)</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="info-card">
-          <div class="info-label">Provisioning URL</div>
-          <div class="info-value">
-            <code>https://prov.callsign.io/cfg/{{ provisioning.secret }}/</code>
-            <button class="btn-small" @click="copyProvUrl">Copy</button>
-          </div>
-          <button class="btn-link mt-sm" @click="regenerateSecret">Regenerate Secret</button>
-        </div>
-      </div>
 
       <!-- HOSPITALITY -->
       <div v-if="activeSection === 'hospitality'" class="settings-panel">
