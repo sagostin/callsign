@@ -29,7 +29,7 @@
 
   <!-- Toggles List -->
   <div class="toggles-grid">
-    <div class="toggle-card" v-for="toggle in toggles" :key="toggle.id" :class="{ 'mode-a': toggle.status === 'A', 'mode-b': toggle.status === 'B' }">
+    <div class="toggle-card" v-for="toggle in mappedToggles" :key="toggle.id" :class="{ 'mode-a': toggle.status === 'A', 'mode-b': toggle.status === 'B' }">
       <div class="toggle-header">
         <div class="toggle-icon" :class="toggle.status === 'A' ? 'mode-a' : 'mode-b'">
           <ToggleRightIcon v-if="toggle.status === 'A'" class="icon-md" />
@@ -196,54 +196,62 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { 
   ToggleLeft as ToggleLeftIcon, ToggleRight as ToggleRightIcon, X as XIcon,
-  PhoneCall as PhoneCallIcon, PhoneForwarded as PhoneForwardedIcon, Volume2 as VolumeIcon
+  PhoneCall as PhoneCallIcon, PhoneForwarded as PhoneForwardedIcon, Volume2 as VolumeIcon, RefreshCw
 } from 'lucide-vue-next'
+import { togglesAPI } from '../../services/api'
 
 const showModal = ref(false)
 const editingToggle = ref(null)
-
-const toggles = ref([
-  { 
-    id: 1, name: 'Day/Night Mode', extension: '30', featureCode: '30', 
-    status: 'A', description: 'Toggle between day and night routing',
-    modeALabel: 'Day Mode', modeADestination: 'IVR: Main Menu → Time Condition: Business Hours',
-    modeASound: 'day_mode.wav',
-    modeBLabel: 'Night Mode', modeBDestination: 'IVR: After Hours → Voicemail',
-    modeBSound: 'night_mode.wav',
-    lastChanged: '2 hours ago'
-  },
-  { 
-    id: 2, name: 'Holiday Override', extension: '31', featureCode: '31', 
-    status: 'B', description: 'Force holiday routing regardless of time conditions',
-    modeALabel: 'Normal', modeADestination: 'Time Condition: Business Hours',
-    modeASound: '',
-    modeBLabel: 'Holiday', modeBDestination: 'IVR: Holiday Menu → Emergency Option',
-    modeBSound: 'holiday_mode.wav',
-    lastChanged: '5 days ago'
-  },
-  { 
-    id: 3, name: 'Emergency Bypass', extension: '99', featureCode: '99', 
-    status: 'A', description: 'Route all calls directly to mobile',
-    modeALabel: 'Normal', modeADestination: 'Normal Routing',
-    modeASound: '',
-    modeBLabel: 'Emergency', modeBDestination: 'External: +1 555-123-4567',
-    modeBSound: 'emergency_mode.wav',
-    lastChanged: '1 month ago'
-  }
-])
+const loading = ref(false)
+const error = ref(null)
+const toggles = ref([])
 
 const form = ref({
-  name: '', extension: '', featureCode: '', pin: '', description: '',
-  modeALabel: '', modeASound: '', modeAType: 'ivr', modeAValue: '',
-  modeBLabel: '', modeBSound: '', modeBType: 'voicemail', modeBValue: ''
+  name: '', extension: '', feature_code: '', description: '',
+  day_dest_type: 'ivr', day_dest_value: '',
+  night_dest_type: 'voicemail', night_dest_value: '',
+  enabled: true
 })
 
-const flipToggle = (toggle) => {
-  toggle.status = toggle.status === 'A' ? 'B' : 'A'
-  toggle.lastChanged = 'Just now'
+// Map backend CallFlow model to UI format
+const mappedToggles = computed(() => toggles.value.map(t => ({
+  ...t,
+  status: t.status === 'night' ? 'B' : 'A',
+  featureCode: t.feature_code,
+  modeALabel: 'Day Mode',
+  modeADestination: `${t.day_dest_type || 'None'}: ${t.day_dest_value || '-'}`,
+  modeBLabel: 'Night Mode', 
+  modeBDestination: `${t.night_dest_type || 'None'}: ${t.night_dest_value || '-'}`,
+  lastChanged: t.updated_at ? new Date(t.updated_at).toLocaleDateString() : 'Unknown'
+})))
+
+onMounted(() => loadToggles())
+
+async function loadToggles() {
+  loading.value = true
+  error.value = null
+  try {
+    const response = await togglesAPI.list()
+    toggles.value = response.data?.data || []
+  } catch (e) {
+    error.value = 'Failed to load toggles'
+    console.error(e)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function flipToggle(toggle) {
+  try {
+    await togglesAPI.toggle(toggle.id)
+    await loadToggles()
+  } catch (e) {
+    error.value = 'Failed to toggle status'
+    console.error(e)
+  }
 }
 
 const closeModal = () => {
@@ -254,40 +262,70 @@ const closeModal = () => {
 
 const resetForm = () => {
   form.value = {
-    name: '', extension: '', featureCode: '', pin: '', description: '',
-    modeALabel: '', modeASound: '', modeAType: 'ivr', modeAValue: '',
-    modeBLabel: '', modeBSound: '', modeBType: 'voicemail', modeBValue: ''
+    name: '', extension: '', feature_code: '', description: '',
+    day_dest_type: 'ivr', day_dest_value: '',
+    night_dest_type: 'voicemail', night_dest_value: '',
+    enabled: true
   }
 }
 
 const editToggle = (toggle) => {
   editingToggle.value = toggle
-  form.value = { ...toggle }
+  form.value = {
+    name: toggle.name,
+    extension: toggle.extension,
+    feature_code: toggle.feature_code || '',
+    description: toggle.description || '',
+    day_dest_type: toggle.day_dest_type || 'ivr',
+    day_dest_value: toggle.day_dest_value || '',
+    night_dest_type: toggle.night_dest_type || 'voicemail',
+    night_dest_value: toggle.night_dest_value || '',
+    enabled: toggle.enabled !== false
+  }
   showModal.value = true
 }
 
-const saveToggle = () => {
-  if (editingToggle.value) {
-    Object.assign(editingToggle.value, form.value)
-  } else {
-    toggles.value.push({
-      ...form.value,
-      id: Date.now(),
-      status: 'A',
-      modeADestination: `${form.value.modeAType}: ${form.value.modeAValue}`,
-      modeBDestination: `${form.value.modeBType}: ${form.value.modeBValue}`,
-      lastChanged: 'Just now'
-    })
+async function saveToggle() {
+  error.value = null
+  try {
+    const payload = {
+      name: form.value.name,
+      extension: form.value.extension,
+      feature_code: form.value.feature_code,
+      description: form.value.description,
+      day_dest_type: form.value.day_dest_type,
+      day_dest_value: form.value.day_dest_value,
+      night_dest_type: form.value.night_dest_type,
+      night_dest_value: form.value.night_dest_value,
+      enabled: form.value.enabled
+    }
+
+    if (editingToggle.value) {
+      await togglesAPI.update(editingToggle.value.id, payload)
+    } else {
+      await togglesAPI.create(payload)
+    }
+    await loadToggles()
+    closeModal()
+  } catch (e) {
+    error.value = e.response?.data?.error || 'Failed to save toggle'
+    console.error(e)
   }
-  closeModal()
 }
 
-const deleteToggle = (toggle) => {
-  if (confirm(`Delete "${toggle.name}"?`)) {
-    toggles.value = toggles.value.filter(t => t.id !== toggle.id)
+async function deleteToggle(toggle) {
+  if (!confirm(`Delete "${toggle.name}"?`)) return
+  error.value = null
+  try {
+    await togglesAPI.delete(toggle.id)
+    await loadToggles()
+  } catch (e) {
+    error.value = 'Failed to delete toggle'
+    console.error(e)
   }
 }
 </script>
+
 
 <style scoped>
 .view-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-lg); }

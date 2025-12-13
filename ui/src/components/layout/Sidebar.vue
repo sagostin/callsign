@@ -159,6 +159,10 @@
             <ToggleIcon class="nav-icon" />
             <span class="nav-label">Toggles</span>
           </router-link>
+          <router-link to="/admin/speed-dials" class="nav-item" v-tooltip="isCollapsed ? 'Speed Dials' : ''">
+            <ZapIcon class="nav-icon" />
+            <span class="nav-label">Speed Dials</span>
+          </router-link>
         </div>
 
         <div class="nav-section">

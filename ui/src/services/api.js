@@ -120,6 +120,17 @@ export const extensionProfilesAPI = {
 }
 
 // =====================
+// Speed Dials API
+// =====================
+export const speedDialsAPI = {
+    list: () => api.get('/speed-dials'),
+    get: (id) => api.get(`/speed-dials/${id}`),
+    create: (data) => api.post('/speed-dials', data),
+    update: (id, data) => api.put(`/speed-dials/${id}`, data),
+    delete: (id) => api.delete(`/speed-dials/${id}`),
+}
+
+// =====================
 // Devices API
 // =====================
 export const devicesAPI = {
@@ -236,6 +247,24 @@ export const holidaysAPI = {
     delete: (id) => api.delete(`/holidays/${id}`),
     sync: (id) => api.post(`/holidays/${id}/sync`),
 }
+
+// =====================
+// Toggles (Call Flows) API
+// =====================
+export const togglesAPI = {
+    list: () => api.get('/call-flows'),
+    get: (id) => api.get(`/call-flows/${id}`),
+    create: (data) => api.post('/call-flows', data),
+    update: (id, data) => api.put(`/call-flows/${id}`, data),
+    delete: (id) => api.delete(`/call-flows/${id}`),
+    toggle: (id) => api.post(`/call-flows/${id}/toggle`),
+}
+
+// =====================
+// Dial Code Check Utility
+// =====================
+export const checkDialCode = (code, type, excludeId = 0) =>
+    api.post('/check-dial-code', { code, type, exclude_id: excludeId })
 
 // =====================
 // Call Flows API

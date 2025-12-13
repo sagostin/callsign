@@ -134,8 +134,24 @@
               <input v-model="activeProfile.profile_name" class="input-field" placeholder="e.g. internal-ipv4" />
             </div>
             <div class="form-group">
+              <label>Alias (Display Name)</label>
+              <input v-model="activeProfile.alias" class="input-field" placeholder="e.g. Primary Internal" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-2">
               <label>Description</label>
               <input v-model="activeProfile.description" class="input-field" placeholder="Internal SIP profile" />
+            </div>
+            <div class="form-group">
+              <label>Usage Type</label>
+              <select v-model="activeProfile.usage_type" class="input-field">
+                <option value="mixed">Mixed (Default)</option>
+                <option value="internal">Internal Only (Extensions)</option>
+                <option value="trunks">Trunks Only (Gateways)</option>
+              </select>
+              <span class="help-text">Internal = auth required, Trunks = public context</span>
             </div>
           </div>
 

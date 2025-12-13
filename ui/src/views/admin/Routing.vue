@@ -479,7 +479,7 @@ import {
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import { routingAPI, numbersAPI, dialPlansAPI } from '../../services/api'
-import { formatPhoneNumber } from '../utils/formatters'
+import { formatPhoneNumber } from '../../utils/formatters'
 
 const activeTab = ref('inbound')
 

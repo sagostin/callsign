@@ -219,6 +219,16 @@ func (r *Router) Init() {
 					ringGroups.Delete("/{id}", r.Handler.DeleteRingGroup)
 				}
 
+				// Speed Dials
+				speedDials := tenantScoped.Party("/speed-dials")
+				{
+					speedDials.Get("/", r.Handler.ListSpeedDialGroups)
+					speedDials.Post("/", r.Handler.CreateSpeedDialGroup)
+					speedDials.Get("/{id}", r.Handler.GetSpeedDialGroup)
+					speedDials.Put("/{id}", r.Handler.UpdateSpeedDialGroup)
+					speedDials.Delete("/{id}", r.Handler.DeleteSpeedDialGroup)
+				}
+
 				// Conferences
 				conferences := tenantScoped.Party("/conferences")
 				{
@@ -341,6 +351,9 @@ func (r *Router) Init() {
 				{
 					auditLogs.Get("/", r.Handler.ListAuditLogs)
 				}
+
+				// Dial Code Collision Check
+				tenantScoped.Post("/check-dial-code", r.Handler.CheckDialCode)
 
 				// Messaging (SMS/MMS)
 				messaging := tenantScoped.Party("/messaging")

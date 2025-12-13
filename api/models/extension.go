@@ -103,6 +103,9 @@ type Extension struct {
 	DirectoryVisible      bool   `json:"directory_visible" gorm:"default:true"`
 	DirectoryExtenVisible bool   `json:"directory_exten_visible" gorm:"default:true"`
 
+	// Extension profile (for permissions and settings)
+	ProfileID *uint `json:"profile_id" gorm:"index"`
+
 	// Associated user (optional)
 	UserID *uint `json:"user_id" gorm:"index"`
 	User   *User `json:"user,omitempty" gorm:"foreignKey:UserID"`

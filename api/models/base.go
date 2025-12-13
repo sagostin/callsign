@@ -142,6 +142,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&TranscriptionConfig{},
 		&RecordingConfig{},
 		&MediaFile{},
+
+		// Speed Dials
+		&SpeedDialGroup{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)

@@ -326,18 +326,22 @@ async function fetchExtensions() {
   isLoading.value = true
   try {
     const response = await extensionsAPI.list()
-    extensions.value = response.data.map(ext => ({
+    // Handle both {data: [...]} wrapper and direct array formats
+    const data = response.data?.data || response.data || []
+    extensions.value = data.map(ext => ({
       id: ext.id,
+      ext: ext.extension, // for router link
       extension: ext.extension,
       name: ext.effective_caller_id_name || ext.display_name || `Ext ${ext.extension}`,
-      profileId: ext.profile_id || 1,
+      profileId: ext.profile_id || null,
       status: getStatusLabel(ext),
       device: ext.device_name || null,
       lastCall: formatLastCall(ext.last_call_at)
     }))
   } catch (error) {
-    toast?.error(error.message, 'Failed to load extensions')
-    // Keep any existing data or use fallback
+    console.error('Failed to load extensions:', error)
+    toast?.error('Failed to load extensions')
+    extensions.value = []
   } finally {
     isLoading.value = false
   }

@@ -1252,3 +1252,223 @@ func (h *Handler) DeleteExtensionProfile(ctx iris.Context) {
 
 	ctx.JSON(iris.Map{"message": "Extension profile deleted"})
 }
+
+// =====================
+// Speed Dials
+// =====================
+
+func (h *Handler) ListSpeedDialGroups(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	var groups []models.SpeedDialGroup
+	if err := h.DB.Where("tenant_id = ?", tenantID).Order("name ASC").Find(&groups).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to fetch speed dial groups"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": groups})
+}
+
+func (h *Handler) CreateSpeedDialGroup(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	var group models.SpeedDialGroup
+	if err := ctx.ReadJSON(&group); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	group.TenantID = tenantID
+	if group.Entries == nil {
+		group.Entries = models.SpeedDialEntries{}
+	}
+
+	if err := h.DB.Create(&group).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create speed dial group"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(iris.Map{"data": group, "message": "Speed dial group created"})
+}
+
+func (h *Handler) GetSpeedDialGroup(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id := ctx.Params().GetUintDefault("id", 0)
+
+	var group models.SpeedDialGroup
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&group).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Speed dial group not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": group})
+}
+
+func (h *Handler) UpdateSpeedDialGroup(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id := ctx.Params().GetUintDefault("id", 0)
+
+	var group models.SpeedDialGroup
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&group).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Speed dial group not found"})
+		return
+	}
+
+	var input models.SpeedDialGroup
+	if err := ctx.ReadJSON(&input); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	group.Name = input.Name
+	group.Description = input.Description
+	group.Prefix = input.Prefix
+	group.Enabled = input.Enabled
+	group.Entries = input.Entries
+
+	if err := h.DB.Save(&group).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to update speed dial group"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": group, "message": "Speed dial group updated"})
+}
+
+func (h *Handler) DeleteSpeedDialGroup(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id := ctx.Params().GetUintDefault("id", 0)
+
+	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.SpeedDialGroup{})
+	if result.Error != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to delete speed dial group"})
+		return
+	}
+
+	if result.RowsAffected == 0 {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Speed dial group not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "Speed dial group deleted"})
+}
+
+// =====================
+// Dial Code Collision Check
+// =====================
+
+// checkDialCodeConflict checks if a dial code is in use by any entity for the given tenant
+func (h *Handler) checkDialCodeConflict(tenantID uint, code string, currentType string, currentID uint) map[string]string {
+	// Check extensions
+	var ext models.Extension
+	query := h.DB.Where("tenant_id = ? AND (extension = ? OR number_alias = ?)", tenantID, code, code)
+	if currentType == "extension" && currentID > 0 {
+		query = query.Where("id != ?", currentID)
+	}
+	if query.First(&ext).Error == nil {
+		return map[string]string{"type": "extension", "name": ext.EffectiveCallerIDName}
+	}
+
+	// Check IVR menus
+	var ivr models.IVRMenu
+	query = h.DB.Where("tenant_id = ? AND extension = ?", tenantID, code)
+	if currentType == "ivr" && currentID > 0 {
+		query = query.Where("id != ?", currentID)
+	}
+	if query.First(&ivr).Error == nil {
+		return map[string]string{"type": "ivr", "name": ivr.Name}
+	}
+
+	// Check queues
+	var queue models.Queue
+	query = h.DB.Where("tenant_id = ? AND extension = ?", tenantID, code)
+	if currentType == "queue" && currentID > 0 {
+		query = query.Where("id != ?", currentID)
+	}
+	if query.First(&queue).Error == nil {
+		return map[string]string{"type": "queue", "name": queue.Name}
+	}
+
+	// Check conferences
+	var conf models.Conference
+	query = h.DB.Where("tenant_id = ? AND extension = ?", tenantID, code)
+	if currentType == "conference" && currentID > 0 {
+		query = query.Where("id != ?", currentID)
+	}
+	if query.First(&conf).Error == nil {
+		return map[string]string{"type": "conference", "name": conf.Name}
+	}
+
+	// Check ring groups
+	var rg models.RingGroup
+	query = h.DB.Where("tenant_id = ? AND extension = ?", tenantID, code)
+	if currentType == "ring_group" && currentID > 0 {
+		query = query.Where("id != ?", currentID)
+	}
+	if query.First(&rg).Error == nil {
+		return map[string]string{"type": "ring_group", "name": rg.Name}
+	}
+
+	// Check time conditions
+	var tc models.TimeCondition
+	query = h.DB.Where("tenant_id = ? AND extension = ?", tenantID, code)
+	if currentType == "time_condition" && currentID > 0 {
+		query = query.Where("id != ?", currentID)
+	}
+	if query.First(&tc).Error == nil {
+		return map[string]string{"type": "time_condition", "name": tc.Name}
+	}
+
+	// Check call flows (toggles)
+	var cf models.CallFlow
+	query = h.DB.Where("tenant_id = ? AND (extension = ? OR feature_code = ?)", tenantID, code, code)
+	if currentType == "call_flow" && currentID > 0 {
+		query = query.Where("id != ?", currentID)
+	}
+	if query.First(&cf).Error == nil {
+		return map[string]string{"type": "call_flow", "name": cf.Name}
+	}
+
+	// Check feature codes
+	var fc models.FeatureCode
+	query = h.DB.Where("(tenant_id = ? OR tenant_id IS NULL) AND (code = ? OR extension = ?)", tenantID, code, code)
+	if currentType == "feature_code" && currentID > 0 {
+		query = query.Where("id != ?", currentID)
+	}
+	if query.First(&fc).Error == nil {
+		return map[string]string{"type": "feature_code", "name": fc.Name}
+	}
+
+	return nil
+}
+
+// CheckDialCode is a public endpoint for UI to validate dial codes
+func (h *Handler) CheckDialCode(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	var input struct {
+		Code      string `json:"code"`
+		Type      string `json:"type"`
+		ExcludeID uint   `json:"exclude_id"`
+	}
+	if err := ctx.ReadJSON(&input); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	conflict := h.checkDialCodeConflict(tenantID, input.Code, input.Type, input.ExcludeID)
+	ctx.JSON(iris.Map{
+		"available": conflict == nil,
+		"conflict":  conflict,
+	})
+}

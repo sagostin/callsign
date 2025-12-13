@@ -17,8 +17,15 @@ type SIPProfile struct {
 
 	// Profile identification
 	ProfileName string `json:"profile_name" gorm:"uniqueIndex;not null"` // e.g., "internal", "external"
+	Alias       string `json:"alias"`                                    // Friendly display name, e.g., "Primary Internal", "Trunk Gateway"
 	Description string `json:"description"`
 	Enabled     bool   `json:"enabled" gorm:"default:true"`
+
+	// Usage type determines context and auth behavior
+	// - "internal" = registrations from extensions, uses tenant context, auth required
+	// - "trunks" = system gateways only, public context, no auth (inbound from providers)
+	// - "mixed" = both (default for backwards compatibility)
+	UsageType string `json:"usage_type" gorm:"default:'mixed'"` // internal, trunks, mixed
 
 	// Hostname filter (null = all hosts)
 	Hostname string `json:"hostname"`
