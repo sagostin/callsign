@@ -543,12 +543,36 @@ async function fetchExtension() {
     vm.value.email = ext.email || ''
     vm.value.pin = ext.voicemail_pin || '1234'
     vm.value.enabled = ext.voicemail_enabled !== false
+    
+    // Load call handling settings
+    callHandling.value.strategy = ext.ring_strategy || 'simultaneous'
+    callHandling.value.noAnswerAction = ext.no_answer_action || 'voicemail'
+    callHandling.value.forwardNumber = ext.no_answer_forward_to || ''
+    
+    // Parse device order if available
+    if (ext.ring_device_order) {
+      try {
+        callHandling.value.devices = JSON.parse(ext.ring_device_order)
+      } catch (e) {
+        callHandling.value.devices = getDefaultDevices()
+      }
+    } else {
+      callHandling.value.devices = getDefaultDevices()
+    }
   } catch (error) {
     toast?.error('Failed to load extension', error.message)
     router.push('/admin/extensions')
   } finally {
     isLoading.value = false
   }
+}
+
+function getDefaultDevices() {
+  return [
+    { id: 'softphone', name: 'Softphone', type: 'softphone', details: 'Web/Desktop App', enabled: true, ringTime: 20 },
+    { id: 'desk_phone', name: 'Desk Phone', type: 'desk', details: 'Assigned Device', enabled: true, ringTime: 20 },
+    { id: 'mobile', name: 'Mobile App', type: 'mobile', details: 'iOS/Android App', enabled: true, ringTime: 20 }
+  ]
 }
 
 function formatLastCall(dateStr) {
@@ -612,7 +636,21 @@ const saveVoicemail = async () => {
 }
 
 const saveForwarding = () => toast?.info('Forwarding rules would be saved here')
-const saveCallHandling = () => toast?.info('Call handling would be saved here')
+
+const saveCallHandling = async () => {
+  try {
+    const payload = {
+      ring_strategy: callHandling.value.strategy,
+      ring_device_order: JSON.stringify(callHandling.value.devices),
+      no_answer_action: callHandling.value.noAnswerAction,
+      no_answer_forward_to: callHandling.value.noAnswerAction === 'forward' ? callHandling.value.forwardNumber : ''
+    }
+    await extensionsAPI.update(extension.value.id, payload)
+    toast?.success('Call handling settings saved')
+  } catch (error) {
+    toast?.error(error.message || 'Failed to save call handling settings')
+  }
+}
 
 const resetWebPassword = () => toast?.info('Password reset email would be sent')
 const regenerateSipPassword = () => {

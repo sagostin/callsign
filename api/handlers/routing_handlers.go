@@ -472,7 +472,7 @@ func (h *Handler) CreateHolidayList(ctx iris.Context) {
 	var list models.HolidayList
 	if err := ctx.ReadJSON(&list); err != nil {
 		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		ctx.JSON(iris.Map{"error": err.Error()})
 		return
 	}
 
@@ -514,7 +514,7 @@ func (h *Handler) UpdateHolidayList(ctx iris.Context) {
 
 	if err := ctx.ReadJSON(&list); err != nil {
 		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		ctx.JSON(iris.Map{"error": err.Error()})
 		return
 	}
 

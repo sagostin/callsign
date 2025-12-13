@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -24,8 +24,8 @@ type HolidayList struct {
 	ExternalURL string     `json:"external_url"` // ICS/iCal URL for syncing
 	LastSynced  *time.Time `json:"last_synced"`
 
-	// Dates stored as JSON array
-	Dates pq.StringArray `json:"dates" gorm:"type:text[]"` // YYYY-MM-DD format
+	// Dates stored as JSON array of objects [{date: "YYYY-MM-DD", name: "Holiday Name"}, ...]
+	Dates datatypes.JSON `json:"dates" gorm:"type:jsonb;default:'[]'"`
 
 	// Whether to use this list
 	Enabled bool `json:"enabled" gorm:"default:true"`

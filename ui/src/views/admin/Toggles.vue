@@ -9,23 +9,6 @@
     </div>
   </div>
 
-  <!-- Stats Row -->
-  <div class="stats-row">
-    <div class="stat-card">
-      <div class="stat-icon mode-a"><PhoneCallIcon class="icon" /></div>
-      <div class="stat-info">
-        <span class="stat-value">{{ toggles.filter(t => t.status === 'A').length }}</span>
-        <span class="stat-label">Mode A Active</span>
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-icon mode-b"><PhoneForwardedIcon class="icon" /></div>
-      <div class="stat-info">
-        <span class="stat-value">{{ toggles.filter(t => t.status === 'B').length }}</span>
-        <span class="stat-label">Mode B Active</span>
-      </div>
-    </div>
-  </div>
 
   <!-- Toggles List -->
   <div class="toggles-grid">
@@ -38,8 +21,7 @@
         <div class="toggle-info">
           <h4>{{ toggle.name }}</h4>
           <div class="toggle-codes">
-            <span class="code-badge ext">Ext. {{ toggle.extension }}</span>
-            <span class="code-badge feature">*{{ toggle.featureCode }}</span>
+            <span class="code-badge ext">{{ toggle.extension }}</span>
           </div>
         </div>
         <div class="toggle-switch" @click="flipToggle(toggle)">
@@ -94,20 +76,12 @@
           <input v-model="form.name" class="input-field" placeholder="Day/Night Mode">
         </div>
 
-        <div class="form-row">
-          <div class="form-group flex-1">
-            <label>Extension <span class="required">*</span></label>
-            <input v-model="form.extension" class="input-field" placeholder="30">
-            <span class="help-text">Dial to toggle between modes</span>
-          </div>
-          <div class="form-group">
-            <label>Feature Code</label>
-            <div class="feature-code-input">
-              <span class="prefix">*</span>
-              <input v-model="form.featureCode" class="input-field" placeholder="30">
-            </div>
-          </div>
+        <div class="form-group">
+          <label>Dial Code <span class="required">*</span></label>
+          <input v-model="form.extension" class="input-field" placeholder="30 or *30">
+          <span class="help-text">Extension or feature code to dial to toggle (e.g., 30 or *30)</span>
         </div>
+
 
         <div class="form-group">
           <label>PIN (Optional)</label>

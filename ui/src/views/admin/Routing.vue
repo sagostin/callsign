@@ -473,7 +473,7 @@ import StatusBadge from '../../components/common/StatusBadge.vue'
 import { routingAPI, numbersAPI, dialPlansAPI } from '../../services/api'
 import { formatPhoneNumber } from '../../utils/formatters'
 
-const activeTab = ref('inbound')
+const activeTab = ref('numbers')
 
 // Call Blocks State
 const callBlocks = ref([])

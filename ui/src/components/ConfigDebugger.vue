@@ -131,7 +131,7 @@ async function runDebug() {
     if (props.mode === 'system') {
       url = '/system/xml/debug'
     } else {
-      url = '/tenant/routing/debug'
+      url = '/routing/debug'
       // Tenant endpoint only supports dialplan params, handled by backend
     }
 

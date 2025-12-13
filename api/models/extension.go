@@ -64,6 +64,12 @@ type Extension struct {
 	FollowMeEnabled     bool   `json:"follow_me_enabled" gorm:"default:false"`
 	FollowMeDestination string `json:"follow_me_destination"`
 
+	// Ring Strategy (for registered devices)
+	RingStrategy      string `json:"ring_strategy" gorm:"default:simultaneous"` // "simultaneous" or "sequential"
+	RingDeviceOrder   string `json:"ring_device_order"`                         // JSON array of device order with timeouts
+	NoAnswerAction    string `json:"no_answer_action" gorm:"default:voicemail"` // "voicemail", "forward", "hangup", "queue"
+	NoAnswerForwardTo string `json:"no_answer_forward_to"`                      // Number to forward to if no answer
+
 	// Recording
 	RecordInbound  bool `json:"record_inbound" gorm:"default:false"`
 	RecordOutbound bool `json:"record_outbound" gorm:"default:false"`

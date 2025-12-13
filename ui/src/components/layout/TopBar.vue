@@ -45,10 +45,8 @@
           <HelpCircleIcon class="action-icon" />
         </button>
         
-        <button class="action-btn has-badge" @click="showNotifications" title="Notifications">
-          <BellIcon class="action-icon" />
-          <span class="badge-dot" v-if="unreadNotifications > 0"></span>
-        </button>
+        <!-- Notification Center -->
+        <NotificationCenter />
 
       <button class="action-btn" v-if="auth.permissions.isSystemAdmin() || auth.permissions.isTenantAdmin()" @click="showQuickAdd" title="Quick Add">
           <PlusCircleIcon class="action-icon" />
@@ -142,10 +140,11 @@ import { useAuth } from '../../services/auth'
 import { 
   Search as SearchIcon, Globe as GlobeIcon, Building2 as BuildingIcon,
   ChevronDown as ChevronDownIcon, HelpCircle as HelpCircleIcon,
-  Bell as BellIcon, PlusCircle as PlusCircleIcon, Phone as PhoneIcon,
+  PlusCircle as PlusCircleIcon, Phone as PhoneIcon,
   LayoutDashboard as LayoutDashboardIcon, ServerCog as ServerCogIcon,
   User as UserIcon, Settings as SettingsIcon, LogOut as LogOutIcon
 } from 'lucide-vue-next'
+import NotificationCenter from '@/components/NotificationCenter.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -154,7 +153,6 @@ const auth = useAuth()
 const searchQuery = ref('')
 const searchExpanded = ref(false)
 const showUserDropdown = ref(false)
-const unreadNotifications = ref(3)
 
 // Initialize selectedContext based on current tenant or system
 const selectedContext = ref('system')
@@ -206,7 +204,6 @@ const navigateToTenantAdmin = () => {
 }
 
 const showHelp = () => alert('Help & Documentation')
-const showNotifications = () => alert('Notifications Panel')
 const showQuickAdd = () => alert('Quick Add Menu')
 const logout = async () => {
   showUserDropdown.value = false

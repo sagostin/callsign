@@ -234,16 +234,22 @@ async function fetchTimeConditions() {
   isLoading.value = true
   try {
     const response = await timeConditionsAPI.list()
-    timeConditions.value = (response.data?.data || response.data || []).map(tc => ({
-      id: tc.id,
-      name: tc.name,
-      extension: tc.extension || tc.destination_number || '',
-      enabled: tc.enabled !== false,
-      currentMatch: isCurrentlyMatching(tc),
-      rules: parseRules(tc),
-      matchDestination: tc.match_action || tc.match_destination || 'Continue',
-      noMatchDestination: tc.no_match_action || tc.no_match_destination || 'Continue'
-    }))
+    const rawData = response.data?.data || response.data || []
+    timeConditions.value = rawData.map(tc => {
+      // Convert backend model to UI format
+      const schedule = buildSchedule(tc)
+      return {
+        id: tc.id,
+        name: tc.name,
+        extension: tc.extension || '',
+        enabled: tc.enabled !== false,
+        timezone: tc.timezone || 'America/New_York',
+        currentMatch: isCurrentlyMatching(schedule, tc.timezone),
+        rules: schedule,
+        matchDestination: formatDestination(tc.match_dest_type, tc.match_dest_value),
+        noMatchDestination: formatDestination(tc.nomatch_dest_type, tc.nomatch_dest_value)
+      }
+    })
   } catch (error) {
     console.error('Failed to load time conditions', error)
     toast?.error(error.message, 'Failed to load time conditions')
@@ -252,33 +258,56 @@ async function fetchTimeConditions() {
   }
 }
 
-function isCurrentlyMatching(tc) {
-  // Simple check for demo - in production this would be server-evaluated
+function buildSchedule(tc) {
+  // Convert weekdays array (0=Sun, 1=Mon, etc.) to day names
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const days = (tc.weekdays || []).map(d => dayNames[d]).filter(Boolean)
+  
+  if (days.length === 0 || !tc.start_time || !tc.end_time) {
+    return []
+  }
+  
+  return [{
+    days,
+    startTime: tc.start_time,
+    endTime: tc.end_time
+  }]
+}
+
+function formatDestination(type, value) {
+  if (!type) return 'Continue'
+  const labels = {
+    extension: 'Ext',
+    ivr: 'IVR',
+    queue: 'Queue',
+    ring_group: 'Ring Group',
+    voicemail: 'Voicemail',
+    external: 'External'
+  }
+  return `${labels[type] || type}: ${value || ''}`
+}
+
+function isCurrentlyMatching(rules, timezone) {
+  if (!rules || rules.length === 0) return false
+  
   const now = new Date()
+  // Simple timezone handling - for proper timezone support use a library
   const currentDay = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][now.getDay()]
   const currentHour = now.getHours()
   const currentMin = now.getMinutes()
   const currentTime = currentHour * 60 + currentMin
 
-  if (!tc.schedules) return false
-  return tc.schedules.some(s => {
-    if (!s.days?.includes(currentDay)) return false
-    const startParts = (s.start_time || '00:00').split(':')
-    const endParts = (s.end_time || '23:59').split(':')
+  return rules.some(rule => {
+    if (!rule.days?.includes(currentDay)) return false
+    const startParts = (rule.startTime || '00:00').split(':')
+    const endParts = (rule.endTime || '23:59').split(':')
     const startMins = parseInt(startParts[0]) * 60 + parseInt(startParts[1] || 0)
     const endMins = parseInt(endParts[0]) * 60 + parseInt(endParts[1] || 0)
     return currentTime >= startMins && currentTime <= endMins
   })
 }
 
-function parseRules(tc) {
-  if (!tc.schedules) return []
-  return tc.schedules.map(s => ({
-    days: s.days || [],
-    startTime: s.start_time || '09:00',
-    endTime: s.end_time || '17:00'
-  }))
-}
+
 
 const activeCount = computed(() => timeConditions.value.filter(t => t.currentMatch && t.enabled).length)
 
