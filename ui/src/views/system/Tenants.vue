@@ -65,16 +65,14 @@ const loadTenants = async () => {
 }
 
 const impersonate = (tenant) => {
-  // Set the tenant ID in local storage or auth store to switch context
-  // Assuming the app uses 'callsign_tenant_id' or similar. 
-  // Let's rely on the standard pattern if we don't have the store handy yet.
-  localStorage.setItem('callsign_tenant_id', tenant.id)
+  // Set the tenant ID in localStorage (same key used by TopBar and auth service)
+  localStorage.setItem('tenantId', tenant.id)
   
-  // Also store name for UI display
-  localStorage.setItem('callsign_tenant_name', tenant.name)
+  // Also store tenant name for display purposes (optional, used in some UI components)
+  localStorage.setItem('tenantName', tenant.name)
   
-  // Reload to apply the new tenant context globally
-  window.location.href = '/'
+  // Navigate to the tenant admin panel
+  window.location.href = '/admin'
 }
 
 onMounted(loadTenants)

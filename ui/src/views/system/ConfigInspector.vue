@@ -47,19 +47,45 @@
           <div class="file-list" :class="{ narrow: selectedFile }">
             <div class="list-header">
               <span>Name</span>
-              <span>Size</span>
+              <span>Type</span>
             </div>
             
             <div v-if="loadingFiles" class="loading-state">
               <LoaderIcon class="spin" /> Loading...
             </div>
 
-            <div v-else-if="files.length === 0" class="empty-state">
+            <!-- Dynamic Generated Files Section (only at root) -->
+            <div v-if="!currentPath && !loadingFiles" class="dynamic-section">
+              <div class="section-label">
+                <ZapIcon class="section-icon" /> Dynamic/Generated (from XML CURL)
+              </div>
+              
+              <div 
+                v-for="gen in dynamicConfigs" 
+                :key="gen.id"
+                class="file-item dynamic"
+                :class="{ selected: selectedFile?.id === gen.id }"
+                @click="loadDynamicConfig(gen)"
+              >
+                <div class="file-name">
+                  <CodeIcon class="file-icon dynamic-icon" />
+                  <span>{{ gen.name }}</span>
+                </div>
+                <span class="file-badge">Generated</span>
+              </div>
+              
+              <div class="section-divider"></div>
+              <div class="section-label">
+                <HardDriveIcon class="section-icon" /> Static Files (on disk)
+              </div>
+            </div>
+
+            <div v-if="!loadingFiles && allFiles.length === 0 && currentPath" class="empty-state">
               Directory is empty
             </div>
 
             <div 
-              v-for="file in files" 
+              v-for="file in allFiles" 
               :key="file.path"
               class="file-item"
               :class="{ selected: selectedFile?.path === file.path, directory: file.is_dir }"
@@ -74,21 +100,32 @@
             </div>
           </div>
 
-          <!-- File Content Viewer -->
-          <div class="file-viewer" v-if="selectedFile && !selectedFile.is_dir">
-            <div class="viewer-header">
-              <h4>{{ selectedFile.name }}</h4>
+          <!-- File/Config Content Viewer -->
+          <div class="file-viewer" v-if="selectedFile">
+            <div class="viewer-header" :class="{ dynamic: selectedFile.isDynamic }">
+              <div class="viewer-title">
+                <ZapIcon v-if="selectedFile.isDynamic" class="title-icon dynamic" />
+                <FileTextIcon v-else class="title-icon" />
+                <h4>{{ selectedFile.name }}</h4>
+              </div>
               <div class="viewer-actions">
                 <button class="btn-icon" @click="copyFileContent" title="Copy">
                   <CopyIcon class="icon-sm" />
+                </button>
+                <button class="btn-icon" @click="refreshContent" title="Refresh" v-if="selectedFile.isDynamic">
+                  <RefreshCwIcon class="icon-sm" />
                 </button>
                 <button class="btn-icon" @click="closeFile" title="Close">
                   <XIcon class="icon-sm" />
                 </button>
               </div>
             </div>
+            <div v-if="selectedFile.isDynamic" class="viewer-meta">
+              <span class="meta-badge">Live Generated</span>
+              <span class="meta-info">{{ selectedFile.description }}</span>
+            </div>
             <div class="viewer-content" v-if="loadingContent">
-              <LoaderIcon class="spin" /> Loading file...
+              <LoaderIcon class="spin" /> Loading...
             </div>
             <div class="viewer-content" v-else>
               <pre><code>{{ fileContent }}</code></pre>
@@ -104,10 +141,12 @@
 import { ref, computed, inject } from 'vue'
 import { 
   Wrench as WrenchIcon, Folder as FolderIcon, FileText as FileTextIcon,
-  ChevronRight as ChevronRightIcon, Copy as CopyIcon, X as XIcon, Loader as LoaderIcon
+  ChevronRight as ChevronRightIcon, Copy as CopyIcon, X as XIcon, Loader as LoaderIcon,
+  Zap as ZapIcon, Code as CodeIcon, HardDrive as HardDriveIcon, RefreshCw as RefreshCwIcon
 } from 'lucide-vue-next'
 import ConfigDebugger from '@/components/ConfigDebugger.vue'
 import { systemAPI } from '@/services/api'
+import api from '@/services/api'
 
 const toast = inject('toast')
 const activeTab = ref('debug')
@@ -117,6 +156,80 @@ const loadingFiles = ref(false)
 const selectedFile = ref(null)
 const fileContent = ref('')
 const loadingContent = ref(false)
+
+// Dynamic/generated configuration endpoints
+const dynamicConfigs = [
+  // Dialplan Section
+  { 
+    id: 'dialplan-public', 
+    name: 'dialplan/public.xml', 
+    description: 'Inbound routing dialplan generated from database',
+    section: 'dialplan',
+    params: { context: 'public', destination_number: '1001' }
+  },
+  { 
+    id: 'dialplan-default', 
+    name: 'dialplan/default.xml', 
+    description: 'Internal/outbound dialplan generated from database',
+    section: 'dialplan',
+    params: { context: 'default', destination_number: '1001' }
+  },
+  
+  // Directory Section
+  { 
+    id: 'directory-users', 
+    name: 'directory/users.xml', 
+    description: 'User directory for SIP registration/auth',
+    section: 'directory',
+    params: { domain: 'example.com', action: 'sip_auth', user: '1001' }
+  },
+  { 
+    id: 'directory-gateways', 
+    name: 'directory/gateways.xml', 
+    description: 'SIP trunk/gateway registrations',
+    section: 'directory',
+    params: { domain: 'example.com', purpose: 'gateways' }
+  },
+  
+  // Configuration Section - Core modules
+  { 
+    id: 'config-acl', 
+    name: 'configuration/acl.conf.xml', 
+    description: 'Access control lists (network permissions)',
+    section: 'configuration',
+    params: { key_value: 'acl.conf' }
+  },
+  { 
+    id: 'config-ivr', 
+    name: 'configuration/ivr.conf.xml', 
+    description: 'IVR menus and auto-attendants',
+    section: 'configuration',
+    params: { key_value: 'ivr.conf' }
+  },
+  { 
+    id: 'config-conference', 
+    name: 'configuration/conference.conf.xml', 
+    description: 'Audio/video conference rooms',
+    section: 'configuration',
+    params: { key_value: 'conference.conf' }
+  },
+  { 
+    id: 'config-local-stream', 
+    name: 'configuration/local_stream.conf.xml', 
+    description: 'Music on hold and local audio streams',
+    section: 'configuration',
+    params: { key_value: 'local_stream.conf' }
+  },
+  { 
+    id: 'config-sofia', 
+    name: 'configuration/sofia.conf.xml', 
+    description: 'Sofia SIP stack (uses static file)',
+    section: 'configuration',
+    params: { key_value: 'sofia.conf' }
+  },
+]
+
+const allFiles = computed(() => files.value)
 
 const pathSegments = computed(() => {
   if (!currentPath.value) return []
@@ -150,15 +263,45 @@ const loadDirectory = async () => {
 
 const handleFileClick = async (file) => {
   if (file.is_dir) {
-    // Navigate into directory
     currentPath.value = file.path
     selectedFile.value = null
     fileContent.value = ''
     loadDirectory()
   } else {
-    // Select file and load content
-    selectedFile.value = file
+    selectedFile.value = { ...file, isDynamic: false }
     loadFileContent(file.path)
+  }
+}
+
+const loadDynamicConfig = async (config) => {
+  selectedFile.value = {
+    id: config.id,
+    name: config.name,
+    description: config.description,
+    isDynamic: true,
+    section: config.section,
+    params: config.params
+  }
+  await loadDynamicContent(config)
+}
+
+const loadDynamicContent = async (config) => {
+  loadingContent.value = true
+  try {
+    const params = {
+      section: config.section,
+      ...config.params
+    }
+    const response = await api.get('/system/xml/debug', { params })
+    const xml = response.data?.xml || '<no-result/>'
+    // Format the XML nicely
+    fileContent.value = formatXml(xml)
+  } catch (e) {
+    console.error('Failed to load dynamic config:', e)
+    toast?.error('Failed to generate configuration')
+    fileContent.value = '<!-- Failed to generate configuration -->'
+  } finally {
+    loadingContent.value = false
   }
 }
 
@@ -176,6 +319,12 @@ const loadFileContent = async (path) => {
   }
 }
 
+const refreshContent = () => {
+  if (selectedFile.value?.isDynamic) {
+    loadDynamicContent(selectedFile.value)
+  }
+}
+
 const closeFile = () => {
   selectedFile.value = null
   fileContent.value = ''
@@ -183,7 +332,22 @@ const closeFile = () => {
 
 const copyFileContent = () => {
   navigator.clipboard.writeText(fileContent.value)
-  toast?.success('File content copied')
+  toast?.success('Content copied to clipboard')
+}
+
+const formatXml = (xml) => {
+  // Simple XML formatting
+  let formatted = ''
+  let indent = 0
+  const lines = xml.replace(/>\s*</g, '>\n<').split('\n')
+  
+  for (const line of lines) {
+    if (line.match(/^<\/\w/)) indent--
+    formatted += '  '.repeat(Math.max(0, indent)) + line.trim() + '\n'
+    if (line.match(/^<\w[^>]*[^/]>$/) && !line.match(/^<\?/)) indent++
+  }
+  
+  return formatted.trim()
 }
 
 const formatSize = (bytes) => {
@@ -278,10 +442,10 @@ const formatSize = (bytes) => {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   overflow: hidden;
-  max-height: 500px;
+  max-height: 550px;
   overflow-y: auto;
 }
-.file-list.narrow { max-width: 300px; flex: none; }
+.file-list.narrow { max-width: 320px; flex: none; }
 
 .list-header {
   display: flex;
@@ -295,7 +459,32 @@ const formatSize = (bytes) => {
   border-bottom: 1px solid var(--border-color);
   position: sticky;
   top: 0;
+  z-index: 1;
 }
+
+/* Dynamic Section */
+.dynamic-section {
+  background: #fefce8;
+  border-bottom: 1px solid #fef08a;
+}
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #92400e;
+  background: #fef9c3;
+}
+.section-label:last-of-type {
+  background: var(--bg-app);
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-color);
+}
+.section-icon { width: 12px; height: 12px; }
+.section-divider { height: 8px; background: white; }
 
 .file-item {
   display: flex;
@@ -310,6 +499,9 @@ const formatSize = (bytes) => {
 .file-item:hover { background: var(--bg-app); }
 .file-item.selected { background: #e0e7ff; }
 .file-item.directory { font-weight: 500; }
+.file-item.dynamic { background: #fffbeb; }
+.file-item.dynamic:hover { background: #fef3c7; }
+.file-item.dynamic.selected { background: #fde68a; }
 
 .file-name {
   display: flex;
@@ -324,8 +516,18 @@ const formatSize = (bytes) => {
 }
 .file-icon { width: 16px; height: 16px; color: var(--text-muted); flex-shrink: 0; }
 .file-icon.folder { color: #f59e0b; }
+.file-icon.dynamic-icon { color: #d97706; }
 
 .file-size { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.file-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  background: #fef08a;
+  color: #92400e;
+  border-radius: 4px;
+}
 
 .loading-state, .empty-state {
   padding: 24px;
@@ -344,7 +546,7 @@ const formatSize = (bytes) => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: 500px;
+  max-height: 550px;
 }
 
 .viewer-header {
@@ -355,6 +557,15 @@ const formatSize = (bytes) => {
   background: #252526;
   border-bottom: 1px solid #333;
 }
+.viewer-header.dynamic { background: #78350f; }
+
+.viewer-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.title-icon { width: 14px; height: 14px; color: #aaa; }
+.title-icon.dynamic { color: #fbbf24; }
 .viewer-header h4 {
   margin: 0;
   font-size: 12px;
@@ -362,6 +573,24 @@ const formatSize = (bytes) => {
   color: #fff;
 }
 .viewer-actions { display: flex; gap: 4px; }
+
+.viewer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #fef9c3;
+  border-bottom: 1px solid #fef08a;
+  font-size: 11px;
+}
+.meta-badge {
+  padding: 2px 6px;
+  background: #fde68a;
+  color: #92400e;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.meta-info { color: #78350f; }
 
 .viewer-content {
   flex: 1;

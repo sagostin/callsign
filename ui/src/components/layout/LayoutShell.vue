@@ -53,7 +53,7 @@ const isMobileOpen = ref(false)
     z-index: 90;
     transform: translateX(-100%);
     transition: transform 0.3s ease;
-    width: 250px;
+    width: 280px;
     background: white;
     border-right: 1px solid var(--border-color);
   }
@@ -63,6 +63,50 @@ const isMobileOpen = ref(false)
   .mobile-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0,0,0,0.5); z-index: 80;
+  }
+  
+  .layout-topbar {
+    margin-left: 0 !important;
+    padding-left: 52px; /* Space for mobile toggle */
+  }
+  
+  .layout-content {
+    margin-left: 0 !important;
+    padding: 16px;
+    padding-top: 12px;
+  }
+}
+
+/* Tablet breakpoint */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .layout-sidebar {
+    width: 200px;
+  }
+  
+  .layout-topbar,
+  .layout-content {
+    margin-left: 200px;
+  }
+}
+
+/* Small mobile */
+@media (max-width: 480px) {
+  .mobile-toggle {
+    top: 8px;
+    left: 8px;
+    padding: 6px;
+  }
+  
+  .layout-sidebar {
+    width: 100%;
+  }
+  
+  .layout-topbar {
+    padding-left: 48px;
+  }
+  
+  .layout-content {
+    padding: 12px;
   }
 }
 </style>

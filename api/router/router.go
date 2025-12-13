@@ -100,6 +100,7 @@ func (r *Router) Init() {
 		// Protected routes (require authentication)
 		protected := api.Party("")
 		protected.Use(r.Auth.RequireAuth())
+		protected.Use(middleware.AuditMiddleware(r.DB))
 		{
 			// Auth routes (authenticated)
 			protectedAuth := protected.Party("/auth")

@@ -6,6 +6,9 @@
         <p class="text-muted text-sm">Manage master provisioning templates organized by manufacturer and model.</p>
       </div>
       <div class="header-actions">
+        <button class="btn-secondary" @click="showMfgModal = true">
+          <ServerIcon class="btn-icon" /> Manufacturers
+        </button>
         <button class="btn-secondary" @click="showVarsModal = true">
           <CodeIcon class="btn-icon" /> Variables
         </button>
@@ -209,6 +212,70 @@
         </div>
       </div>
     </div>
+
+    <!-- Manufacturers Modal -->
+
+    <div v-if="showMfgModal" class="modal-overlay" @click.self="showMfgModal = false">
+      <div class="modal-card mfg-modal">
+        <div class="modal-header">
+          <h3>Manage Manufacturers</h3>
+          <button class="close-btn" @click="showMfgModal = false">×</button>
+        </div>
+        <div class="modal-body">
+          <!-- Add New -->
+          <div class="mfg-add-row">
+            <input v-model="newMfg.code" class="input-field" placeholder="Code (e.g. yealink)">
+            <input v-model="newMfg.name" class="input-field" placeholder="Display Name">
+            <input v-model="newMfg.color" class="input-field color-input" type="color" title="Brand Color">
+            <button class="btn-primary btn-sm" @click="addManufacturer" :disabled="!newMfg.code || !newMfg.name">
+              <PlusIcon class="icon-xs" /> Add
+            </button>
+          </div>
+          
+          <!-- Manufacturer List -->
+          <div class="mfg-list">
+            <div v-for="mfg in allManufacturers" :key="mfg.id || mfg.code" class="mfg-row" :class="{ editing: editingMfg?.id === mfg.id }">
+              <!-- Edit Mode -->
+              <template v-if="editingMfg?.id === mfg.id">
+                <input v-model="editingMfg.color" class="input-field color-input" type="color" title="Brand Color">
+                <input v-model="editingMfg.name" class="input-field mfg-name-input" placeholder="Display Name">
+                <div class="mfg-actions">
+                  <button class="btn-sm btn-primary" @click="saveMfg" title="Save">
+                    <CheckIcon class="icon-xs" /> Save
+                  </button>
+                  <button class="btn-sm" @click="cancelEditMfg" title="Cancel">
+                    <XIcon class="icon-xs" />
+                  </button>
+                </div>
+              </template>
+              
+              <!-- View Mode -->
+              <template v-else>
+                <div class="mfg-color" :style="{ background: mfg.color || '#6366f1' }"></div>
+                <div class="mfg-info">
+                  <strong>{{ mfg.name }}</strong>
+                  <span class="mfg-code">{{ mfg.code || mfg.id }}</span>
+                </div>
+                <div class="mfg-actions">
+                  <button class="btn-icon-sm" @click="editMfg(mfg)" title="Edit">
+                    <EditIcon class="icon-xs" />
+                  </button>
+                  <button class="btn-icon-sm danger" @click="deleteMfg(mfg)" title="Delete" :disabled="mfg.is_default">
+                    <TrashIcon class="icon-xs" />
+                  </button>
+                </div>
+              </template>
+            </div>
+            <div v-if="allManufacturers.length === 0" class="empty-mfg">
+              No manufacturers defined
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="showMfgModal = false">Close</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -218,7 +285,7 @@ import {
   Plus as PlusIcon, Code as CodeIcon, Search as SearchIcon,
   Edit as EditIcon, Copy as CopyIcon, Trash2 as TrashIcon,
   ChevronDown as ChevronDownIcon, Users as TenantsIcon, Calendar as CalendarIcon,
-  Monitor, Smartphone, Server as ServerIcon
+  Monitor, Smartphone, Server as ServerIcon, Check as CheckIcon, X as XIcon
 } from 'lucide-vue-next'
 import { systemAPI } from '@/services/api'
 
@@ -254,7 +321,22 @@ const defaultManufacturers = [
   { id: 'generic', code: 'generic', name: 'Generic SIP', logo_url: null },
 ]
 
+// Manufacturer management
+const showMfgModal = ref(false)
+const newMfg = ref({ code: '', name: '', color: '#6366f1' })
+const editingMfg = ref(null) // Currently editing manufacturer
+const apiManufacturers = ref([])
+
+// Computed: all manufacturers from API + defaults
+const allManufacturers = computed(() => {
+  if (apiManufacturers.value.length > 0) {
+    return apiManufacturers.value
+  }
+  return manufacturers.value
+})
+
 const allTemplates = ref([])
+
 
 // Load templates from API
 const loadTemplates = async () => {
@@ -265,10 +347,12 @@ const loadTemplates = async () => {
       const mfgRes = await systemAPI.listDeviceManufacturers()
       const mfgList = mfgRes.data?.data || mfgRes.data || []
       if (mfgList.length > 0) {
+        apiManufacturers.value = mfgList // Store raw API response for modal
         manufacturers.value = mfgList.map(m => ({
           id: m.code,
           name: m.name,
-          logo: m.logo_url
+          logo: m.logo_url,
+          color: m.color
         }))
       } else {
         manufacturers.value = defaultManufacturers
@@ -305,6 +389,73 @@ const loadTemplates = async () => {
 }
 
 onMounted(loadTemplates)
+
+// Manufacturer CRUD
+const addManufacturer = async () => {
+  if (!newMfg.value.code || !newMfg.value.name) return
+  try {
+    await systemAPI.createDeviceManufacturer({
+      code: newMfg.value.code.toLowerCase().replace(/\s+/g, '_'),
+      name: newMfg.value.name,
+      color: newMfg.value.color,
+      enabled: true
+    })
+    toast?.success('Manufacturer added')
+    newMfg.value = { code: '', name: '', color: '#6366f1' }
+    await loadTemplates() // Reload to refresh list
+  } catch (e) {
+    console.error('Failed to add manufacturer:', e)
+    toast?.error(e.response?.data?.error || 'Failed to add manufacturer')
+  }
+}
+
+const editMfg = (mfg) => {
+  // Clone the manufacturer for editing
+  editingMfg.value = { 
+    id: mfg.id,
+    code: mfg.code || mfg.id, 
+    name: mfg.name, 
+    color: mfg.color || '#6366f1',
+    originalId: mfg.id // Keep original ID for API call
+  }
+}
+
+const cancelEditMfg = () => {
+  editingMfg.value = null
+}
+
+const saveMfg = async () => {
+  if (!editingMfg.value) return
+  try {
+    const id = editingMfg.value.originalId || editingMfg.value.id
+    await systemAPI.updateDeviceManufacturer(id, {
+      code: editingMfg.value.code,
+      name: editingMfg.value.name,
+      color: editingMfg.value.color,
+      enabled: true
+    })
+    toast?.success('Manufacturer updated')
+    editingMfg.value = null
+    await loadTemplates() // Reload to refresh list
+  } catch (e) {
+    console.error('Failed to update manufacturer:', e)
+    toast?.error(e.response?.data?.error || 'Failed to update manufacturer')
+  }
+}
+
+const deleteMfg = async (mfg) => {
+  if (!confirm(`Delete manufacturer "${mfg.name}"? This cannot be undone.`)) return
+  try {
+    const id = mfg.id || mfg.code
+    await systemAPI.deleteDeviceManufacturer(id)
+    toast?.success('Manufacturer deleted')
+    await loadTemplates()
+  } catch (e) {
+    console.error('Failed to delete manufacturer:', e)
+    toast?.error(e.response?.data?.error || 'Failed to delete manufacturer')
+  }
+}
+
 
 const variableCategories = ref([
   { name: 'Device', vars: [
@@ -527,4 +678,78 @@ const deleteTemplate = async (template) => {
 /* Transitions */
 .slide-enter-active, .slide-leave-active { transition: all 0.3s ease; }
 .slide-enter-from, .slide-leave-to { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; }
+
+/* Manufacturer Modal */
+.mfg-modal { width: 500px; }
+.mfg-add-row { 
+  display: flex; 
+  gap: 8px; 
+  padding: 12px;
+  background: var(--bg-app);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.mfg-add-row .input-field { flex: 1; }
+.mfg-add-row .color-input { width: 40px; padding: 4px; }
+.mfg-list { display: flex; flex-direction: column; gap: 8px; }
+.mfg-row { 
+  display: flex; 
+  align-items: center; 
+  gap: 12px; 
+  padding: 10px 12px;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+.mfg-color { width: 8px; height: 32px; border-radius: 4px; flex-shrink: 0; }
+.mfg-info { flex: 1; }
+.mfg-info strong { font-size: 13px; display: block; }
+.mfg-code { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+.mfg-actions { display: flex; gap: 4px; }
+.btn-icon-sm { 
+  width: 28px; 
+  height: 28px; 
+  border: 1px solid var(--border-color); 
+  background: white; 
+  border-radius: 6px; 
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-icon-sm:hover { background: var(--bg-app); }
+.btn-icon-sm.danger:hover { background: #fee2e2; color: #dc2626; border-color: #fecaca; }
+.btn-icon-sm:disabled { opacity: 0.4; cursor: not-allowed; }
+.icon-xs { width: 14px; height: 14px; }
+.empty-mfg { 
+  text-align: center; 
+  padding: 24px; 
+  color: var(--text-muted); 
+  font-size: 13px;
+  background: var(--bg-app);
+  border-radius: 8px;
+}
+
+/* Edit Mode */
+.mfg-row.editing {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.mfg-name-input { flex: 1; }
+.btn-sm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  background: white;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-sm.btn-primary {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
 </style>

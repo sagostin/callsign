@@ -1,5 +1,12 @@
 <template>
-  <header class="topbar" :class="mode">
+  <header class="topbar" :class="[mode, { impersonating: isImpersonating }]">
+    <!-- Impersonation Banner -->
+    <div v-if="isImpersonating" class="impersonate-banner">
+      <EyeIcon class="banner-icon" />
+      <span>Viewing as <strong>{{ impersonatedTenantName }}</strong></span>
+      <button class="exit-btn" @click="exitImpersonation">Exit</button>
+    </div>
+    
     <!-- Left Section: Breadcrumb / Context -->
     <div class="topbar-left">
       <!-- Search Bar -->
@@ -142,7 +149,8 @@ import {
   ChevronDown as ChevronDownIcon, HelpCircle as HelpCircleIcon,
   PlusCircle as PlusCircleIcon, Phone as PhoneIcon,
   LayoutDashboard as LayoutDashboardIcon, ServerCog as ServerCogIcon,
-  User as UserIcon, Settings as SettingsIcon, LogOut as LogOutIcon
+  User as UserIcon, Settings as SettingsIcon, LogOut as LogOutIcon,
+  Eye as EyeIcon
 } from 'lucide-vue-next'
 import NotificationCenter from '@/components/NotificationCenter.vue'
 
@@ -194,6 +202,21 @@ const userRole = computed(() => {
   return 'User'
 })
 
+// Impersonation state (system admin viewing as specific tenant)
+const isImpersonating = computed(() => {
+  return auth.permissions.isSystemAdmin() && !!auth.state.currentTenantId
+})
+
+const impersonatedTenantName = computed(() => {
+  if (!isImpersonating.value) return ''
+  const tenant = auth.state.tenants.find(t => t.id == auth.state.currentTenantId)
+  return tenant?.name || localStorage.getItem('tenantName') || 'Tenant'
+})
+
+const exitImpersonation = () => {
+  auth.switchTenant('system')
+}
+
 const handleContextChange = () => {
   auth.switchTenant(selectedContext.value)
 }
@@ -227,6 +250,37 @@ const logout = async () => {
 
 .topbar.system { background: linear-gradient(90deg, #fffbeb 0%, white 50%); }
 .topbar.admin { background: linear-gradient(90deg, #f0fdf4 0%, white 50%); }
+.topbar.impersonating { padding-top: 36px; }
+
+/* Impersonation Banner */
+.impersonate-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(90deg, #7c3aed, #6366f1);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+}
+.banner-icon { width: 14px; height: 14px; }
+.exit-btn {
+  padding: 2px 8px;
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 4px;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 12px;
+}
+.exit-btn:hover { background: rgba(255,255,255,0.3); }
 
 /* Left Section */
 .topbar-left { display: flex; align-items: center; gap: 16px; flex: 1; }
@@ -472,5 +526,50 @@ const logout = async () => {
   position: fixed;
   inset: 0;
   z-index: 99;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .topbar {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  
+  .search-bar {
+    width: 140px;
+    padding: 6px 10px;
+  }
+  .search-bar:focus-within,
+  .search-bar.expanded {
+    width: 180px;
+  }
+  .search-shortcut { display: none; }
+  
+  .tenant-selector {
+    min-width: 150px;
+    padding: 4px 8px;
+  }
+  .tenant-select { font-size: 12px; }
+  
+  .quick-actions .action-btn { display: none; }
+  .quick-actions .action-btn:first-child { display: flex; }
+  
+  .portal-links { gap: 4px; }
+  .portal-btn { padding: 4px 8px; font-size: 10px; }
+  .portal-btn span { display: none; }
+  
+  .divider { margin: 0 4px; }
+  
+  .user-menu { padding: 4px 6px; gap: 6px; }
+  .user-info { display: none; }
+  .menu-chevron { display: none; }
+  
+  .user-dropdown { right: 10px; }
+}
+
+@media (max-width: 480px) {
+  .topbar-center { display: none; }
+  .search-bar { display: none; }
+  .portal-links { display: none; }
 }
 </style>
