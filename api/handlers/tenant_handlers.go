@@ -174,11 +174,72 @@ func (h *Handler) UpdateExtension(ctx iris.Context) {
 		return
 	}
 
-	if err := ctx.ReadJSON(&ext); err != nil {
+	// Use input struct to handle fields that may not be in the model's JSON tags
+	var input struct {
+		Extension               string `json:"extension"`
+		Password                string `json:"password"`
+		Enabled                 bool   `json:"enabled"`
+		ProfileID               *uint  `json:"profile_id"`
+		EffectiveCallerIDName   string `json:"effective_caller_id_name"`
+		EffectiveCallerIDNumber string `json:"effective_caller_id_number"`
+		OutboundCallerIDName    string `json:"outbound_caller_id_name"`
+		OutboundCallerIDNumber  string `json:"outbound_caller_id_number"`
+		DirectoryFirstName      string `json:"directory_first_name"`
+		DirectoryLastName       string `json:"directory_last_name"`
+		VoicemailEnabled        bool   `json:"voicemail_enabled"`
+		VoicemailMailTo         string `json:"voicemail_mail_to"`
+		RingStrategy            string `json:"ring_strategy"`
+		RingDeviceOrder         string `json:"ring_device_order"`
+		NoAnswerAction          string `json:"no_answer_action"`
+		NoAnswerForwardTo       string `json:"no_answer_forward_to"`
+	}
+	if err := ctx.ReadJSON(&input); err != nil {
 		ctx.StatusCode(http.StatusBadRequest)
 		ctx.JSON(iris.Map{"error": "Invalid request payload"})
 		return
 	}
+
+	// Update fields from input
+	if input.Extension != "" {
+		ext.Extension = input.Extension
+	}
+	if input.Password != "" {
+		ext.Password = input.Password
+	}
+	ext.Enabled = input.Enabled
+	ext.ProfileID = input.ProfileID
+	if input.EffectiveCallerIDName != "" {
+		ext.EffectiveCallerIDName = input.EffectiveCallerIDName
+	}
+	if input.EffectiveCallerIDNumber != "" {
+		ext.EffectiveCallerIDNumber = input.EffectiveCallerIDNumber
+	}
+	if input.OutboundCallerIDName != "" {
+		ext.OutboundCallerIDName = input.OutboundCallerIDName
+	}
+	if input.OutboundCallerIDNumber != "" {
+		ext.OutboundCallerIDNumber = input.OutboundCallerIDNumber
+	}
+	if input.DirectoryFirstName != "" {
+		ext.DirectoryFirstName = input.DirectoryFirstName
+	}
+	if input.DirectoryLastName != "" {
+		ext.DirectoryLastName = input.DirectoryLastName
+	}
+	ext.VoicemailEnabled = input.VoicemailEnabled
+	if input.VoicemailMailTo != "" {
+		ext.VoicemailMailTo = input.VoicemailMailTo
+	}
+	if input.RingStrategy != "" {
+		ext.RingStrategy = input.RingStrategy
+	}
+	if input.RingDeviceOrder != "" {
+		ext.RingDeviceOrder = input.RingDeviceOrder
+	}
+	if input.NoAnswerAction != "" {
+		ext.NoAnswerAction = input.NoAnswerAction
+	}
+	ext.NoAnswerForwardTo = input.NoAnswerForwardTo
 
 	if err := h.DB.Save(&ext).Error; err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)

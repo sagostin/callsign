@@ -32,11 +32,28 @@ func (h *Handler) ListTenants(ctx iris.Context) {
 }
 
 func (h *Handler) CreateTenant(ctx iris.Context) {
-	var tenant models.Tenant
-	if err := ctx.ReadJSON(&tenant); err != nil {
+	var input struct {
+		Name        string `json:"name"`
+		Domain      string `json:"domain"`
+		Description string `json:"description"`
+		Enabled     bool   `json:"enabled"`
+		ProfileID   *uint  `json:"profile_id"`
+		AdminEmail  string `json:"admin_email"`
+		Settings    string `json:"settings"`
+	}
+	if err := ctx.ReadJSON(&input); err != nil {
 		ctx.StatusCode(http.StatusBadRequest)
 		ctx.JSON(iris.Map{"error": "Invalid request payload"})
 		return
+	}
+
+	tenant := models.Tenant{
+		Name:        input.Name,
+		Domain:      input.Domain,
+		Description: input.Description,
+		Enabled:     input.Enabled,
+		ProfileID:   input.ProfileID,
+		Settings:    input.Settings,
 	}
 
 	if err := h.DB.Create(&tenant).Error; err != nil {
@@ -46,7 +63,7 @@ func (h *Handler) CreateTenant(ctx iris.Context) {
 	}
 
 	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(tenant)
+	ctx.JSON(iris.Map{"data": tenant})
 }
 
 func (h *Handler) GetTenant(ctx iris.Context) {

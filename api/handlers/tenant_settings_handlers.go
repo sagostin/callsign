@@ -68,12 +68,15 @@ func (h *Handler) GetTenantSettings(ctx iris.Context) {
 
 	ctx.JSON(iris.Map{
 		"data": iris.Map{
-			"id":          tenant.ID,
-			"name":        tenant.Name,
-			"domain":      tenant.Domain,
-			"settings":    settings,
-			"ssl_enabled": tenant.SSLEnabled,
-			"ssl_domain":  tenant.SSLDomain,
+			"id":                   tenant.ID,
+			"uuid":                 tenant.UUID.String(),
+			"name":                 tenant.Name,
+			"domain":               tenant.Domain,
+			"settings":             settings,
+			"ssl_enabled":          tenant.SSLEnabled,
+			"ssl_domain":           tenant.SSLDomain,
+			"provisioning_secret":  tenant.ProvisioningSecret,
+			"provisioning_enabled": tenant.ProvisioningEnabled,
 		},
 	})
 }
