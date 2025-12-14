@@ -98,15 +98,39 @@ func (h *Handler) UpdateTenantSettings(ctx iris.Context) {
 	}
 
 	// Parse incoming settings
-	var settings TenantSettings
-	if err := ctx.ReadJSON(&settings); err != nil {
+	// We use a struct that includes both the settings JSONB fields and the top-level tenant fields
+	var req struct {
+		TenantSettings         // Embed settings
+		Name           *string `json:"name"`
+		Domain         *string `json:"domain"`
+		SSLDomain      *string `json:"ssl_domain"`
+		SSLEnabled     *bool   `json:"ssl_enabled"`
+	}
+
+	if err := ctx.ReadJSON(&req); err != nil {
 		ctx.StatusCode(http.StatusBadRequest)
 		ctx.JSON(iris.Map{"error": "Invalid request body"})
 		return
 	}
 
-	// Serialize to JSON
-	settingsJSON, _ := json.Marshal(settings)
+	// Update top-level tenant fields if provided
+	if req.Name != nil {
+		tenant.Name = *req.Name
+	}
+	if req.Domain != nil {
+		tenant.Domain = *req.Domain
+	}
+	if req.SSLDomain != nil {
+		tenant.SSLDomain = *req.SSLDomain
+	}
+	if req.SSLEnabled != nil {
+		tenant.SSLEnabled = *req.SSLEnabled
+		// Also update the setting inside JSONB for consistency if needed, though usually SSLEnabled is on the model
+		req.TenantSettings.ForceHTTPS = *req.SSLEnabled // Optional: link force https? No, keep separate.
+	}
+
+	// Update the JSONB settings
+	settingsJSON, _ := json.Marshal(req.TenantSettings)
 	tenant.Settings = string(settingsJSON)
 
 	if err := h.DB.Save(&tenant).Error; err != nil {
@@ -115,7 +139,7 @@ func (h *Handler) UpdateTenantSettings(ctx iris.Context) {
 		return
 	}
 
-	ctx.JSON(iris.Map{"message": "Settings updated", "data": settings})
+	ctx.JSON(iris.Map{"message": "Settings updated", "data": req})
 }
 
 // GetTenantBranding returns branding settings for the current tenant

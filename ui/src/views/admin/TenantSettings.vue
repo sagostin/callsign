@@ -68,11 +68,15 @@
           <h3>General Configuration</h3>
         </div>
         
+            <input type="text" class="input-field" v-model="settings.name" placeholder="Tenant Name">
+          </div>
+        </div>
+
         <div class="setting-card">
           <div class="setting-row">
             <div class="setting-info">
               <h4>SIP Domain</h4>
-              <p>Used for device registration and internal routing.</p>
+              <p>Main SIP domain for device registration.</p>
             </div>
             <input type="text" class="input-field" v-model="settings.sipDomain" placeholder="sip.tenant.com">
           </div>
@@ -399,6 +403,16 @@
           </div>
         </div>
 
+        <div v-if="security.sslEnabled" class="setting-card">
+          <div class="setting-row">
+            <div class="setting-info">
+              <h4>SSL Domain</h4>
+              <p>Custom domain for SSL certificate.</p>
+            </div>
+            <input type="text" class="input-field" v-model="security.sslDomain" placeholder="secure.tenant.com">
+          </div>
+        </div>
+
         <div class="setting-card toggle-card">
           <div class="setting-row">
             <div class="setting-info">
@@ -533,7 +547,9 @@ const isLoading = ref(false)
 const activeSection = ref('general')
 
 const settings = ref({
+  name: '',
   sipDomain: '',
+  domain: '',
   portalDomain: '',
   timezone: 'America/Los_Angeles',
   operatorExt: '0',
@@ -568,6 +584,7 @@ const branding = ref({
 
 const security = ref({
   sslEnabled: false,
+  sslDomain: '',
   forceHttps: true
 })
 
@@ -595,7 +612,9 @@ async function loadSettings() {
     if (settingsRes.status === 'fulfilled' && settingsRes.value.data?.data) {
       const s = settingsRes.value.data.data.settings || {}
       settings.value = {
-        sipDomain: s.sip_domain || '',
+        name: settingsRes.value.data.data.name || '',
+        sipDomain: s.sip_domain || settingsRes.value.data.data.domain || '',
+        domain: settingsRes.value.data.data.domain || '', // Store main domain
         portalDomain: s.portal_domain || '',
         timezone: s.timezone || 'America/Los_Angeles',
         operatorExt: s.operator_ext || '0',
@@ -603,6 +622,7 @@ async function loadSettings() {
         panicEnabled: s.panic_enabled || false
       }
       security.value.sslEnabled = settingsRes.value.data.data.ssl_enabled || false
+      security.value.sslDomain = settingsRes.value.data.data.ssl_domain || ''
     }
 
     if (brandingRes.status === 'fulfilled' && brandingRes.value.data?.data) {
@@ -652,7 +672,11 @@ const saveSettings = async () => {
     // Save all settings sections
     await Promise.all([
       tenantSettingsAPI.update({
-        sip_domain: settings.value.sipDomain,
+        name: settings.value.name,
+        domain: settings.value.sipDomain, // Use sipDomain input as main domain
+        ssl_domain: security.value.sslDomain,
+        ssl_enabled: security.value.sslEnabled,
+        sip_domain: settings.value.sipDomain, // Keep jsonb sync
         portal_domain: settings.value.portalDomain,
         timezone: settings.value.timezone,
         operator_ext: settings.value.operatorExt,
