@@ -86,13 +86,47 @@ func NewFSHandler(db *gorm.DB, cfg *config.Config) *FSHandler {
 
 // HandleXMLCurl is the main entry point for mod_xml_curl requests
 func (h *FSHandler) HandleXMLCurl(ctx iris.Context) {
-	var req XMLCurlRequest
+	// Parse multipart form data from FreeSWITCH
+	// We manually extract only the fields we need to avoid schema warnings
+	// from the 100+ extra fields FreeSWITCH sends
+	req := XMLCurlRequest{
+		// Common fields
+		Section:  ctx.FormValue("section"),
+		TagName:  ctx.FormValue("tag_name"),
+		KeyName:  ctx.FormValue("key_name"),
+		KeyValue: ctx.FormValue("key_value"),
+		Hostname: ctx.FormValue("hostname"),
 
-	// Parse form data (mod_xml_curl sends POST with form data)
-	if err := ctx.ReadForm(&req); err != nil {
-		log.Warnf("Failed to parse XML CURL request: %v", err)
-		h.sendNotFound(ctx)
-		return
+		// Directory fields
+		User:       ctx.FormValue("user"),
+		Domain:     ctx.FormValue("domain"),
+		Action:     ctx.FormValue("action"),
+		Purpose:    ctx.FormValue("purpose"),
+		SIPProfile: ctx.FormValue("sip_profile"),
+
+		// SIP Auth fields
+		SIPAuthUsername: ctx.FormValue("sip_auth_username"),
+		SIPAuthRealm:    ctx.FormValue("sip_auth_realm"),
+		SIPContactUser:  ctx.FormValue("sip_contact_user"),
+		SIPContactHost:  ctx.FormValue("sip_contact_host"),
+		SIPUserAgent:    ctx.FormValue("sip_user_agent"),
+		IP:              ctx.FormValue("ip"),
+
+		// Dialplan fields
+		Context:           ctx.FormValue("context"),
+		DestinationNumber: ctx.FormValue("destination_number"),
+		CallerIDName:      ctx.FormValue("caller_id_name"),
+		CallerIDNumber:    ctx.FormValue("caller_id_number"),
+		ChannelUUID:       ctx.FormValue("uuid"),
+		ChannelName:       ctx.FormValue("chan_name"),
+		NetworkAddr:       ctx.FormValue("network_addr"),
+		ANI:               ctx.FormValue("ani"),
+		RDNIS:             ctx.FormValue("rdnis"),
+		Source:            ctx.FormValue("source"),
+
+		// FreeSWITCH info
+		FreeSwitchHostname: ctx.FormValue("FreeSWITCH-Hostname"),
+		FreeSwitchIPv4:     ctx.FormValue("FreeSWITCH-IPv4"),
 	}
 
 	// Log the request with all relevant fields

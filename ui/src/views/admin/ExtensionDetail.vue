@@ -523,25 +523,25 @@ async function fetchExtension() {
     extension.value = {
       id: ext.id,
       ext: ext.extension,
-      firstName: ext.display_name?.split(' ')[0] || '',
-      lastName: ext.display_name?.split(' ').slice(1).join(' ') || '',
-      email: ext.email || '',
+      firstName: ext.directory_first_name || ext.effective_caller_id_name?.split(' ')[0] || '',
+      lastName: ext.directory_last_name || ext.effective_caller_id_name?.split(' ').slice(1).join(' ') || '',
+      email: ext.voicemail_mail_to || '',
       webPassword: '',
-      vmPin: ext.voicemail_pin || '',
-      sipPassword: ext.password || '',
+      vmPin: '',
+      sipPassword: '', // Never sent from backend (security)
       profileId: ext.profile_id,
       permissions: {
         outbound: ext.outbound_caller_id_name !== '',
         international: ext.toll_allow?.includes('international') || false,
-        recording: ext.call_recording_enabled || false,
+        recording: ext.record_inbound || ext.record_outbound || false,
         portal: true
       },
       status: ext.registered ? 'Online' : 'Offline',
       device: ext.user_agent || null,
       lastCall: formatLastCall(ext.last_call_at)
     }
-    vm.value.email = ext.email || ''
-    vm.value.pin = ext.voicemail_pin || '1234'
+    vm.value.email = ext.voicemail_mail_to || ''
+    vm.value.pin = ''
     vm.value.enabled = ext.voicemail_enabled !== false
     
     // Load call handling settings
@@ -600,12 +600,17 @@ async function saveExtension() {
   try {
     const payload = {
       extension: extension.value.ext,
-      display_name: `${extension.value.firstName} ${extension.value.lastName}`.trim(),
-      email: extension.value.email,
-      password: extension.value.sipPassword,
-      voicemail_pin: extension.value.vmPin,
-      profile_id: extension.value.profileId,
+      effective_caller_id_name: `${extension.value.firstName} ${extension.value.lastName}`.trim(),
+      directory_first_name: extension.value.firstName,
+      directory_last_name: extension.value.lastName,
+      voicemail_mail_to: extension.value.email,
+      profile_id: extension.value.profileId || null,
       enabled: true
+    }
+    
+    // Only include password if it's set (for new extensions or regeneration)
+    if (extension.value.sipPassword) {
+      payload.password = extension.value.sipPassword
     }
     
     if (isNew.value) {
