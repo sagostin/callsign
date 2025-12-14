@@ -68,6 +68,12 @@
           <h3>General Configuration</h3>
         </div>
         
+        <div class="setting-card">
+          <div class="setting-row">
+            <div class="setting-info">
+              <h4>Tenant Name</h4>
+              <p>Display name of the tenant.</p>
+            </div>
             <input type="text" class="input-field" v-model="settings.name" placeholder="Tenant Name">
           </div>
         </div>
