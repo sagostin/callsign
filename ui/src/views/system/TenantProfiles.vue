@@ -173,7 +173,7 @@ const transformForAPI = (p) => ({
 async function loadProfiles() {
   loading.value = true
   try {
-    const response = await systemAPI.getProfiles()
+    const response = await systemAPI.listProfiles()
     profiles.value = (response.data.data || []).map(transformProfile)
   } catch (e) {
     console.error('Failed to load profiles:', e)

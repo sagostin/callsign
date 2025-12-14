@@ -528,9 +528,22 @@ onMounted(async () => {
 const save = async () => {
   saving.value = true
   try {
+    // Build clean payload, removing null values that backend might reject
     const payload = {
-        ...form.value,
-        settings: JSON.stringify(form.value.settings)
+      name: form.value.name,
+      domain: form.value.domain,
+      enabled: form.value.enabled,
+      settings: JSON.stringify(form.value.settings)
+    }
+    
+    // Only include profile_id if set
+    if (form.value.profile_id) {
+      payload.profile_id = form.value.profile_id
+    }
+    
+    // Only include admin_email if set
+    if (form.value.admin_email) {
+      payload.admin_email = form.value.admin_email
     }
 
     if (isNew.value) {
