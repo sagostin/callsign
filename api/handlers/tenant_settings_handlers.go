@@ -101,7 +101,7 @@ func (h *Handler) UpdateTenantSettings(ctx iris.Context) {
 	// We use a struct that includes both the settings JSONB fields and the top-level tenant fields
 	var req struct {
 		TenantSettings         // Embed settings
-		Name           *string `json:"name"`
+		TenantName     *string `json:"name"`
 		Domain         *string `json:"domain"`
 		SSLDomain      *string `json:"ssl_domain"`
 		SSLEnabled     *bool   `json:"ssl_enabled"`
@@ -113,9 +113,12 @@ func (h *Handler) UpdateTenantSettings(ctx iris.Context) {
 		return
 	}
 
+	ctx.Application().Logger().Infof("UpdateTenantSettings: Payload received: %+v", req)
+
 	// Update top-level tenant fields if provided
-	if req.Name != nil {
-		tenant.Name = *req.Name
+	if req.TenantName != nil {
+		ctx.Application().Logger().Infof("UpdateTenantSettings: Updating Name to %s", *req.TenantName)
+		tenant.Name = *req.TenantName
 	}
 	if req.Domain != nil {
 		tenant.Domain = *req.Domain
