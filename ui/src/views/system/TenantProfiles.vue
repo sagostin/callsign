@@ -169,6 +169,20 @@ const transformForAPI = (p) => ({
   fax_enabled: p.features?.fax || false
 })
 
+// Load profiles from API
+async function loadProfiles() {
+  loading.value = true
+  try {
+    const response = await systemAPI.getProfiles()
+    profiles.value = (response.data.data || []).map(transformProfile)
+  } catch (e) {
+    console.error('Failed to load profiles:', e)
+    profiles.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
 onMounted(loadProfiles)
 
 const editProfile = (profile) => {
