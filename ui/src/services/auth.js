@@ -184,6 +184,17 @@ function switchTenant(tenantId) {
     }
 }
 
+function impersonate(tenantId) {
+    if (!tenantId) return
+
+    // Set tenant ID directly
+    localStorage.setItem('tenantId', tenantId)
+    state.currentTenantId = tenantId
+
+    // Redirect to admin dashboard
+    window.location.href = '/admin'
+}
+
 // Export store
 export const useAuth = () => ({
     state: readonly(state),
@@ -198,6 +209,7 @@ export const useAuth = () => ({
     clearAuth,
     fetchAvailableTenants,
     switchTenant,
+    impersonate,
 })
 
 export default useAuth

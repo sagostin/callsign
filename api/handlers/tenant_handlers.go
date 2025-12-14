@@ -187,6 +187,7 @@ func (h *Handler) UpdateExtension(ctx iris.Context) {
 		DirectoryFirstName      string `json:"directory_first_name"`
 		DirectoryLastName       string `json:"directory_last_name"`
 		VoicemailEnabled        bool   `json:"voicemail_enabled"`
+		VoicemailPin            string `json:"voicemail_pin"`
 		VoicemailMailTo         string `json:"voicemail_mail_to"`
 		RingStrategy            string `json:"ring_strategy"`
 		RingDeviceOrder         string `json:"ring_device_order"`
@@ -227,6 +228,9 @@ func (h *Handler) UpdateExtension(ctx iris.Context) {
 		ext.DirectoryLastName = input.DirectoryLastName
 	}
 	ext.VoicemailEnabled = input.VoicemailEnabled
+	if input.VoicemailPin != "" {
+		ext.VoicemailPassword = input.VoicemailPin
+	}
 	if input.VoicemailMailTo != "" {
 		ext.VoicemailMailTo = input.VoicemailMailTo
 	}

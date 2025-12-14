@@ -376,31 +376,51 @@ function copyToClipboard(text) {
 async function saveDevice() {
   try {
     // Clean mac
+    const cleanMac = device.value.mac.replace(/:/g, '').toLowerCase()
+
+    // Build clean payload - explicitly include only what we want to update
+    // Exclude nested objects like user, template, profile, tenant, lines to avoid backend parsing errors
     const payload = {
-      ...device.value,
-      mac: device.value.mac.replace(/:/g, '').toLowerCase()
+      mac: cleanMac,
+      name: device.value.name,
+      model: device.value.model,
+      manufacturer: device.value.manufacturer, // Ensure this is included if available
+      profile_id: device.value.profile_id,
+      location_id: device.value.location_id,
+      user_id: device.value.user_id,
+      template_id: device.value.template_id, // If used
+      sip_server: device.value.sip_server,
+      sip_proxy: device.value.sip_proxy,
+      sip_transport: device.value.sip_transport,
+      sip_port: device.value.sip_port,
+      sip_username: device.value.sip_username,
+      sip_password: device.value.sip_password,
+      provision_token: device.value.provision_token,
+      enabled: device.value.enabled !== false // Default to true if undefined
     }
 
     if (isNew.value) {
+      // For create, we can include lines initially if the backend supports it, 
+      // but to be safe and consistent with update, we might want to let the backend handle defaults 
+      // or send them if the create endpoint expects them.
+      // The backend CreateDevice does check lines.
+      payload.lines = device.value.lines
+      
       await devicesAPI.create(payload)
       toast.success('Device created')
     } else {
       await devicesAPI.update(device.value.id, payload)
-       // Update lines separately if needed, but if backend handles nested, great. 
-       // The backend handlers I saw earlier: UpdateDevice updates fields, UpdateDeviceLines updates lines.
-       // I should probably call UpdateDeviceLines if the lines changed.
+      
+       // Handle lines update separately
        if (device.value.lines) {
-          // Check if lines supported in UpdateDevice. 
-          // Previous backend reading showed UpdateDevice only does basic fields. 
-          // So I need to call the line update endpoint.
-          // Since I don't have the exact endpoint handy in memory, I'll assume I need to call it.
-          // Wait, I saw 'UpdateDeviceLines' in device_handlers.go.
+          // Send lines to the dedicated endpoint
           await devicesAPI.updateLines(device.value.id, device.value.lines)
        }
       toast.success('Device updated')
     }
     router.push('/admin/devices')
   } catch (e) {
+    console.error(e)
     toast.error(e.response?.data?.error || e.message)
   }
 }

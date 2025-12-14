@@ -598,12 +598,14 @@ function generatePassword(length = 16) {
 async function saveExtension() {
   isLoading.value = true
   try {
+    // Construct clean payload with explicit fields
     const payload = {
       extension: extension.value.ext,
       effective_caller_id_name: `${extension.value.firstName} ${extension.value.lastName}`.trim(),
       directory_first_name: extension.value.firstName,
       directory_last_name: extension.value.lastName,
       voicemail_mail_to: extension.value.email,
+      // Ensure profile_id is null if not set
       profile_id: extension.value.profileId || null,
       enabled: true
     }
@@ -622,6 +624,7 @@ async function saveExtension() {
     }
     router.push('/admin/extensions')
   } catch (error) {
+    console.error(error)
     toast?.error(error.response?.data?.error || error.message, 'Failed to save extension')
   } finally {
     isLoading.value = false
