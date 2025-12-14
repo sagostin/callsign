@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"bytes"
 	"callsign/models"
 	"encoding/json"
+	"io"
 	"strings"
 
 	"github.com/kataras/iris/v12"
@@ -33,9 +35,7 @@ func AuditMiddleware(db *gorm.DB) iris.Handler {
 		var username, role string
 
 		if claims != nil {
-			if claims.TenantID != nil {
-				tenantID = *claims.TenantID
-			}
+			tenantID = GetTenantID(ctx) // Use helper to get scoped or actual tenant ID
 			userID = claims.UserID
 			username = claims.Username
 			role = string(claims.Role)
@@ -44,9 +44,13 @@ func AuditMiddleware(db *gorm.DB) iris.Handler {
 		// Get request body for new value
 		var newValue interface{}
 		if method == "POST" || method == "PUT" || method == "PATCH" {
+			// Read body bytes
 			body, _ := ctx.GetBody()
 			if len(body) > 0 {
 				json.Unmarshal(body, &newValue)
+
+				// Restore body for downstream handlers
+				ctx.Request().Body = io.NopCloser(bytes.NewBuffer(body))
 			}
 		}
 
