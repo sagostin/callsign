@@ -444,6 +444,7 @@ const extension = ref({
   profileId: null,
   permissions: { outbound: true, international: false, recording: true, portal: true },
   status: 'Offline',
+  enabled: true,
   device: null,
   lastCall: '—'
 })
@@ -536,7 +537,9 @@ async function fetchExtension() {
         recording: ext.record_inbound || ext.record_outbound || false,
         portal: true
       },
+
       status: ext.registered ? 'Online' : 'Offline',
+      enabled: ext.enabled !== false,
       device: ext.user_agent || null,
       lastCall: formatLastCall(ext.last_call_at)
     }
@@ -607,7 +610,9 @@ async function saveExtension() {
       voicemail_mail_to: extension.value.email,
       // Ensure profile_id is null if not set
       profile_id: extension.value.profileId || null,
-      enabled: true
+      enabled: extension.value.enabled,
+      voicemail_enabled: vm.value.enabled,
+      voicemail_pin: extension.value.vmPin || undefined
     }
     
     // Only include password if it's set (for new extensions or regeneration)
