@@ -5,20 +5,29 @@
 | Document | Purpose |
 |----------|---------|
 | [Project Status](../PROJECT_STATUS.md) | Overall completion status |
-| [Backend TODO](../BACKEND_TODO.md) | Complete API endpoint list |
-| [Call Flow](../CALLFLOW.MD) | Call routing diagrams |
+| [Backend TODO](BACKEND_TODO.md) | Complete API endpoint list |
+| [Call Flow](CALLFLOW.MD) | Call routing diagrams |
+| [API Reference](API.md) | API documentation |
+
+## Developer Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [DEVELOPER.md](DEVELOPER.md) | Developer guide with code patterns |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture diagrams |
 
 ## API Documentation
 
 | Document | Purpose |
 |----------|---------|
+| [API.md](API.md) | Endpoint documentation & examples |
 | [FreeSWITCH Integration](../api/FREESWITCH_INTEGRATION.md) | ESL + mod_xml_curl architecture |
 
 ## UI Documentation
 
 | Document | Purpose |
 |----------|---------|
-| [README_UI](../README_UI.md) | Frontend setup and components |
+| [README_UI](README_UI.md) | Frontend setup and components |
 
 ## Reference Materials
 

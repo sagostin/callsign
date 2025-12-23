@@ -7,29 +7,35 @@
 - ESL Manager (6 services including BLF)
 - Logging (Loki)
 - CDR sync
-- WebSocket Hub
+- WebSocket Hub (notifications)
 - Encryption (AES-256-GCM)
+- Audit Log Middleware
 
 ### Authentication
 - JWT + Refresh tokens
 - RequirePermission middleware
 - Role-based (system_admin, tenant_admin, user)
+- Admin login + User login endpoints
 
 ### Tenant-Scoped API Endpoints
-- Extensions (CRUD + status)
-- Devices (CRUD + call control)
-- Voicemail Boxes (CRUD)
+- Extensions (CRUD + status + call handling rules)
+- Extension Profiles (CRUD + call handling rules)
+- Devices (CRUD + provisioning + call control)
+- Device Profiles/Templates
+- Voicemail Boxes (CRUD + messages)
 - IVR Menus (CRUD)
 - Queues (CRUD)
 - Ring Groups (CRUD + **distinct ring name**)
+- Speed Dials (CRUD)
 - Conferences (CRUD)
 - Numbers/DIDs (CRUD)
-- Routing (inbound/outbound)
+- Routing (inbound/outbound + call blocks)
 - Dial Plans (CRUD)
-- Audio Library (CRUD)
+- Audio Library (CRUD + streaming)
 - Music on Hold (CRUD)
 - Feature Codes (CRUD + system codes)
 - Time Conditions (CRUD)
+- Holiday Lists (CRUD + sync)
 - Call Flows (CRUD + toggle)
 - CDR / Call Records (list, get, export)
 - Audit Logs (list)
@@ -38,6 +44,8 @@
 - Chat (threads, rooms, queues)
 - **Paging Groups (CRUD)** ✨
 - **Provisioning Templates (CRUD)** ✨
+- **Tenant Settings (General, Branding, SMTP, Messaging, Hospitality)** ✨
+- **Tenant Media (Sounds & Music Overrides)** ✨
 
 ### Device Control API ✨
 - `/api/devices/{mac}/hangup`
@@ -48,6 +56,7 @@
 
 ### Provisioning System ✨
 - `/provisioning/{mac}/{filename}` - Public endpoint
+- `/api/provision/{tenant}/{secret}/{mac}` - Secure endpoint
 - Multi-vendor support (Polycom, Yealink, Grandstream, Cisco, etc.)
 - Template variable substitution
 - Tenant/device-specific variables
@@ -66,16 +75,44 @@
 
 ### System Admin API
 - Tenants (CRUD)
-- Tenant Profiles (CRUD)
-- Gateways, Bridges, SIP Profiles (CRUD)
+- Tenant Profiles (CRUD with live usage counts)
+- Users (CRUD)
+- Gateways (CRUD + status)
+- Bridges (CRUD)
+- SIP Profiles (CRUD + sync from disk)
+- Sofia Live Control (status, restart, reload)
+- Global Dial Plans (CRUD)
+- ACLs (CRUD + nodes)
+- Device Templates (CRUD)
+- Device Manufacturers (CRUD)
+- Firmware (CRUD + upload + set default)
+- Messaging Providers (CRUD)
 - System Settings/Logs
+- System Media (Sounds & Music)
+- Security (Banned IPs)
+- Config Inspector (XML debug, file browser)
+
+### User Portal API
+- GetUserDevices
+- GetUserCallHistory
+- GetUserVoicemail
+- GetUserSettings / UpdateUserSettings
+- GetUserContacts / CreateUserContact
 
 ### Out-of-Box Seeding
 - Default admin, tenant profiles
 - Outbound routes, sounds, feature codes, chatplans
 
+### FreeSWITCH Integration
+- mod_xml_curl (directory, dialplan, configuration)
+- mod_xml_cdr (CDR ingestion)
+- Cache management (flush, stats)
+
 ## 🔧 Remaining
-- Call Block, Speed Dials, Fax API
+- Fax API (handlers stub exists)
 - Transcription service worker (processing queue)
-- WebSocket event broadcasting
-- UI integration for new features
+- WebSocket event broadcasting expansion
+- Reports/Analytics expansion
+- Hospitality module (wake-up calls, room management)
+- Call Broadcast campaigns
+- Billing integration

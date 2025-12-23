@@ -42,7 +42,7 @@ A modern, feature-rich PBX management interface built with Vue 3 and Vite. CallS
 |---------|-------------|
 | **Auto Provisioning** | Zero-touch provisioning for Yealink, Polycom, Grandstream |
 | **Device Templates** | Customizable button layouts and settings |
-| **Network Scanning** | Discover unprovisioned devices on the network |
+| **Firmware Management** | Upload and deploy firmware to devices |
 
 ### Administration
 
@@ -52,6 +52,7 @@ A modern, feature-rich PBX management interface built with Vue 3 and Vite. CallS
 | **Audit Logging** | Full activity tracking and compliance |
 | **Feature Codes** | Customizable star codes for call features |
 | **Music on Hold** | Stream management for hold music |
+| **Config Inspector** | FreeSWITCH XML configuration viewer |
 
 ### Specialized Modules
 
@@ -67,7 +68,7 @@ A modern, feature-rich PBX management interface built with Vue 3 and Vite. CallS
 ## 📁 Project Structure
 
 ```
-CallSign-UI/
+ui/
 ├── src/
 │   ├── components/           # Reusable Vue components
 │   │   ├── common/           # DataTable, StatusBadge, etc.
@@ -75,28 +76,19 @@ CallSign-UI/
 │   │   ├── ivr/              # IVR-specific components
 │   │   └── layout/           # LayoutShell, Sidebar, TopBar
 │   │
-│   ├── views/                # Page components
-│   │   ├── admin/            # Tenant admin forms and pages
-│   │   ├── auth/             # Login pages
-│   │   ├── devices/          # Device management views
-│   │   ├── extensions/       # Extension detail views
-│   │   ├── hospitality/      # Hotel module views
-│   │   ├── ivr/              # IVR menu forms
-│   │   ├── numbers/          # DID management
-│   │   ├── queues/           # Queue forms
-│   │   ├── settings/         # Tenant settings
-│   │   ├── system/           # System admin views
-│   │   └── user/             # User portal views
+│   ├── views/                # Page components (98 total)
+│   │   ├── admin/            # 64 tenant admin views
+│   │   ├── auth/             # 2 auth views
+│   │   ├── system/           # 26 system admin views
+│   │   └── user/             # 8 user portal views
 │   │
-│   ├── layouts/              # Layout wrappers
-│   ├── services/             # API service layer (placeholder)
+│   ├── services/             # API service layer
 │   ├── styles/               # Global CSS
 │   ├── router.js             # Vue Router configuration
 │   ├── main.js               # Application entry point
 │   └── App.vue               # Root component
 │
 ├── public/                   # Static assets
-├── BACKEND_TODO.md           # Backend API endpoint checklist
 └── package.json
 ```
 
@@ -123,8 +115,8 @@ CallSign-UI/
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/CallSign-UI.git
-cd CallSign-UI
+git clone https://github.com/your-org/callsign.git
+cd callsign/ui
 
 # Install dependencies
 npm install
@@ -176,6 +168,8 @@ Output will be in the `dist/` directory.
 | `/admin/call-recordings` | Recording manager |
 | `/admin/reports` | Analytics & reports |
 | `/admin/settings` | Tenant settings |
+| `/admin/time-conditions` | Time conditions |
+| `/admin/call-flows` | Call flow toggles |
 
 ### System Admin (`/system`)
 | Route | Description |
@@ -186,26 +180,30 @@ Output will be in the `dist/` directory.
 | `/system/gateways` | SIP gateways/trunks |
 | `/system/sip-profiles` | SIP profile config |
 | `/system/dial-plans` | Global dial plans |
-| `/system/phrases` | System audio phrases |
+| `/system/acls` | Access control lists |
 | `/system/provisioning-templates` | Master device templates |
-| `/system/streams` | System music streams |
+| `/system/firmware` | Firmware management |
+| `/system/sounds` | System sounds |
+| `/system/music` | Music on hold |
 | `/system/messaging` | SMS provider config |
 | `/system/logs` | System logs |
 | `/system/settings` | Global settings |
+| `/system/security` | Security & banned IPs |
+| `/system/config-inspector` | FreeSWITCH config viewer |
 
 ---
 
 ## 🔌 Backend Integration
 
-This is a **frontend-only** repository. The backend API is required for full functionality.
+This is a **frontend-only** directory. The backend API is in the `../api` directory.
 
-See [`BACKEND_TODO.md`](./BACKEND_TODO.md) for a complete list of ~300 API endpoints needed to support all features.
+See [`BACKEND_TODO.md`](BACKEND_TODO.md) for a complete list of ~375 API endpoints, ~280 of which are implemented.
 
-### Expected Backend Stack
+### Backend Stack
 - **PBX Engine**: FreeSWITCH
-- **API**: RESTful JSON API with JWT authentication
-- **Real-time**: WebSocket for live events (calls, presence, queues)
-- **Database**: PostgreSQL (recommended)
+- **API**: Go Iris + GORM + PostgreSQL
+- **Auth**: JWT with role-based access control
+- **Real-time**: WebSocket for notifications, FreeSWITCH console
 
 ---
 
