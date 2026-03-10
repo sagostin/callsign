@@ -3,6 +3,7 @@ package handlers
 import (
 	"callsign/middleware"
 	"callsign/models"
+	"fmt"
 	"regexp"
 	"strings"
 	"text/template"
@@ -583,9 +584,22 @@ func (h *Handler) ReprovisionDevice(ctx iris.Context) {
 		return
 	}
 
-	// TODO: Send SIP NOTIFY to trigger re-provision
-	// This would be done via ESL:
-	// sofia profile internal flush_inbound_reg <user>@<domain> reboot
+	// Send SIP NOTIFY to trigger re-provision via ESL
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		// Get the device's extension and domain for the flush command
+		var ext models.Extension
+		var tenant models.Tenant
+		if device.Lines != nil && len(device.Lines) > 0 {
+			h.DB.Preload("Lines.Extension").First(&device, device.ID)
+		}
+		h.DB.First(&tenant, device.TenantID)
+
+		if err := h.DB.Where("id = ?", device.Lines[0].ExtensionID).First(&ext).Error; err == nil {
+			cmd := fmt.Sprintf("sofia profile internal flush_inbound_reg %s@%s reboot",
+				ext.Extension, tenant.Domain)
+			h.ESLManager.API(cmd)
+		}
+	}
 
 	ctx.JSON(iris.Map{"message": "Reprovision triggered"})
 }

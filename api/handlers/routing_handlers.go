@@ -12,6 +12,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// ReorderItem represents a single item in a reorder request
+type ReorderItem struct {
+	ID    uint `json:"id"`
+	Order int  `json:"order"`
+}
+
 // normalizeToE164 attempts to convert a phone number to E.164 format
 func normalizeToE164(number string) string {
 	// Remove all non-digit characters except leading +
@@ -88,6 +94,110 @@ func (h *Handler) CreateInboundRoute(ctx iris.Context) {
 	ctx.JSON(route)
 }
 
+func (h *Handler) GetInboundRoute(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var route models.Dialplan
+	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context = ?", id, tenantID, "public").
+		Preload("Details", func(db *gorm.DB) *gorm.DB {
+			return db.Order("detail_order ASC")
+		}).First(&route).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Inbound route not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": route})
+}
+
+func (h *Handler) UpdateInboundRoute(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var route models.Dialplan
+	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context = ?", id, tenantID, "public").First(&route).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Inbound route not found"})
+		return
+	}
+
+	if err := ctx.ReadJSON(&route); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	route.ID = id
+	route.TenantID = &tenantID
+	route.DialplanContext = "public"
+
+	if err := h.DB.Save(&route).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to update inbound route"})
+		return
+	}
+
+	// Replace details if present
+	if len(route.Details) > 0 {
+		h.DB.Where("dialplan_uuid = ?", route.UUID).Delete(&models.DialplanDetail{})
+		for i := range route.Details {
+			route.Details[i].DialplanUUID = route.UUID
+		}
+		h.DB.Create(&route.Details)
+	}
+
+	// Reload with details
+	h.DB.Preload("Details", func(db *gorm.DB) *gorm.DB {
+		return db.Order("detail_order ASC")
+	}).First(&route, id)
+
+	ctx.JSON(iris.Map{"data": route, "message": "Inbound route updated"})
+}
+
+func (h *Handler) DeleteInboundRoute(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var route models.Dialplan
+	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context = ?", id, tenantID, "public").First(&route).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Inbound route not found"})
+		return
+	}
+
+	// Delete details first
+	h.DB.Where("dialplan_uuid = ?", route.UUID).Delete(&models.DialplanDetail{})
+	h.DB.Delete(&route)
+	ctx.StatusCode(http.StatusNoContent)
+}
+
+func (h *Handler) ReorderInboundRoutes(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	var items []ReorderItem
+	if err := ctx.ReadJSON(&items); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	tx := h.DB.Begin()
+	for _, item := range items {
+		if err := tx.Model(&models.Dialplan{}).
+			Where("id = ? AND tenant_id = ? AND dialplan_context = ?", item.ID, tenantID, "public").
+			Update("dialplan_order", item.Order).Error; err != nil {
+			tx.Rollback()
+			ctx.StatusCode(http.StatusInternalServerError)
+			ctx.JSON(iris.Map{"error": "Failed to reorder routes"})
+			return
+		}
+	}
+	tx.Commit()
+
+	ctx.JSON(iris.Map{"message": "Inbound routes reordered"})
+}
+
 // =====================
 // Outbound Routes (Dialplan context=default/domain)
 // =====================
@@ -133,6 +243,115 @@ func (h *Handler) CreateOutboundRoute(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(route)
+}
+
+func (h *Handler) GetOutboundRoute(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var route models.Dialplan
+	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context != ?", id, tenantID, "public").
+		Preload("Details", func(db *gorm.DB) *gorm.DB {
+			return db.Order("detail_order ASC")
+		}).First(&route).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Outbound route not found"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": route})
+}
+
+func (h *Handler) UpdateOutboundRoute(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var route models.Dialplan
+	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context != ?", id, tenantID, "public").First(&route).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Outbound route not found"})
+		return
+	}
+
+	originalContext := route.DialplanContext
+
+	if err := ctx.ReadJSON(&route); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	route.ID = id
+	route.TenantID = &tenantID
+	// Preserve context — don't allow switching to "public"
+	if route.DialplanContext == "" || route.DialplanContext == "public" {
+		route.DialplanContext = originalContext
+	}
+
+	if err := h.DB.Save(&route).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to update outbound route"})
+		return
+	}
+
+	// Replace details if present
+	if len(route.Details) > 0 {
+		h.DB.Where("dialplan_uuid = ?", route.UUID).Delete(&models.DialplanDetail{})
+		for i := range route.Details {
+			route.Details[i].DialplanUUID = route.UUID
+		}
+		h.DB.Create(&route.Details)
+	}
+
+	// Reload with details
+	h.DB.Preload("Details", func(db *gorm.DB) *gorm.DB {
+		return db.Order("detail_order ASC")
+	}).First(&route, id)
+
+	ctx.JSON(iris.Map{"data": route, "message": "Outbound route updated"})
+}
+
+func (h *Handler) DeleteOutboundRoute(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := ctx.Params().GetUint("id")
+
+	var route models.Dialplan
+	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context != ?", id, tenantID, "public").First(&route).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Outbound route not found"})
+		return
+	}
+
+	// Delete details first
+	h.DB.Where("dialplan_uuid = ?", route.UUID).Delete(&models.DialplanDetail{})
+	h.DB.Delete(&route)
+	ctx.StatusCode(http.StatusNoContent)
+}
+
+func (h *Handler) ReorderOutboundRoutes(ctx iris.Context) {
+	tenantID := middleware.GetTenantID(ctx)
+
+	var items []ReorderItem
+	if err := ctx.ReadJSON(&items); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	tx := h.DB.Begin()
+	for _, item := range items {
+		if err := tx.Model(&models.Dialplan{}).
+			Where("id = ? AND tenant_id = ? AND dialplan_context != ?", item.ID, tenantID, "public").
+			Update("dialplan_order", item.Order).Error; err != nil {
+			tx.Rollback()
+			ctx.StatusCode(http.StatusInternalServerError)
+			ctx.JSON(iris.Map{"error": "Failed to reorder routes"})
+			return
+		}
+	}
+	tx.Commit()
+
+	ctx.JSON(iris.Map{"message": "Outbound routes reordered"})
 }
 
 // =====================

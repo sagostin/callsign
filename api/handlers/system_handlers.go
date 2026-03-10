@@ -405,6 +405,9 @@ func (h *Handler) CreateGateway(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(gateway)
+
+	// Trigger FreeSWITCH reload so new gateway is picked up
+	h.reloadSofia("internal")
 }
 
 func (h *Handler) GetGateway(ctx iris.Context) {
@@ -473,6 +476,9 @@ func (h *Handler) UpdateGateway(ctx iris.Context) {
 	}
 
 	ctx.JSON(gateway)
+
+	// Trigger FreeSWITCH reload so gateway changes are picked up
+	h.reloadSofia("internal")
 }
 
 func (h *Handler) DeleteGateway(ctx iris.Context) {
@@ -505,6 +511,9 @@ func (h *Handler) DeleteGateway(ctx iris.Context) {
 	}
 
 	ctx.JSON(iris.Map{"message": "Gateway deleted successfully"})
+
+	// Trigger FreeSWITCH reload so gateway removal is picked up
+	h.reloadSofia("internal")
 }
 
 // GetGatewayStatus returns live gateway status from FreeSWITCH
@@ -532,30 +541,57 @@ func (h *Handler) GetGatewayStatus(ctx iris.Context) {
 		return
 	}
 
-	// TODO: Query FreeSWITCH for real-time gateway status
-	// This would use: sofia status gateway <gateway_name>
-	// For now, return database status with placeholder
-
+	// Query FreeSWITCH for real-time gateway status
 	statusMap := make(map[string]interface{})
 	for _, gw := range gateways {
-		state := "NOREG"
-		if gw.Enabled {
-			if gw.Register {
-				state = "TRYING"
-			} else {
-				state = "ACTIVE"
-			}
-		} else {
-			state = "DISABLED"
-		}
-		statusMap[gw.GatewayName] = map[string]interface{}{
-			"state":    state,
+		gwResult := map[string]interface{}{
+			"state":    "UNKNOWN",
 			"enabled":  gw.Enabled,
 			"register": gw.Register,
 		}
+
+		if h.ESLManager != nil && h.ESLManager.IsConnected() {
+			result, err := h.ESLManager.API(fmt.Sprintf("sofia status gateway %s", gw.GatewayName))
+			if err == nil && !strings.Contains(result, "-ERR") {
+				// Parse state from output
+				for _, line := range strings.Split(result, "\n") {
+					line = strings.TrimSpace(line)
+					if strings.HasPrefix(line, "State") {
+						parts := strings.Fields(line)
+						if len(parts) >= 2 {
+							gwResult["state"] = parts[len(parts)-1]
+						}
+					}
+					if strings.HasPrefix(line, "Status") {
+						parts := strings.Fields(line)
+						if len(parts) >= 2 {
+							gwResult["status_detail"] = strings.Join(parts[1:], " ")
+						}
+					}
+					if strings.HasPrefix(line, "Ping-Time") {
+						parts := strings.Fields(line)
+						if len(parts) >= 2 {
+							gwResult["ping_time"] = parts[len(parts)-1]
+						}
+					}
+				}
+			}
+		} else {
+			// Fallback to DB-based heuristic
+			if !gw.Enabled {
+				gwResult["state"] = "DISABLED"
+			} else if gw.Register {
+				gwResult["state"] = "TRYING"
+			} else {
+				gwResult["state"] = "ACTIVE"
+			}
+		}
+
+		statusMap[gw.GatewayName] = gwResult
 	}
 
-	ctx.JSON(iris.Map{"data": statusMap, "esl_connected": true})
+	eslConnected := h.ESLManager != nil && h.ESLManager.IsConnected()
+	ctx.JSON(iris.Map{"data": statusMap, "esl_connected": eslConnected})
 }
 
 // =====================
@@ -1097,10 +1133,23 @@ func (h *Handler) GetSystemLogs(ctx iris.Context) {
 }
 
 func (h *Handler) GetSystemStatus(ctx iris.Context) {
-	ctx.JSON(iris.Map{
+	status := iris.Map{
 		"status":   "operational",
 		"database": "connected",
-	})
+	}
+
+	// Add FreeSWITCH status if ESL manager is available
+	if h.ESLManager != nil {
+		status["freeswitch"] = h.ESLManager.FreeSwitchStatus()
+	} else {
+		status["freeswitch"] = iris.Map{
+			"esl_connected": false,
+			"esl_running":   false,
+			"message":       "ESL manager not initialized",
+		}
+	}
+
+	ctx.JSON(status)
 }
 
 func (h *Handler) GetSystemStats(ctx iris.Context) {
@@ -1382,6 +1431,8 @@ func (h *Handler) CreateACL(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(acl)
+
+	h.reloadACL()
 }
 
 func (h *Handler) GetACL(ctx iris.Context) {
@@ -1432,6 +1483,8 @@ func (h *Handler) UpdateACL(ctx iris.Context) {
 	}
 
 	ctx.JSON(acl)
+
+	h.reloadACL()
 }
 
 func (h *Handler) DeleteACL(ctx iris.Context) {
@@ -1459,6 +1512,8 @@ func (h *Handler) DeleteACL(ctx iris.Context) {
 	}
 
 	ctx.StatusCode(http.StatusNoContent)
+
+	h.reloadACL()
 }
 
 func (h *Handler) CreateACLNode(ctx iris.Context) {

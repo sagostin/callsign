@@ -66,6 +66,16 @@ type Config struct {
 	ProvisioningPath   string // Path for provisioning config files
 	SIPProfilesPath    string // Path for FreeSWITCH SIP profile XML files
 	FreeSwitchConfPath string // Path for FreeSWITCH configuration directory
+
+	// Telnyx messaging settings
+	TelnyxAPIKey           string
+	TelnyxMessagingProfile string
+	TelnyxWebhookSecret    string
+
+	// Media transcoding settings
+	MaxMMSSizeKB    int
+	FFmpegPath      string
+	TranscodeTmpDir string
 }
 
 // Load reads configuration from environment variables
@@ -130,6 +140,16 @@ func Load() *Config {
 		ProvisioningPath:   getEnv("PROVISIONING_PATH", "/var/lib/freeswitch/provisioning"),
 		SIPProfilesPath:    getEnv("SIP_PROFILES_PATH", "/etc/freeswitch/sip_profiles"),
 		FreeSwitchConfPath: getEnv("FREESWITCH_CONF_PATH", "/etc/freeswitch"),
+
+		// Telnyx
+		TelnyxAPIKey:           getEnv("TELNYX_API_KEY", ""),
+		TelnyxMessagingProfile: getEnv("TELNYX_MESSAGING_PROFILE_ID", ""),
+		TelnyxWebhookSecret:    getEnv("TELNYX_WEBHOOK_SECRET", ""),
+
+		// Media transcoding
+		MaxMMSSizeKB:    getEnvAsInt("MAX_MMS_SIZE_KB", 600),
+		FFmpegPath:      getEnv("FFMPEG_PATH", "ffmpeg"),
+		TranscodeTmpDir: getEnv("TRANSCODE_TMP_DIR", "/tmp/callsign-transcode"),
 	}
 }
 

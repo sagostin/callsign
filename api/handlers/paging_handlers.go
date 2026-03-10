@@ -300,8 +300,10 @@ func (h *Handler) DeviceHangup(ctx iris.Context) {
 		return
 	}
 
-	// TODO: Use ESL to kill the call
-	// conn.Send(fmt.Sprintf("api uuid_kill %s", deviceCallUUID))
+	// Use ESL to kill the call
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		h.ESLManager.API(fmt.Sprintf("uuid_kill %s", deviceCallUUID))
+	}
 
 	ctx.JSON(iris.Map{
 		"message":   "Hangup command sent",
@@ -330,8 +332,14 @@ func (h *Handler) DeviceTransfer(ctx iris.Context) {
 		return
 	}
 
-	// TODO: Use ESL to transfer
-	// conn.Send(fmt.Sprintf("api uuid_transfer %s %s", deviceCallUUID, req.Destination))
+	// Use ESL to transfer the call
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		if req.Type == "attended" {
+			h.ESLManager.API(fmt.Sprintf("uuid_transfer %s -both %s XML default", deviceCallUUID, req.Destination))
+		} else {
+			h.ESLManager.API(fmt.Sprintf("uuid_transfer %s %s XML default", deviceCallUUID, req.Destination))
+		}
+	}
 
 	ctx.JSON(iris.Map{
 		"message":     "Transfer command sent",
@@ -356,9 +364,14 @@ func (h *Handler) DeviceHold(ctx iris.Context) {
 		return
 	}
 
-	// TODO: Use ESL to hold/unhold
-	// cmd := "uuid_hold"
-	// if !req.Hold { cmd = "uuid_hold off" }
+	// Use ESL to hold/unhold the call
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		if req.Hold {
+			h.ESLManager.API(fmt.Sprintf("uuid_hold %s", deviceCallUUID))
+		} else {
+			h.ESLManager.API(fmt.Sprintf("uuid_hold off %s", deviceCallUUID))
+		}
+	}
 
 	ctx.JSON(iris.Map{
 		"message":   "Hold command sent",
@@ -400,8 +413,12 @@ func (h *Handler) DeviceDial(ctx iris.Context) {
 		return
 	}
 
-	// TODO: Use ESL to originate call
-	// originate user/1001@domain.com &bridge(sofia/external/+15551234567)
+	// Use ESL to originate the call
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		dialString := fmt.Sprintf("user/%s@%s", device.Extension, device.Domain)
+		bridge := fmt.Sprintf("bridge(sofia/external/%s)", req.Number)
+		h.ESLManager.Client.Originate(dialString, bridge, "")
+	}
 
 	ctx.JSON(iris.Map{
 		"message": "Dial command sent",
@@ -422,10 +439,22 @@ func (h *Handler) DeviceCallStatus(ctx iris.Context) {
 		return
 	}
 
-	// TODO: Get call details from ESL
+	// Get call details from ESL if available
+	var direction, callerID, destination, callState string
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		direction, _ = h.ESLManager.API(fmt.Sprintf("uuid_getvar %s direction", deviceCallUUID))
+		callerID, _ = h.ESLManager.API(fmt.Sprintf("uuid_getvar %s caller_id_number", deviceCallUUID))
+		destination, _ = h.ESLManager.API(fmt.Sprintf("uuid_getvar %s destination_number", deviceCallUUID))
+		callState, _ = h.ESLManager.API(fmt.Sprintf("uuid_getvar %s channel_call_state", deviceCallUUID))
+	}
+
 	ctx.JSON(iris.Map{
-		"active":    true,
-		"call_uuid": deviceCallUUID,
+		"active":      true,
+		"call_uuid":   deviceCallUUID,
+		"direction":   strings.TrimSpace(direction),
+		"caller_id":   strings.TrimSpace(callerID),
+		"destination": strings.TrimSpace(destination),
+		"call_state":  strings.TrimSpace(callState),
 	})
 }
 

@@ -38,6 +38,43 @@ func (h *Handler) SetESLManager(m *esl.Manager) {
 	h.ESLManager = m
 }
 
+// reloadXML triggers a FreeSWITCH XML reload in the background.
+// Safe to call even if ESL is not connected — it silently no-ops.
+func (h *Handler) reloadXML() {
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		go h.ESLManager.ReloadXML()
+	}
+}
+
+// reloadSofia triggers a Sofia profile rescan + XML reload in the background.
+func (h *Handler) reloadSofia(profileName string) {
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		go func() {
+			h.ESLManager.ReloadXML()
+			if profileName != "" {
+				h.ESLManager.SofiaRescan(profileName)
+			}
+		}()
+	}
+}
+
+// reloadCallcenter triggers a mod_callcenter reload + XML reload in the background.
+func (h *Handler) reloadCallcenter() {
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		go func() {
+			h.ESLManager.ReloadXML()
+			h.ESLManager.CallcenterReload()
+		}()
+	}
+}
+
+// reloadACL triggers an ACL reload in the background.
+func (h *Handler) reloadACL() {
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		go h.ESLManager.ReloadACL()
+	}
+}
+
 // SetLogManager sets the LogManager reference
 func (h *Handler) SetLogManager(lm *logging.LogManager) {
 	h.LogManager = lm

@@ -155,6 +155,18 @@ func AutoMigrate(db *gorm.DB) error {
 
 		// Call Handling Rules
 		&CallHandlingRule{},
+
+		// Fax
+		&FaxBox{},
+		&FaxEndpoint{},
+		&FaxJob{},
+		&FaxPageResult{},
+		&FaxNotificationLog{},
+
+		// SMS Number Assignments & Message Queue
+		&SMSNumberAssignment{},
+		&MessageQueueItem{},
+		&MediaTranscodeJob{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)

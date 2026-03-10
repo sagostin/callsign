@@ -23,6 +23,7 @@ const (
 	EventSMS          EventType = "sms"
 	EventVoicemail    EventType = "voicemail"
 	EventRegistration EventType = "registration"
+	EventChat         EventType = "chat"
 )
 
 // Event represents a real-time event
@@ -192,6 +193,20 @@ func (h *Hub) NotifyStats(tenantID uint, stats map[string]interface{}) {
 // NotifySMS notifies about incoming SMS
 func (h *Hub) NotifySMS(tenantID uint, smsData map[string]interface{}) {
 	h.BroadcastToTenant(tenantID, EventSMS, "incoming", smsData)
+}
+
+// NotifyChatMessage notifies about a new chat message
+func (h *Hub) NotifyChatMessage(tenantID uint, threadID uint, msgData map[string]interface{}) {
+	msgData["thread_id"] = threadID
+	h.BroadcastToTenant(tenantID, EventChat, "new_message", msgData)
+}
+
+// NotifyMessageStatus notifies about a message delivery status change
+func (h *Hub) NotifyMessageStatus(tenantID uint, messageID uint, status string) {
+	h.BroadcastToTenant(tenantID, EventSMS, "status_update", map[string]interface{}{
+		"message_id": messageID,
+		"status":     status,
+	})
 }
 
 // Handler handles WebSocket connections

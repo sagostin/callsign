@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CallSign by voip.rip - Modern Open-Source Cloud PBX</title>
+    <meta name="description"
+        content="CallSign is a modern, open-source multi-tenant cloud PBX platform. Feature-rich business phone system with extensions, voicemail, IVR, call routing, and more.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="#" class="logo">
+                <div class="logo-icon">
+                    <i class="bi bi-telephone-fill"></i>
+                </div>
+                <span>CallSign</span>
+                <span class="by-badge">by voip.rip</span>
+            </a>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#roadmap">Roadmap</a>
+                <a href="#get-started">Deploy</a>
+                <a href="https://github.com/yourorg/callsign" class="btn btn-outline" target="_blank">
+                    <i class="bi bi-github"></i> GitHub
+                </a>
+                <a href="/login" class="btn btn-primary">Sign In</a>
+            </div>
+            <button class="mobile-menu-btn" aria-label="Menu">
+                <i class="bi bi-list"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="hero-glow"></div>
+        <div class="hero-glow-secondary"></div>
+        <div class="container">
+            <div class="hero-badge">
+                <i class="bi bi-unlock"></i>
+                100% Open Source • Self-Hosted • Forever Free
+            </div>
+            <h1>Your Phone System,<br><span class="gradient-text">Your Way</span></h1>
+            <p class="hero-subtitle">
+                A friendly, modern PBX platform that grows with your business.<br>
+                Built by the community, for the community.
+            </p>
+            <div class="hero-actions">
+                <a href="#get-started" class="btn btn-primary btn-lg">
+                    <i class="bi bi-rocket-takeoff"></i> Get Started Free
+                </a>
+                <a href="https://github.com/yourorg/callsign" class="btn btn-outline btn-lg" target="_blank">
+                    <i class="bi bi-github"></i> Star on GitHub
+                </a>
+            </div>
+            <div class="trust-indicators">
+                <div class="trust-item">
+                    <i class="bi bi-shield-check"></i>
+                    <span>Self-hosted & Secure</span>
+                </div>
+                <div class="trust-item">
+                    <i class="bi bi-people"></i>
+                    <span>Multi-tenant Ready</span>
+                </div>
+                <div class="trust-item">
+                    <i class="bi bi-heart"></i>
+                    <span>Community Driven</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Features Section -->
+    <section id="features" class="section">
+        <div class="container">
+            <h2 class="section-title">Everything You Need 📞</h2>
+            <p class="section-subtitle">Professional-grade features without the enterprise price tag</p>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon emerald"><i class="bi bi-telephone-plus"></i></div>
+                    <h3>Extensions & DIDs</h3>
+                    <p>Full extension management with DID routing, caller ID, and voicemail integration.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon violet"><i class="bi bi-diagram-3"></i></div>
+                    <h3>Ring Groups</h3>
+                    <p>Simultaneous, sequential, and hunt group strategies with smart failover.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon pink"><i class="bi bi-menu-button-wide"></i></div>
+                    <h3>IVR / Auto Attendant</h3>
+                    <p>Multi-level menus with DTMF routing, custom prompts, and time conditions.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon amber"><i class="bi bi-voicemail"></i></div>
+                    <h3>Visual Voicemail</h3>
+                    <p>Email notifications, transcription support, and web-based playback.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon cyan"><i class="bi bi-clock-history"></i></div>
+                    <h3>Time Conditions</h3>
+                    <p>Business hours routing, holiday schedules, and conditional call flows.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon rose"><i class="bi bi-headset"></i></div>
+                    <h3>Call Queues</h3>
+                    <p>ACD queues with agent management, hold music, and callback options.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon indigo"><i class="bi bi-people"></i></div>
+                    <h3>Conference Bridges</h3>
+                    <p>Audio conferencing with moderator controls, PIN access, and recording.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon teal"><i class="bi bi-record-circle"></i></div>
+                    <h3>Call Recording</h3>
+                    <p>On-demand and automatic recording with secure storage and playback.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon orange"><i class="bi bi-phone"></i></div>
+                    <h3>Auto Provisioning</h3>
+                    <p>Zero-touch setup for Yealink, Polycom, Grandstream, and more.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="section section-dark">
+        <div class="container">
+            <h2 class="section-title">Simple, Transparent Pricing 💰</h2>
+            <p class="section-subtitle">Choose the option that works best for you</p>
+
+            <div class="pricing-grid">
+                <div class="pricing-card">
+                    <div class="pricing-header">
+                        <span class="pricing-label">Self-Hosted</span>
+                        <div class="pricing-amount">
+                            <span class="price">$0</span>
+                            <span class="period">forever</span>
+                        </div>
+                    </div>
+                    <p class="pricing-desc">Deploy on your own infrastructure, completely free</p>
+                    <ul class="pricing-features">
+                        <li><i class="bi bi-check-circle-fill"></i> Unlimited extensions</li>
+                        <li><i class="bi bi-check-circle-fill"></i> Unlimited tenants</li>
+                        <li><i class="bi bi-check-circle-fill"></i> All features included</li>
+                        <li><i class="bi bi-check-circle-fill"></i> Full API access</li>
+                        <li><i class="bi bi-check-circle-fill"></i> Community support</li>
+                        <li><i class="bi bi-check-circle-fill"></i> Open source (MIT)</li>
+                    </ul>
+                    <a href="#get-started" class="btn btn-outline btn-block">Get Started Free</a>
+                </div>
+
+                <div class="pricing-card featured">
+                    <div class="pricing-badge">Most Popular</div>
+                    <div class="pricing-header">
+                        <span class="pricing-label">Professional Support</span>
+                        <div class="pricing-amount">
+                            <span class="price">$100</span>
+                            <span class="period">per hour</span>
+                        </div>
+                    </div>
+                    <p class="pricing-desc">Expert help when you need it most</p>
+                    <ul class="pricing-features">
+                        <li><i class="bi bi-check-circle-fill"></i> Everything in Self-Hosted</li>
+                        <li><i class="bi bi-check-circle-fill"></i> Priority email support</li>
+                        <li><i class="bi bi-check-circle-fill"></i> Remote troubleshooting</li>
+                        <li><i class="bi bi-check-circle-fill"></i> Configuration assistance</li>
+                        <li><i class="bi bi-check-circle-fill"></i> Custom development</li>
+                        <li><i class="bi bi-check-circle-fill"></i> SLA available</li>
+                    </ul>
+                    <a href="mailto:support@callsign.io" class="btn btn-primary btn-block">Contact Us</a>
+                </div>
+
+                <div class="pricing-card">
+                    <div class="pricing-header">
+                        <span class="pricing-label">Hosted</span>
+                        <div class="pricing-amount">
+                            <span class="price">Custom</span>
+                            <span class="period">BYO SIP</span>
+                        </div>
+                    </div>
+                    <p class="pricing-desc">We manage CallSign, you bring your SIP trunks</p>
+                    <ul class="pricing-features">
+                        <li><i class="bi bi-check-circle-fill"></i> Fully managed hosting</li>
+                        <li><i class="bi bi-check-circle-fill"></i> Bring your own SIP provider</li>
+                        <li><i class="bi bi-check-circle-fill"></i> Daily backups</li>
+                        <li><i class="bi bi-check-circle-fill"></i> Automatic updates</li>
+                        <li><i class="bi bi-check-circle-fill"></i> Priority support included</li>
+                        <li><i class="bi bi-check-circle-fill"></i> 99.9% uptime SLA</li>
+                    </ul>
+                    <a href="mailto:sales@callsign.io" class="btn btn-outline btn-block">Get a Quote</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tech Stack -->
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Built With Modern Tech 🛠️</h2>
+            <p class="section-subtitle">Proven technologies for reliability and performance</p>
+
+            <div class="arch-diagram">
+                <div class="arch-layer">
+                    <div class="arch-label">Frontend</div>
+                    <div class="arch-items">
+                        <div class="arch-item">
+                            <i class="bi bi-filetype-vue"></i>
+                            <span>Vue 3</span>
+                        </div>
+                        <div class="arch-item">
+                            <i class="bi bi-lightning-charge"></i>
+                            <span>Vite 5</span>
+                        </div>
+                        <div class="arch-item">
+                            <i class="bi bi-signpost-split"></i>
+                            <span>Vue Router</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="arch-connector">
+                    <i class="bi bi-arrow-down-short"></i>
+                </div>
+                <div class="arch-layer">
+                    <div class="arch-label">Backend</div>
+                    <div class="arch-items">
+                        <div class="arch-item highlight">
+                            <i class="bi bi-box"></i>
+                            <span>Go / Iris</span>
+                        </div>
+                        <div class="arch-item">
+                            <i class="bi bi-shield-lock"></i>
+                            <span>JWT + RBAC</span>
+                        </div>
+                        <div class="arch-item">
+                            <i class="bi bi-database"></i>
+                            <span>PostgreSQL</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="arch-connector">
+                    <i class="bi bi-arrow-down-short"></i>
+                </div>
+                <div class="arch-layer">
+                    <div class="arch-label">Telephony</div>
+                    <div class="arch-items">
+                        <div class="arch-item highlight">
+                            <i class="bi bi-telephone"></i>
+                            <span>FreeSWITCH</span>
+                        </div>
+                        <div class="arch-item">
+                            <i class="bi bi-plug"></i>
+                            <span>ESL Events</span>
+                        </div>
+                        <div class="arch-item">
+                            <i class="bi bi-file-code"></i>
+                            <span>XML CURL</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tech-badges">
+                <span class="tech-badge">Docker Ready</span>
+                <span class="tech-badge">REST API</span>
+                <span class="tech-badge">Real-time Events</span>
+                <span class="tech-badge">Audit Logging</span>
+                <span class="tech-badge">Multi-tenant</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Roadmap Section -->
+    <section id="roadmap" class="section section-dark">
+        <div class="container">
+            <h2 class="section-title">What's Coming 🚀</h2>
+            <p class="section-subtitle">We're actively building and improving CallSign</p>
+
+            <div class="roadmap-timeline">
+                <div class="roadmap-phase">
+                    <div class="phase-status done">
+                        <i class="bi bi-check-lg"></i>
+                    </div>
+                    <div class="phase-content">
+                        <h3>Core Features <span class="phase-tag done">Done</span></h3>
+                        <ul>
+                            <li>Extensions, DIDs, Ring Groups</li>
+                            <li>IVR / Auto Attendant</li>
+                            <li>Voicemail with email notifications</li>
+                            <li>Call recording & CDR</li>
+                            <li>Device auto-provisioning</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="roadmap-phase">
+                    <div class="phase-status current">
+                        <i class="bi bi-arrow-right"></i>
+                    </div>
+                    <div class="phase-content">
+                        <h3>In Progress <span class="phase-tag current">Q1 2026</span></h3>
+                        <ul>
+                            <li>WebRTC softphone in browser</li>
+                            <li>SMS / MMS integration</li>
+                            <li>Webhook notifications</li>
+                            <li>Improved call analytics</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="roadmap-phase">
+                    <div class="phase-status upcoming">
+                        <i class="bi bi-clock"></i>
+                    </div>
+                    <div class="phase-content">
+                        <h3>Coming Soon <span class="phase-tag upcoming">Q2-Q3</span></h3>
+                        <ul>
+                            <li>AI-powered call insights</li>
+                            <li>CRM integrations</li>
+                            <li>Mobile apps (iOS/Android)</li>
+                            <li>Video conferencing</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="roadmap-cta">
+                <p>Have ideas? We'd love to hear from you!</p>
+                <a href="https://github.com/yourorg/callsign/issues" class="btn btn-outline" target="_blank">
+                    <i class="bi bi-lightbulb"></i> Suggest a Feature
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Get Started Section -->
+    <section id="get-started" class="section">
+        <div class="container">
+            <h2 class="section-title">Ready to Get Started? 🎉</h2>
+            <p class="section-subtitle">Deploy CallSign in minutes with Docker</p>
+
+            <div class="code-block">
+                <div class="code-header">
+                    <span><i class="bi bi-terminal"></i> Terminal</span>
+                    <button class="copy-btn" onclick="copyCode()">
+                        <i class="bi bi-clipboard"></i> Copy
+                    </button>
+                </div>
+                <pre><code><span class="comment"># Clone the repository</span>
+git clone https://github.com/yourorg/callsign.git
+cd callsign
+
+<span class="comment"># Configure your environment</span>
+cp .env.example .env
+<span class="comment"># Edit .env with your settings</span>
+
+<span class="comment"># Start everything with Docker</span>
+docker compose up -d
+
+<span class="comment"># 🎉 That's it! Access the panel at http://localhost</span></code></pre>
+            </div>
+
+            <div class="get-started-links">
+                <a href="https://github.com/yourorg/callsign" class="btn btn-primary btn-lg" target="_blank">
+                    <i class="bi bi-github"></i> View on GitHub
+                </a>
+                <a href="/docs" class="btn btn-outline btn-lg">
+                    <i class="bi bi-book"></i> Read the Docs
+                </a>
+                <a href="/login" class="btn btn-outline btn-lg">
+                    <i class="bi bi-box-arrow-in-right"></i> Access Portal
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Community Section -->
+    <section class="section section-dark">
+        <div class="container">
+            <div class="community-block">
+                <div class="community-content">
+                    <h2>Join the Community 💬</h2>
+                    <p>Get help, share ideas, and connect with other CallSign users and contributors.</p>
+                </div>
+                <div class="community-links">
+                    <a href="https://github.com/yourorg/callsign/discussions" class="community-link" target="_blank">
+                        <i class="bi bi-chat-dots"></i>
+                        <span>Discussions</span>
+                    </a>
+                    <a href="https://github.com/yourorg/callsign/issues" class="community-link" target="_blank">
+                        <i class="bi bi-bug"></i>
+                        <span>Report Issues</span>
+                    </a>
+                    <a href="https://github.com/yourorg/callsign/blob/main/CONTRIBUTING.md" class="community-link"
+                        target="_blank">
+                        <i class="bi bi-code-slash"></i>
+                        <span>Contribute</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <a href="#" class="logo">
+                        <div class="logo-icon">
+                            <i class="bi bi-telephone-fill"></i>
+                        </div>
+                        <span>CallSign</span>
+                        <span class="by-badge">by voip.rip</span>
+                    </a>
+                    <p>Modern, open-source PBX for everyone.<br>Built with ❤️ by the community.</p>
+                </div>
+                <div class="footer-links">
+                    <div class="footer-column">
+                        <h4>Product</h4>
+                        <a href="#features">Features</a>
+                        <a href="#why-callsign">Why CallSign</a>
+                        <a href="#roadmap">Roadmap</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>Resources</h4>
+                        <a href="/docs">Documentation</a>
+                        <a href="/docs/api">API Reference</a>
+                        <a href="https://github.com/yourorg/callsign" target="_blank">GitHub</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>Community</h4>
+                        <a href="https://github.com/yourorg/callsign/discussions" target="_blank">Discussions</a>
+                        <a href="https://github.com/yourorg/callsign/blob/main/CONTRIBUTING.md"
+                            target="_blank">Contributing</a>
+                        <a href="https://github.com/yourorg/callsign/blob/main/LICENSE" target="_blank">License
+                            (MIT)</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 CallSign • Open Source under MIT License</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

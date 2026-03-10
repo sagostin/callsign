@@ -202,6 +202,12 @@ export const queuesAPI = {
     create: (data) => api.post('/queues', data),
     update: (id, data) => api.put(`/queues/${id}`, data),
     delete: (id) => api.delete(`/queues/${id}`),
+    // Agent management
+    listAgents: (queueId) => api.get(`/queues/${queueId}/agents`),
+    addAgent: (queueId, data) => api.post(`/queues/${queueId}/agents`, data),
+    removeAgent: (queueId, agentId) => api.delete(`/queues/${queueId}/agents/${agentId}`),
+    pauseAgent: (queueId, agentId) => api.post(`/queues/${queueId}/agents/${agentId}/pause`),
+    unpauseAgent: (queueId, agentId) => api.post(`/queues/${queueId}/agents/${agentId}/unpause`),
 }
 
 // =====================
@@ -213,6 +219,25 @@ export const conferencesAPI = {
     create: (data) => api.post('/conferences', data),
     update: (id, data) => api.put(`/conferences/${id}`, data),
     delete: (id) => api.delete(`/conferences/${id}`),
+    // Live conference control
+    listLive: () => api.get('/conferences/live'),
+    getLive: (name) => api.get(`/conferences/live/${name}`),
+    muteMember: (name, memberId) => api.post(`/conferences/live/${name}/mute/${memberId}`),
+    unmuteMember: (name, memberId) => api.post(`/conferences/live/${name}/unmute/${memberId}`),
+    deafMember: (name, memberId) => api.post(`/conferences/live/${name}/deaf/${memberId}`),
+    undeafMember: (name, memberId) => api.post(`/conferences/live/${name}/undeaf/${memberId}`),
+    kickMember: (name, memberId) => api.post(`/conferences/live/${name}/kick/${memberId}`),
+    lockConference: (name) => api.post(`/conferences/live/${name}/lock`),
+    unlockConference: (name) => api.post(`/conferences/live/${name}/unlock`),
+    startRecording: (name) => api.post(`/conferences/live/${name}/record/start`),
+    stopRecording: (name) => api.post(`/conferences/live/${name}/record/stop`),
+    muteAll: (name) => api.post(`/conferences/live/${name}/mute-all`),
+    unmuteAll: (name) => api.post(`/conferences/live/${name}/unmute-all`),
+    setFloor: (name, memberId) => api.post(`/conferences/live/${name}/floor/${memberId}`),
+    // Conference stats & sessions
+    getStats: (id) => api.get(`/conferences/${id}/stats`),
+    getSessions: (id) => api.get(`/conferences/${id}/sessions`),
+    getSessionParticipants: (sessionId) => api.get(`/conferences/sessions/${sessionId}/participants`),
 }
 
 // =====================
@@ -382,12 +407,21 @@ export const numbersAPI = {
 // Routing API
 // =====================
 export const routingAPI = {
+    // Inbound routes
     listInbound: (params) => api.get('/routing/inbound', { params }),
+    getInbound: (id) => api.get(`/routing/inbound/${id}`),
     createInbound: (data) => api.post('/routing/inbound', data),
+    updateInbound: (id, data) => api.put(`/routing/inbound/${id}`, data),
+    deleteInbound: (id) => api.delete(`/routing/inbound/${id}`),
+    reorderInbound: (items) => api.post('/routing/inbound/reorder', items),
+    // Outbound routes
     listOutbound: (params) => api.get('/routing/outbound', { params }),
+    getOutbound: (id) => api.get(`/routing/outbound/${id}`),
     createOutbound: (data) => api.post('/routing/outbound', data),
+    updateOutbound: (id, data) => api.put(`/routing/outbound/${id}`, data),
+    deleteOutbound: (id) => api.delete(`/routing/outbound/${id}`),
+    reorderOutbound: (items) => api.post('/routing/outbound/reorder', items),
     createDefaultOutbound: () => api.post('/routing/outbound/defaults'),
-
     // Call Blocks
     listBlocks: () => api.get('/routing/blocks'),
     createBlock: (data) => api.post('/routing/blocks', data),
@@ -437,6 +471,15 @@ export const recordingsAPI = {
     list: (params) => api.get('/recordings', { params }),
     get: (id) => api.get(`/recordings/${id}`),
     delete: (id) => api.delete(`/recordings/${id}`),
+    // Stream & download
+    streamUrl: (id) => `/api/recordings/${id}/stream`,
+    downloadUrl: (id) => `/api/recordings/${id}/download`,
+    stream: (id) => api.get(`/recordings/${id}/stream`, { responseType: 'blob' }),
+    download: (id) => api.get(`/recordings/${id}/download`, { responseType: 'blob' }),
+    // Notes & transcription
+    updateNotes: (id, data) => api.put(`/recordings/${id}/notes`, data),
+    getTranscription: (id) => api.get(`/recordings/${id}/transcription`),
+    getConfig: () => api.get('/recordings/config'),
 }
 
 // =====================

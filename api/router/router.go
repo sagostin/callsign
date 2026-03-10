@@ -5,6 +5,8 @@ import (
 	"callsign/handlers"
 	"callsign/handlers/freeswitch"
 	"callsign/middleware"
+	"callsign/services/messaging"
+	"callsign/services/websocket"
 
 	"github.com/kataras/iris/v12"
 	log "github.com/sirupsen/logrus"
@@ -13,25 +15,47 @@ import (
 
 // Router manages the Iris application and routes
 type Router struct {
-	App       *iris.Application
-	DB        *gorm.DB
-	Config    *config.Config
-	Auth      *middleware.AuthMiddleware
-	Tenant    *middleware.TenantMiddleware
-	Handler   *handlers.Handler
-	FSHandler *freeswitch.FSHandler
+	App               *iris.Application
+	DB                *gorm.DB
+	Config            *config.Config
+	Auth              *middleware.AuthMiddleware
+	Tenant            *middleware.TenantMiddleware
+	Handler           *handlers.Handler
+	FSHandler         *freeswitch.FSHandler
+	ConferenceHandler *handlers.ConferenceHandler
+	FaxHandler        *handlers.FaxHandler
+	SMSNumberHandler  *handlers.SMSNumberHandler
+	WebhookHandler    *handlers.WebhookHandler
+	MsgManager        *messaging.Manager
+	WSHub             *websocket.Hub
 }
 
 // NewRouter creates a new Router instance
 func NewRouter(db *gorm.DB, cfg *config.Config) *Router {
+	h := handlers.NewHandler(db, cfg)
+
+	// Initialize WebSocket hub
+	wsHub := websocket.NewHub()
+	go wsHub.Run()
+
+	// Initialize messaging manager
+	msgManager := messaging.NewManager(db, cfg, wsHub)
+	msgManager.Start()
+
 	return &Router{
-		App:       iris.New(),
-		DB:        db,
-		Config:    cfg,
-		Auth:      middleware.NewAuthMiddleware(cfg, db),
-		Tenant:    middleware.NewTenantMiddleware(db),
-		Handler:   handlers.NewHandler(db, cfg),
-		FSHandler: freeswitch.NewFSHandler(db, cfg),
+		App:               iris.New(),
+		DB:                db,
+		Config:            cfg,
+		Auth:              middleware.NewAuthMiddleware(cfg, db),
+		Tenant:            middleware.NewTenantMiddleware(db),
+		Handler:           h,
+		FSHandler:         freeswitch.NewFSHandler(db, cfg),
+		ConferenceHandler: handlers.NewConferenceHandler(db, nil),
+		FaxHandler:        handlers.NewFaxHandler(h, nil),
+		SMSNumberHandler:  handlers.NewSMSNumberHandler(db),
+		WebhookHandler:    handlers.NewWebhookHandler(msgManager),
+		MsgManager:        msgManager,
+		WSHub:             wsHub,
 	}
 }
 
@@ -217,8 +241,13 @@ func (r *Router) Init() {
 				recordings := tenantScoped.Party("/recordings")
 				{
 					recordings.Get("/", r.Handler.ListRecordings)
+					recordings.Get("/config", r.Handler.GetRecordingConfig)
 					recordings.Get("/{id}", r.Handler.GetRecording)
 					recordings.Delete("/{id}", r.Handler.DeleteRecording)
+					recordings.Get("/{id}/stream", r.Handler.StreamRecording)
+					recordings.Get("/{id}/download", r.Handler.DownloadRecording)
+					recordings.Put("/{id}/notes", r.Handler.UpdateRecordingNotes)
+					recordings.Get("/{id}/transcription", r.Handler.GetRecordingTranscription)
 				}
 
 				// IVR Menus
@@ -239,6 +268,12 @@ func (r *Router) Init() {
 					queues.Get("/{id}", r.Handler.GetQueue)
 					queues.Put("/{id}", r.Handler.UpdateQueue)
 					queues.Delete("/{id}", r.Handler.DeleteQueue)
+					// Queue Agent Management
+					queues.Get("/{id}/agents", r.Handler.ListQueueAgents)
+					queues.Post("/{id}/agents", r.Handler.AddQueueAgent)
+					queues.Delete("/{id}/agents/{agentId}", r.Handler.RemoveQueueAgent)
+					queues.Post("/{id}/agents/{agentId}/pause", r.Handler.PauseQueueAgent)
+					queues.Post("/{id}/agents/{agentId}/unpause", r.Handler.UnpauseQueueAgent)
 				}
 
 				// Ring Groups
@@ -269,6 +304,28 @@ func (r *Router) Init() {
 					conferences.Get("/{id}", r.Handler.GetConference)
 					conferences.Put("/{id}", r.Handler.UpdateConference)
 					conferences.Delete("/{id}", r.Handler.DeleteConference)
+					// Conference Stats & Sessions
+					conferences.Get("/{id}/stats", r.ConferenceHandler.GetConferenceStats)
+					conferences.Get("/{id}/sessions", r.ConferenceHandler.GetConferenceSessions)
+					conferences.Get("/sessions/{sessionId}/participants", r.ConferenceHandler.GetSessionParticipants)
+					// Live Conference Control
+					live := conferences.Party("/live")
+					{
+						live.Get("/", r.ConferenceHandler.ListLiveConferences)
+						live.Get("/{name}", r.ConferenceHandler.GetLiveConference)
+						live.Post("/{name}/mute/{memberId}", r.ConferenceHandler.MuteMember)
+						live.Post("/{name}/unmute/{memberId}", r.ConferenceHandler.UnmuteMember)
+						live.Post("/{name}/deaf/{memberId}", r.ConferenceHandler.DeafMember)
+						live.Post("/{name}/undeaf/{memberId}", r.ConferenceHandler.UndeafMember)
+						live.Post("/{name}/kick/{memberId}", r.ConferenceHandler.KickMember)
+						live.Post("/{name}/lock", r.ConferenceHandler.LockConference)
+						live.Post("/{name}/unlock", r.ConferenceHandler.UnlockConference)
+						live.Post("/{name}/record/start", r.ConferenceHandler.StartRecording)
+						live.Post("/{name}/record/stop", r.ConferenceHandler.StopRecording)
+						live.Post("/{name}/mute-all", r.ConferenceHandler.MuteAll)
+						live.Post("/{name}/unmute-all", r.ConferenceHandler.UnmuteAll)
+						live.Post("/{name}/floor/{memberId}", r.ConferenceHandler.SetFloor)
+					}
 				}
 
 				// Numbers/DIDs
@@ -286,8 +343,16 @@ func (r *Router) Init() {
 				{
 					routing.Get("/inbound", r.Handler.ListInboundRoutes)
 					routing.Post("/inbound", r.Handler.CreateInboundRoute)
+					routing.Get("/inbound/{id}", r.Handler.GetInboundRoute)
+					routing.Put("/inbound/{id}", r.Handler.UpdateInboundRoute)
+					routing.Delete("/inbound/{id}", r.Handler.DeleteInboundRoute)
+					routing.Post("/inbound/reorder", r.Handler.ReorderInboundRoutes)
 					routing.Get("/outbound", r.Handler.ListOutboundRoutes)
 					routing.Post("/outbound", r.Handler.CreateOutboundRoute)
+					routing.Get("/outbound/{id}", r.Handler.GetOutboundRoute)
+					routing.Put("/outbound/{id}", r.Handler.UpdateOutboundRoute)
+					routing.Delete("/outbound/{id}", r.Handler.DeleteOutboundRoute)
+					routing.Post("/outbound/reorder", r.Handler.ReorderOutboundRoutes)
 					routing.Post("/outbound/defaults", r.Handler.CreateDefaultUSCANRoutes)
 
 					// Call Blocks
@@ -391,11 +456,18 @@ func (r *Router) Init() {
 				tenantScoped.Post("/check-dial-code", r.Handler.CheckDialCode)
 
 				// Messaging (SMS/MMS)
-				messaging := tenantScoped.Party("/messaging")
+				msgRoutes := tenantScoped.Party("/messaging")
 				{
-					messaging.Get("/conversations", r.Handler.ListConversations)
-					messaging.Get("/conversations/{id}", r.Handler.GetConversation)
-					messaging.Post("/send", r.Handler.SendMessage)
+					msgRoutes.Get("/conversations", r.Handler.ListConversations)
+					msgRoutes.Get("/conversations/{id}", r.Handler.GetConversation)
+					msgRoutes.Post("/send", r.Handler.SendMessage)
+
+					// SMS Number Management
+					msgRoutes.Get("/numbers", r.SMSNumberHandler.ListSMSNumbers)
+					msgRoutes.Put("/numbers/{id}/sms", r.SMSNumberHandler.ConfigureSMSNumber)
+					msgRoutes.Get("/numbers/{id}/assignments", r.SMSNumberHandler.ListNumberAssignments)
+					msgRoutes.Post("/numbers/{id}/assignments", r.SMSNumberHandler.AssignNumber)
+					msgRoutes.Delete("/numbers/{id}/assignments/{assignId}", r.SMSNumberHandler.UnassignNumber)
 				}
 
 				// Contacts
@@ -466,6 +538,60 @@ func (r *Router) Init() {
 					media.Get("/music", r.Handler.ListTenantMusic)
 					media.Post("/music", r.Handler.UploadTenantMusic)
 					media.Delete("/music", r.Handler.DeleteTenantMusic)
+				}
+
+				// Fax
+				faxRoutes := tenantScoped.Party("/fax")
+				{
+					// Fax Boxes
+					faxRoutes.Get("/boxes", r.FaxHandler.ListFaxBoxes)
+					faxRoutes.Post("/boxes", r.FaxHandler.CreateFaxBox)
+					faxRoutes.Get("/boxes/{boxId}", r.FaxHandler.GetFaxBox)
+					faxRoutes.Put("/boxes/{boxId}", r.FaxHandler.UpdateFaxBox)
+					faxRoutes.Delete("/boxes/{boxId}", r.FaxHandler.DeleteFaxBox)
+
+					// Fax Jobs
+					faxRoutes.Get("/jobs", r.FaxHandler.ListFaxJobs)
+					faxRoutes.Get("/jobs/{jobId}", r.FaxHandler.GetFaxJob)
+					faxRoutes.Delete("/jobs/{jobId}", r.FaxHandler.DeleteFaxJob)
+					faxRoutes.Get("/jobs/{jobId}/download", r.FaxHandler.DownloadFax)
+					faxRoutes.Post("/jobs/{jobId}/retry", r.FaxHandler.RetryFax)
+
+					// Fax Actions
+					faxRoutes.Post("/send", r.FaxHandler.SendFax)
+					faxRoutes.Get("/active", r.FaxHandler.GetActiveFaxes)
+					faxRoutes.Get("/stats", r.FaxHandler.GetFaxStats)
+
+					// Fax Endpoints
+					faxRoutes.Get("/endpoints", r.FaxHandler.ListFaxEndpoints)
+					faxRoutes.Post("/endpoints", r.FaxHandler.CreateFaxEndpoint)
+					faxRoutes.Put("/endpoints/{epId}", r.FaxHandler.UpdateFaxEndpoint)
+					faxRoutes.Delete("/endpoints/{epId}", r.FaxHandler.DeleteFaxEndpoint)
+				}
+
+				// Reports & Analytics
+				reports := tenantScoped.Party("/reports")
+				{
+					reports.Get("/call-volume", r.Handler.GetCallVolumeReport)
+					reports.Get("/agent-performance", r.Handler.GetAgentPerformanceReport)
+					reports.Get("/queue-stats", r.Handler.GetQueueStatsReport)
+					reports.Get("/extension-usage", r.Handler.GetExtensionUsageReport)
+					reports.Get("/kpi", r.Handler.GetKPIReport)
+					reports.Get("/number-usage", r.Handler.GetNumberUsageReport)
+					reports.Get("/export", r.Handler.ExportReport)
+				}
+
+				// Hospitality (Hotel room management)
+				hospitality := tenantScoped.Party("/hospitality")
+				{
+					hospitality.Get("/rooms", r.Handler.ListRooms)
+					hospitality.Post("/rooms", r.Handler.CreateRoom)
+					hospitality.Get("/rooms/{id}", r.Handler.GetRoom)
+					hospitality.Put("/rooms/{id}", r.Handler.UpdateRoom)
+					hospitality.Delete("/rooms/{id}", r.Handler.DeleteRoom)
+					hospitality.Post("/rooms/{id}/checkin", r.Handler.CheckInGuest)
+					hospitality.Post("/rooms/{id}/checkout", r.Handler.CheckOutGuest)
+					hospitality.Post("/rooms/{id}/wakeup", r.Handler.ScheduleWakeupCall)
 				}
 			}
 
@@ -698,6 +824,13 @@ func (r *Router) Init() {
 		// Cache management endpoints
 		fs.Get("/cache/flush", r.FSHandler.FlushCache)
 		fs.Get("/cache/stats", r.FSHandler.CacheStats)
+	}
+
+	// Telnyx Webhooks (public — verified via webhook signature, no JWT)
+	webhooks := r.App.Party("/api/webhooks")
+	{
+		webhooks.Post("/telnyx/inbound", r.WebhookHandler.TelnyxInbound)
+		webhooks.Post("/telnyx/status", r.WebhookHandler.TelnyxStatus)
 	}
 
 	// Device Provisioning endpoint (public - devices authenticate via MAC)

@@ -41,6 +41,10 @@ func (h *FSHandler) handleConfiguration(req *XMLCurlRequest, hostname string) st
 		xml = h.buildConferenceConfig()
 	case "local_stream.conf":
 		xml = h.buildLocalStreamConfig()
+	case "callcenter.conf":
+		xml = h.buildCallcenterConfig()
+	case "voicemail.conf":
+		xml = h.buildVoicemailConfig()
 	default:
 		// Unknown config, let FreeSWITCH fall back to static file
 		log.WithField("config", configName).Debug("Configuration not handled, falling back to static file")
@@ -251,10 +255,8 @@ func (h *FSHandler) ivrOptionToAction(opt *models.IVRMenuOption) ivrActionResult
 	}
 }
 
-// buildConferenceConfig generates conference.conf XML
+// buildConferenceConfig generates conference.conf XML from database
 func (h *FSHandler) buildConferenceConfig() string {
-	// For now, return a default conference config
-	// TODO: Build from database when conference models are created
 	var b strings.Builder
 
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
@@ -265,6 +267,8 @@ func (h *FSHandler) buildConferenceConfig() string {
 	b.WriteString("\n")
 	b.WriteString(`    <configuration name="conference.conf" description="Audio Conference">`)
 	b.WriteString("\n")
+
+	// Caller controls — always include defaults
 	b.WriteString(`      <caller-controls>`)
 	b.WriteString("\n")
 	b.WriteString(`        <group name="default">`)
@@ -295,10 +299,41 @@ func (h *FSHandler) buildConferenceConfig() string {
 	b.WriteString("\n")
 	b.WriteString(`        </group>`)
 	b.WriteString("\n")
+	b.WriteString(`        <group name="moderator">`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="mute" digits="0"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="deaf mute" digits="*"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="energy up" digits="9"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="energy equ" digits="8"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="energy dn" digits="7"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="vol talk up" digits="3"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="vol talk zero" digits="2"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="vol talk dn" digits="1"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="vol listen up" digits="6"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="vol listen zero" digits="5"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="vol listen dn" digits="4"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <control action="hangup" digits="#"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        </group>`)
+	b.WriteString("\n")
 	b.WriteString(`      </caller-controls>`)
 	b.WriteString("\n")
+
 	b.WriteString(`      <profiles>`)
 	b.WriteString("\n")
+
+	// Always include the default profile
 	b.WriteString(`        <profile name="default">`)
 	b.WriteString("\n")
 	b.WriteString(`          <param name="rate" value="16000"/>`)
@@ -311,8 +346,96 @@ func (h *FSHandler) buildConferenceConfig() string {
 	b.WriteString("\n")
 	b.WriteString(`          <param name="caller-controls" value="default"/>`)
 	b.WriteString("\n")
+	b.WriteString(`          <param name="moderator-controls" value="moderator"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="comfort-noise" value="true"/>`)
+	b.WriteString("\n")
 	b.WriteString(`        </profile>`)
 	b.WriteString("\n")
+
+	// Generate profiles from DB conferences that have custom profile names
+	var conferences []models.Conference
+	h.DB.Where("enabled = ? AND profile_name != 'default'", true).Find(&conferences)
+
+	// Track generated profile names to avoid duplicates
+	generated := map[string]bool{"default": true}
+
+	for _, conf := range conferences {
+		profileName := conf.ProfileName
+		if profileName == "" || generated[profileName] {
+			continue
+		}
+		generated[profileName] = true
+
+		b.WriteString(fmt.Sprintf(`        <profile name="%s">`, xmlEscape(profileName)))
+		b.WriteString("\n")
+		b.WriteString(`          <param name="rate" value="16000"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="interval" value="20"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="energy-level" value="100"/>`)
+		b.WriteString("\n")
+
+		// Music on hold
+		moh := "local_stream://default"
+		if conf.MusicOnHold != "" {
+			moh = conf.MusicOnHold
+		}
+		b.WriteString(fmt.Sprintf(`          <param name="moh-sound" value="%s"/>`, xmlEscape(moh)))
+		b.WriteString("\n")
+
+		b.WriteString(`          <param name="caller-controls" value="default"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="moderator-controls" value="moderator"/>`)
+		b.WriteString("\n")
+
+		if conf.MaxMembers > 0 {
+			b.WriteString(fmt.Sprintf(`          <param name="max-members" value="%d"/>`, conf.MaxMembers))
+			b.WriteString("\n")
+		}
+
+		if conf.MuteOnJoin {
+			b.WriteString(`          <param name="mute" value="true"/>`)
+			b.WriteString("\n")
+		}
+
+		if conf.AnnounceCount {
+			b.WriteString(`          <param name="announce-count" value="10"/>`)
+			b.WriteString("\n")
+		}
+
+		if conf.PIN != "" {
+			b.WriteString(fmt.Sprintf(`          <param name="pin" value="%s"/>`, xmlEscape(conf.PIN)))
+			b.WriteString("\n")
+		}
+
+		if conf.ModeratorPIN != "" {
+			b.WriteString(fmt.Sprintf(`          <param name="moderator-pin" value="%s"/>`, xmlEscape(conf.ModeratorPIN)))
+			b.WriteString("\n")
+		}
+
+		if conf.RecordConference {
+			b.WriteString(`          <param name="auto-record" value="/var/lib/callsign/recordings/conference/${conference_name}_${strftime(%Y%m%d-%H%M%S)}.wav"/>`)
+			b.WriteString("\n")
+		}
+
+		b.WriteString(`          <param name="comfort-noise" value="true"/>`)
+		b.WriteString("\n")
+
+		if conf.EnterSound != "" {
+			b.WriteString(fmt.Sprintf(`          <param name="enter-sound" value="%s"/>`, xmlEscape(conf.EnterSound)))
+			b.WriteString("\n")
+		}
+
+		if conf.ExitSound != "" {
+			b.WriteString(fmt.Sprintf(`          <param name="exit-sound" value="%s"/>`, xmlEscape(conf.ExitSound)))
+			b.WriteString("\n")
+		}
+
+		b.WriteString(`        </profile>`)
+		b.WriteString("\n")
+	}
+
 	b.WriteString(`      </profiles>`)
 	b.WriteString("\n")
 	b.WriteString(`    </configuration>`)
@@ -372,13 +495,352 @@ func (h *FSHandler) buildLocalStreamConfig() string {
 		b.WriteString("\n")
 	}
 
-	// TODO: Add tenant-specific streams from database
+	// Tenant-specific music streams from database
+	var mediaFiles []models.MediaFile
+	h.DB.Where("type = ?", models.MediaTypeMusic).Find(&mediaFiles)
+
+	// Group by tenant for tenant-specific streams
+	tenantStreams := make(map[uint][]models.MediaFile)
+	for _, mf := range mediaFiles {
+		tenantStreams[mf.TenantID] = append(tenantStreams[mf.TenantID], mf)
+	}
+
+	for tenantID := range tenantStreams {
+		streamName := fmt.Sprintf("tenant_%d", tenantID)
+		streamPath := fmt.Sprintf("/var/lib/callsign/media/%d/music", tenantID)
+		b.WriteString(fmt.Sprintf(`      <directory name="%s" path="%s">`, streamName, streamPath))
+		b.WriteString("\n")
+		b.WriteString(`        <param name="rate" value="8000"/>`)
+		b.WriteString("\n")
+		b.WriteString(`        <param name="shuffle" value="true"/>`)
+		b.WriteString("\n")
+		b.WriteString(`        <param name="channels" value="1"/>`)
+		b.WriteString("\n")
+		b.WriteString(`        <param name="interval" value="20"/>`)
+		b.WriteString("\n")
+		b.WriteString(`        <param name="timer-name" value="soft"/>`)
+		b.WriteString("\n")
+		b.WriteString(`      </directory>`)
+		b.WriteString("\n")
+	}
 
 	b.WriteString(`    </configuration>`)
 	b.WriteString("\n")
 	b.WriteString(`  </section>`)
 	b.WriteString("\n")
 	b.WriteString(`</document>`)
+
+	return b.String()
+}
+
+// buildCallcenterConfig generates callcenter.conf XML for mod_callcenter
+// This is critical — queues, agents, and tiers are all served dynamically from the DB
+func (h *FSHandler) buildCallcenterConfig() string {
+	var b strings.Builder
+
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
+	b.WriteString("\n")
+	b.WriteString(`<document type="freeswitch/xml">`)
+	b.WriteString("\n")
+	b.WriteString(`  <section name="configuration">`)
+	b.WriteString("\n")
+	b.WriteString(`    <configuration name="callcenter.conf" description="Call Center">`)
+	b.WriteString("\n")
+
+	// Global settings
+	b.WriteString(`      <settings>`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="truncate-tiers-on-load" value="true"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="truncate-agents-on-load" value="true"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="odbc-dsn" value=""/>`)
+	b.WriteString("\n")
+	b.WriteString(`      </settings>`)
+	b.WriteString("\n")
+
+	// Queues
+	b.WriteString(`      <queues>`)
+	b.WriteString("\n")
+
+	var queues []models.Queue
+	h.DB.Where("enabled = ?", true).Preload("Agents").Find(&queues)
+
+	// Also get tenant domains for building queue names
+	tenantDomains := make(map[uint]string)
+	var tenants []models.Tenant
+	h.DB.Where("enabled = ?", true).Find(&tenants)
+	for _, t := range tenants {
+		tenantDomains[t.ID] = t.Domain
+	}
+
+	for _, q := range queues {
+		// Queue name format: queue_name@domain (matches FusionPBX convention)
+		queueName := q.Name
+		if domain, ok := tenantDomains[q.TenantID]; ok && domain != "" {
+			queueName = fmt.Sprintf("%s@%s", q.Name, domain)
+		}
+
+		b.WriteString(fmt.Sprintf(`        <queue name="%s">`, xmlEscape(queueName)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <param name="strategy" value="%s"/>`, xmlEscape(string(q.Strategy))))
+		b.WriteString("\n")
+
+		// Music on hold
+		moh := "local_stream://default"
+		if q.MohSound != "" {
+			moh = q.MohSound
+		}
+		b.WriteString(fmt.Sprintf(`          <param name="moh-sound" value="%s"/>`, xmlEscape(moh)))
+		b.WriteString("\n")
+
+		// Time-based score
+		tbs := "queue"
+		if q.TimeBasedScore != "" {
+			tbs = q.TimeBasedScore
+		}
+		b.WriteString(fmt.Sprintf(`          <param name="time-base-score" value="%s"/>`, xmlEscape(tbs)))
+		b.WriteString("\n")
+
+		// Tier settings
+		if q.TierRulesApply {
+			b.WriteString(`          <param name="tier-rules-apply" value="true"/>`)
+		} else {
+			b.WriteString(`          <param name="tier-rules-apply" value="false"/>`)
+		}
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <param name="tier-rule-wait-second" value="%d"/>`, q.TierRuleWaitSec))
+		b.WriteString("\n")
+		b.WriteString(`          <param name="tier-rule-wait-multiply-level" value="true"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="tier-rule-no-agent-no-wait" value="false"/>`)
+		b.WriteString("\n")
+
+		// Timeouts
+		if q.MaxWaitTime > 0 {
+			b.WriteString(fmt.Sprintf(`          <param name="max-wait-time" value="%d"/>`, q.MaxWaitTime))
+			b.WriteString("\n")
+		}
+		if q.MaxWaitTimeNoAgent > 0 {
+			b.WriteString(fmt.Sprintf(`          <param name="max-wait-time-with-no-agent" value="%d"/>`, q.MaxWaitTimeNoAgent))
+			b.WriteString("\n")
+		}
+		if q.MaxWaitTimeNoAgentTimeReached > 0 {
+			b.WriteString(fmt.Sprintf(`          <param name="max-wait-time-with-no-agent-time-reached" value="%d"/>`, q.MaxWaitTimeNoAgentTimeReached))
+			b.WriteString("\n")
+		}
+
+		// Agent delay settings
+		b.WriteString(fmt.Sprintf(`          <param name="discard-abandoned-after" value="%d"/>`, q.WrapUpTime))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <param name="rejected-delay-time" value="%d"/>`, q.RejectDelayTime))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <param name="busy-delay-time" value="%d"/>`, q.BusyDelayTime))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <param name="no-answer-delay-time" value="%d"/>`, q.NoAnswerDelayTime))
+		b.WriteString("\n")
+
+		// Announcements
+		if q.AnnounceSound != "" {
+			b.WriteString(fmt.Sprintf(`          <param name="announce-sound" value="%s"/>`, xmlEscape(q.AnnounceSound)))
+			b.WriteString("\n")
+		}
+		if q.AnnounceFrequency > 0 {
+			b.WriteString(fmt.Sprintf(`          <param name="announce-frequency" value="%d"/>`, q.AnnounceFrequency))
+			b.WriteString("\n")
+		}
+		if q.AnnouncePosition {
+			b.WriteString(`          <param name="announce-position" value="true"/>`)
+			b.WriteString("\n")
+		}
+
+		b.WriteString(`        </queue>`)
+		b.WriteString("\n")
+	}
+
+	b.WriteString(`      </queues>`)
+	b.WriteString("\n")
+
+	// Agents
+	b.WriteString(`      <agents>`)
+	b.WriteString("\n")
+
+	var allAgents []models.QueueAgent
+	h.DB.Find(&allAgents)
+
+	for _, agent := range allAgents {
+		contact := agent.Contact
+		if contact == "" {
+			// Default contact: build from agent name
+			contact = fmt.Sprintf("user/%s", agent.AgentName)
+		}
+
+		b.WriteString(fmt.Sprintf(`        <agent name="%s" type="callback" contact="%s" status="%s" max-no-answer="%d" wrap-up-time="%d" reject-delay-time="0" busy-delay-time="0" no-answer-delay-time="%d"/>`,
+			xmlEscape(agent.AgentName),
+			xmlEscape(contact),
+			xmlEscape(string(agent.Status)),
+			agent.MaxNoAnswer,
+			agent.WrapUpTime,
+			agent.NoAnswerDelayTime))
+		b.WriteString("\n")
+	}
+
+	b.WriteString(`      </agents>`)
+	b.WriteString("\n")
+
+	// Tiers (agent-to-queue mappings)
+	b.WriteString(`      <tiers>`)
+	b.WriteString("\n")
+
+	for _, q := range queues {
+		queueName := q.Name
+		if domain, ok := tenantDomains[q.TenantID]; ok && domain != "" {
+			queueName = fmt.Sprintf("%s@%s", q.Name, domain)
+		}
+
+		for _, agent := range q.Agents {
+			b.WriteString(fmt.Sprintf(`        <tier agent="%s" queue="%s" level="%d" position="%d"/>`,
+				xmlEscape(agent.AgentName),
+				xmlEscape(queueName),
+				agent.TierLevel,
+				agent.TierPosition))
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString(`      </tiers>`)
+	b.WriteString("\n")
+
+	b.WriteString(`    </configuration>`)
+	b.WriteString("\n")
+	b.WriteString(`  </section>`)
+	b.WriteString("\n")
+	b.WriteString(`</document>`)
+
+	log.WithField("queues", len(queues)).Debug("Generated callcenter.conf from database")
+
+	return b.String()
+}
+
+// buildVoicemailConfig generates voicemail.conf XML
+func (h *FSHandler) buildVoicemailConfig() string {
+	var b strings.Builder
+
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
+	b.WriteString("\n")
+	b.WriteString(`<document type="freeswitch/xml">`)
+	b.WriteString("\n")
+	b.WriteString(`  <section name="configuration">`)
+	b.WriteString("\n")
+	b.WriteString(`    <configuration name="voicemail.conf" description="Voicemail">`)
+	b.WriteString("\n")
+
+	// Global settings
+	b.WriteString(`      <settings>`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="file-extension" value="wav"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="record-threshold" value="200"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="record-silence-hits" value="5"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        <param name="record-silence-threshold" value="200"/>`)
+	b.WriteString("\n")
+	b.WriteString(`      </settings>`)
+	b.WriteString("\n")
+
+	// Generate a profile per tenant domain
+	var tenants []models.Tenant
+	h.DB.Where("enabled = ?", true).Find(&tenants)
+
+	b.WriteString(`      <profiles>`)
+	b.WriteString("\n")
+
+	// Default profile (fallback)
+	b.WriteString(`        <profile name="default">`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="file-extension" value="wav"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="terminator-key" value="#"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="max-login-attempts" value="3"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="digit-timeout" value="10000"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="max-record-len" value="180"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="max-retries" value="3"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="tone-spec" value="%(1000, 0, 640)"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="callback-dialplan" value="XML"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="callback-context" value="default"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="play-new-messages-key" value="1"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="play-saved-messages-key" value="2"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="login-keys" value="0"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="operator-extension" value="operator XML default"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="record-title" value="name_and_number"/>`)
+	b.WriteString("\n")
+	b.WriteString(`          <param name="storage-dir" value="/var/lib/callsign/voicemail"/>`)
+	b.WriteString("\n")
+	b.WriteString(`        </profile>`)
+	b.WriteString("\n")
+
+	// Per-tenant profiles (named by domain)
+	for _, tenant := range tenants {
+		if tenant.Domain == "" {
+			continue
+		}
+		b.WriteString(fmt.Sprintf(`        <profile name="%s">`, xmlEscape(tenant.Domain)))
+		b.WriteString("\n")
+		b.WriteString(`          <param name="file-extension" value="wav"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="terminator-key" value="#"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="max-login-attempts" value="3"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="digit-timeout" value="10000"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="max-record-len" value="180"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="max-retries" value="3"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="tone-spec" value="%(1000, 0, 640)"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="callback-dialplan" value="XML"/>`)
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <param name="callback-context" value="%s"/>`, xmlEscape(tenant.Domain)))
+		b.WriteString("\n")
+		b.WriteString(`          <param name="play-new-messages-key" value="1"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="play-saved-messages-key" value="2"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="login-keys" value="0"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <param name="record-title" value="name_and_number"/>`)
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <param name="storage-dir" value="/var/lib/callsign/voicemail/%d"/>`, tenant.ID))
+		b.WriteString("\n")
+		b.WriteString(`        </profile>`)
+		b.WriteString("\n")
+	}
+
+	b.WriteString(`      </profiles>`)
+	b.WriteString("\n")
+
+	b.WriteString(`    </configuration>`)
+	b.WriteString("\n")
+	b.WriteString(`  </section>`)
+	b.WriteString("\n")
+	b.WriteString(`</document>`)
+
+	log.WithField("tenants", len(tenants)).Debug("Generated voicemail.conf from database")
 
 	return b.String()
 }

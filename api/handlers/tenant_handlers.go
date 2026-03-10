@@ -3,8 +3,10 @@ package handlers
 import (
 	"callsign/middleware"
 	"callsign/models"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kataras/iris/v12"
@@ -304,8 +306,51 @@ func (h *Handler) DeleteExtension(ctx iris.Context) {
 }
 
 func (h *Handler) GetExtensionStatus(ctx iris.Context) {
-	// TODO: Integrate with FreeSWITCH ESL for real-time status
-	ctx.JSON(iris.Map{"status": "registered", "message": "Real-time status requires ESL integration"})
+	tenantID := middleware.GetTenantID(ctx)
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+
+	var ext models.Extension
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&ext).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Extension not found"})
+		return
+	}
+
+	// Get tenant domain for registration lookup
+	var tenant models.Tenant
+	h.DB.First(&tenant, tenantID)
+
+	status := "unregistered"
+	registrationIP := ""
+
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		result, err := h.ESLManager.API(fmt.Sprintf("sofia status profile internal user %s@%s",
+			ext.Extension, tenant.Domain))
+		if err == nil && !strings.Contains(result, "Invalid") && !strings.Contains(result, "-ERR") {
+			status = "registered"
+			// Try to extract IP from result
+			lines := strings.Split(result, "\n")
+			for _, line := range lines {
+				if strings.Contains(line, "Contact") {
+					// Extract IP from contact string
+					if atIdx := strings.Index(line, "@"); atIdx > 0 {
+						rest := line[atIdx+1:]
+						if colonIdx := strings.Index(rest, ":"); colonIdx > 0 {
+							registrationIP = rest[:colonIdx]
+						} else if semiIdx := strings.Index(rest, ";"); semiIdx > 0 {
+							registrationIP = rest[:semiIdx]
+						}
+					}
+				}
+			}
+		}
+	}
+
+	ctx.JSON(iris.Map{
+		"extension":       ext.Extension,
+		"status":          status,
+		"registration_ip": registrationIP,
+	})
 }
 
 // NOTE: Device handlers moved to device_handlers.go
@@ -646,6 +691,186 @@ func (h *Handler) DeleteRecording(ctx iris.Context) {
 	ctx.JSON(iris.Map{"message": "Recording deleted"})
 }
 
+// StreamRecording streams recording audio
+func (h *Handler) StreamRecording(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	// Try CallRecording first (call recordings), then Recording (audio library)
+	var callRec models.CallRecording
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&callRec).Error; err == nil {
+		if callRec.FilePath == "" {
+			ctx.StatusCode(http.StatusNotFound)
+			ctx.JSON(iris.Map{"error": "Recording file not found"})
+			return
+		}
+		ctx.ServeFile(callRec.FilePath)
+		return
+	}
+
+	var rec models.Recording
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&rec).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Recording not found"})
+		return
+	}
+
+	if rec.FilePath == "" {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Recording file not found"})
+		return
+	}
+
+	ctx.ServeFile(rec.FilePath)
+}
+
+// DownloadRecording downloads recording as attachment
+func (h *Handler) DownloadRecording(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	var callRec models.CallRecording
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&callRec).Error; err == nil {
+		if callRec.FilePath == "" {
+			ctx.StatusCode(http.StatusNotFound)
+			ctx.JSON(iris.Map{"error": "Recording file not found"})
+			return
+		}
+		filename := callRec.FileName
+		if filename == "" {
+			filename = "recording.wav"
+		}
+		ctx.Header("Content-Disposition", "attachment; filename="+filename)
+		ctx.ServeFile(callRec.FilePath)
+		return
+	}
+
+	var rec models.Recording
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&rec).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Recording not found"})
+		return
+	}
+
+	if rec.FilePath == "" {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Recording file not found"})
+		return
+	}
+
+	filename := rec.FileName
+	if filename == "" {
+		filename = "recording.wav"
+	}
+	ctx.Header("Content-Disposition", "attachment; filename="+filename)
+	ctx.ServeFile(rec.FilePath)
+}
+
+// UpdateRecordingNotes updates notes/tags on a call recording
+func (h *Handler) UpdateRecordingNotes(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	var rec models.CallRecording
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&rec).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Recording not found"})
+		return
+	}
+
+	var input struct {
+		Notes string `json:"notes"`
+		Tags  string `json:"tags"`
+	}
+	if err := ctx.ReadJSON(&input); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": err.Error()})
+		return
+	}
+
+	rec.Notes = input.Notes
+	rec.Tags = input.Tags
+
+	if err := h.DB.Save(&rec).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to update recording"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": rec, "message": "Recording updated"})
+}
+
+// GetRecordingTranscription returns transcription for a call recording
+func (h *Handler) GetRecordingTranscription(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	var rec models.CallRecording
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&rec).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Recording not found"})
+		return
+	}
+
+	var transcription models.Transcription
+	if err := h.DB.Where("recording_id = ?", rec.ID).Preload("Segments").First(&transcription).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Transcription not found", "status": rec.TranscriptionStatus})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": transcription})
+}
+
+// GetRecordingConfig returns tenant-level recording configuration
+func (h *Handler) GetRecordingConfig(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	tenantID := middleware.GetTenantID(ctx)
+
+	var config models.RecordingConfig
+	if err := h.DB.Where("tenant_id = ?", tenantID).First(&config).Error; err != nil {
+		// Return default config if none exists
+		ctx.JSON(iris.Map{"data": models.RecordingConfig{TenantID: tenantID}})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": config})
+}
+
 // =====================
 // IVR Menus
 // =====================
@@ -693,6 +918,8 @@ func (h *Handler) CreateIVRMenu(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(iris.Map{"data": menu, "message": "IVR menu created"})
+
+	h.reloadXML()
 }
 
 func (h *Handler) GetIVRMenu(ctx iris.Context) {
@@ -745,6 +972,8 @@ func (h *Handler) UpdateIVRMenu(ctx iris.Context) {
 	}
 
 	ctx.JSON(iris.Map{"data": menu, "message": "IVR menu updated"})
+
+	h.reloadXML()
 }
 
 func (h *Handler) DeleteIVRMenu(ctx iris.Context) {
@@ -764,6 +993,8 @@ func (h *Handler) DeleteIVRMenu(ctx iris.Context) {
 	}
 
 	ctx.JSON(iris.Map{"message": "IVR menu deleted"})
+
+	h.reloadXML()
 }
 
 // =====================
@@ -813,6 +1044,8 @@ func (h *Handler) CreateQueue(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(iris.Map{"data": queue, "message": "Queue created"})
+
+	h.reloadCallcenter()
 }
 
 func (h *Handler) GetQueue(ctx iris.Context) {
@@ -865,6 +1098,8 @@ func (h *Handler) UpdateQueue(ctx iris.Context) {
 	}
 
 	ctx.JSON(iris.Map{"data": queue, "message": "Queue updated"})
+
+	h.reloadCallcenter()
 }
 
 func (h *Handler) DeleteQueue(ctx iris.Context) {
@@ -884,6 +1119,182 @@ func (h *Handler) DeleteQueue(ctx iris.Context) {
 	}
 
 	ctx.JSON(iris.Map{"message": "Queue deleted"})
+
+	h.reloadCallcenter()
+}
+
+// =====================
+// Queue Agent Management
+// =====================
+
+// ListQueueAgents lists agents for a specific queue
+func (h *Handler) ListQueueAgents(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	// Verify queue belongs to tenant
+	var queue models.Queue
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&queue).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Queue not found"})
+		return
+	}
+
+	var agents []models.QueueAgent
+	if err := h.DB.Where("queue_id = ? AND tenant_id = ?", id, tenantID).Order("tier_level ASC, tier_position ASC").Find(&agents).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to fetch agents"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": agents})
+}
+
+// AddQueueAgent adds an agent to a queue
+func (h *Handler) AddQueueAgent(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	// Verify queue belongs to tenant
+	var queue models.Queue
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&queue).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Queue not found"})
+		return
+	}
+
+	var agent models.QueueAgent
+	if err := ctx.ReadJSON(&agent); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	agent.QueueID = uint(id)
+	agent.TenantID = tenantID
+	if agent.Status == "" {
+		agent.Status = models.AgentStatusLoggedOut
+	}
+	if agent.State == "" {
+		agent.State = models.AgentStateIdle
+	}
+
+	if err := h.DB.Create(&agent).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to add agent"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(iris.Map{"data": agent, "message": "Agent added to queue"})
+
+	h.reloadCallcenter()
+}
+
+// RemoveQueueAgent removes an agent from a queue
+func (h *Handler) RemoveQueueAgent(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	agentID, _ := strconv.Atoi(ctx.Params().Get("agentId"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	// Verify queue belongs to tenant
+	var queue models.Queue
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&queue).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Queue not found"})
+		return
+	}
+
+	if err := h.DB.Where("id = ? AND queue_id = ? AND tenant_id = ?", agentID, id, tenantID).Delete(&models.QueueAgent{}).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to remove agent"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "Agent removed from queue"})
+
+	h.reloadCallcenter()
+}
+
+// PauseQueueAgent sets agent status to On Break
+func (h *Handler) PauseQueueAgent(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	agentID, _ := strconv.Atoi(ctx.Params().Get("agentId"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	var agent models.QueueAgent
+	if err := h.DB.Where("id = ? AND queue_id = ? AND tenant_id = ?", agentID, id, tenantID).First(&agent).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Agent not found"})
+		return
+	}
+
+	agent.Status = models.AgentStatusOnBreak
+	if err := h.DB.Save(&agent).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to pause agent"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": agent, "message": "Agent paused"})
+}
+
+// UnpauseQueueAgent sets agent status to Available
+func (h *Handler) UnpauseQueueAgent(ctx iris.Context) {
+	claims := middleware.GetClaims(ctx)
+	if claims == nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		return
+	}
+
+	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	agentID, _ := strconv.Atoi(ctx.Params().Get("agentId"))
+	tenantID := middleware.GetTenantID(ctx)
+
+	var agent models.QueueAgent
+	if err := h.DB.Where("id = ? AND queue_id = ? AND tenant_id = ?", agentID, id, tenantID).First(&agent).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Agent not found"})
+		return
+	}
+
+	agent.Status = models.AgentStatusAvailable
+	if err := h.DB.Save(&agent).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to unpause agent"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"data": agent, "message": "Agent unpaused"})
 }
 
 // =====================
@@ -933,6 +1344,8 @@ func (h *Handler) CreateRingGroup(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(iris.Map{"data": group, "message": "Ring group created"})
+
+	h.reloadXML()
 }
 
 func (h *Handler) GetRingGroup(ctx iris.Context) {
@@ -985,6 +1398,8 @@ func (h *Handler) UpdateRingGroup(ctx iris.Context) {
 	}
 
 	ctx.JSON(iris.Map{"data": group, "message": "Ring group updated"})
+
+	h.reloadXML()
 }
 
 func (h *Handler) DeleteRingGroup(ctx iris.Context) {
@@ -1004,6 +1419,8 @@ func (h *Handler) DeleteRingGroup(ctx iris.Context) {
 	}
 
 	ctx.JSON(iris.Map{"message": "Ring group deleted"})
+
+	h.reloadXML()
 }
 
 // =====================
@@ -1053,6 +1470,8 @@ func (h *Handler) CreateConference(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(iris.Map{"data": conf, "message": "Conference created"})
+
+	h.reloadXML()
 }
 
 func (h *Handler) GetConference(ctx iris.Context) {
@@ -1105,6 +1524,8 @@ func (h *Handler) UpdateConference(ctx iris.Context) {
 	}
 
 	ctx.JSON(iris.Map{"data": conf, "message": "Conference updated"})
+
+	h.reloadXML()
 }
 
 func (h *Handler) DeleteConference(ctx iris.Context) {

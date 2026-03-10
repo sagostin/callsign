@@ -201,6 +201,30 @@ func (h *FSHandler) buildMultiDialplan(req *XMLCurlRequest) string {
 		if timeCondXML != "" {
 			b.WriteString(timeCondXML)
 		}
+
+		// 2c. Add ring group routing
+		ringGroupXML := h.buildRingGroupDialplans(req)
+		if ringGroupXML != "" {
+			b.WriteString(ringGroupXML)
+		}
+
+		// 2d. Add conference room routing
+		conferenceXML := h.buildConferenceDialplans(req)
+		if conferenceXML != "" {
+			b.WriteString(conferenceXML)
+		}
+
+		// 2e. Add queue routing
+		queueXML := h.buildQueueDialplans(req)
+		if queueXML != "" {
+			b.WriteString(queueXML)
+		}
+
+		// 2f. Add outbound routes (gateway routing for PSTN calls)
+		outboundXML := h.buildOutboundRouteDialplans(req)
+		if outboundXML != "" {
+			b.WriteString(outboundXML)
+		}
 	}
 
 	// 3. Add context-specific and domain dialplans
@@ -306,8 +330,38 @@ func (h *FSHandler) buildDestinationXML(dest *models.Destination, req *XMLCurlRe
 
 // findDialplanByPattern searches for dialplans matching the destination number
 func (h *FSHandler) findDialplanByPattern(req *XMLCurlRequest) string {
-	// This would search dialplan_details for matching conditions
-	// For now, return empty to fall back to static config
+	// Search existing dialplans for matching conditions
+	var dialplans []models.Dialplan
+	h.DB.Where("enabled = ?", true).Preload("Details", "enabled = ? AND detail_type = 'condition'", true).Find(&dialplans)
+
+	for _, dp := range dialplans {
+		for _, detail := range dp.Details {
+			if detail.ConditionField == "destination_number" && detail.ConditionExpression != "" {
+				// Simple check: if the expression contains the destination number or if it's a known pattern
+				if dp.DialplanXML != "" {
+					// Return the pre-generated XML wrapped in document
+					var b strings.Builder
+					b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
+					b.WriteString("\n")
+					b.WriteString(`<document type="freeswitch/xml">`)
+					b.WriteString("\n")
+					b.WriteString(`  <section name="dialplan" description="Dialplan">`)
+					b.WriteString("\n")
+					b.WriteString(fmt.Sprintf(`    <context name="%s">`, xmlEscape(req.Context)))
+					b.WriteString("\n")
+					b.WriteString(dp.DialplanXML)
+					b.WriteString("\n")
+					b.WriteString(`    </context>`)
+					b.WriteString("\n")
+					b.WriteString(`  </section>`)
+					b.WriteString("\n")
+					b.WriteString(`</document>`)
+					return b.String()
+				}
+			}
+		}
+	}
+
 	return ""
 }
 
@@ -618,6 +672,249 @@ func (h *FSHandler) buildDestinationAction(destType, destValue, domain string) d
 		}
 		return destinationAction{App: "hangup", Data: "UNALLOCATED_NUMBER"}
 	}
+}
+
+// buildRingGroupDialplans generates dialplan entries for ring groups
+func (h *FSHandler) buildRingGroupDialplans(req *XMLCurlRequest) string {
+	domain := req.Context
+	if domain == "default" || domain == "" {
+		domain = req.Domain
+	}
+
+	var tenant models.Tenant
+	if err := h.DB.Where("domain = ?", domain).First(&tenant).Error; err != nil {
+		return ""
+	}
+
+	var ringGroups []models.RingGroup
+	h.DB.Where("tenant_id = ? AND enabled = ? AND extension != ''", tenant.ID, true).Find(&ringGroups)
+
+	if len(ringGroups) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString(`      <!-- Ring Groups -->`)
+	b.WriteString("\n")
+
+	for _, rg := range ringGroups {
+		b.WriteString(fmt.Sprintf(`      <extension name="rg_%s" continue="false">`, xmlEscape(rg.Name)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`        <condition field="destination_number" expression="^%s$">`, xmlEscape(rg.Extension)))
+		b.WriteString("\n")
+
+		// Set ring group info as variables
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="ring_group_uuid=%s"/>`, rg.UUID.String()))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="ring_group_name=%s"/>`, xmlEscape(rg.Name)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="ring_group_strategy=%s"/>`, xmlEscape(string(rg.Strategy))))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="tenant_id=%d"/>`, tenant.ID))
+		b.WriteString("\n")
+
+		// Caller ID prefix
+		if rg.CallerIDNamePrefix != "" {
+			b.WriteString(fmt.Sprintf(`          <action application="set" data="effective_caller_id_name=%s${caller_id_name}"/>`, xmlEscape(rg.CallerIDNamePrefix)))
+			b.WriteString("\n")
+		}
+
+		b.WriteString(`          <action application="set" data="hangup_after_bridge=true"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <action application="set" data="continue_on_fail=true"/>`)
+		b.WriteString("\n")
+
+		// Route to callcontrol ESL socket for ring group handling
+		b.WriteString(`          <action application="socket" data="127.0.0.1:9001 async full"/>`)
+		b.WriteString("\n")
+
+		b.WriteString(`        </condition>`)
+		b.WriteString("\n")
+		b.WriteString(`      </extension>`)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// buildConferenceDialplans generates dialplan entries for conference rooms
+func (h *FSHandler) buildConferenceDialplans(req *XMLCurlRequest) string {
+	domain := req.Context
+	if domain == "default" || domain == "" {
+		domain = req.Domain
+	}
+
+	var tenant models.Tenant
+	if err := h.DB.Where("domain = ?", domain).First(&tenant).Error; err != nil {
+		return ""
+	}
+
+	var conferences []models.Conference
+	h.DB.Where("tenant_id = ? AND enabled = ? AND extension != ''", tenant.ID, true).Find(&conferences)
+
+	if len(conferences) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString(`      <!-- Conference Rooms -->`)
+	b.WriteString("\n")
+
+	for _, conf := range conferences {
+		b.WriteString(fmt.Sprintf(`      <extension name="conf_%s" continue="false">`, xmlEscape(conf.Name)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`        <condition field="destination_number" expression="^%s$">`, xmlEscape(conf.Extension)))
+		b.WriteString("\n")
+
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="conference_uuid=%s"/>`, conf.UUID.String()))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="tenant_id=%d"/>`, tenant.ID))
+		b.WriteString("\n")
+
+		// Route to conference ESL socket
+		b.WriteString(`          <action application="socket" data="127.0.0.4:9001 async full"/>`)
+		b.WriteString("\n")
+
+		b.WriteString(`        </condition>`)
+		b.WriteString("\n")
+		b.WriteString(`      </extension>`)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// buildQueueDialplans generates dialplan entries for call center queues
+func (h *FSHandler) buildQueueDialplans(req *XMLCurlRequest) string {
+	domain := req.Context
+	if domain == "default" || domain == "" {
+		domain = req.Domain
+	}
+
+	var tenant models.Tenant
+	if err := h.DB.Where("domain = ?", domain).First(&tenant).Error; err != nil {
+		return ""
+	}
+
+	var queues []models.Queue
+	h.DB.Where("tenant_id = ? AND enabled = ? AND extension != ''", tenant.ID, true).Find(&queues)
+
+	if len(queues) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString(`      <!-- Call Center Queues -->`)
+	b.WriteString("\n")
+
+	for _, q := range queues {
+		b.WriteString(fmt.Sprintf(`      <extension name="queue_%s" continue="false">`, xmlEscape(q.Name)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`        <condition field="destination_number" expression="^%s$">`, xmlEscape(q.Extension)))
+		b.WriteString("\n")
+
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="queue_name=%s"/>`, xmlEscape(q.Name)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="tenant_id=%d"/>`, tenant.ID))
+		b.WriteString("\n")
+
+		// Route to queue ESL socket
+		b.WriteString(`          <action application="socket" data="127.0.0.3:9001 async full"/>`)
+		b.WriteString("\n")
+
+		b.WriteString(`        </condition>`)
+		b.WriteString("\n")
+		b.WriteString(`      </extension>`)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// buildOutboundRouteDialplans generates dialplan entries for outbound calls via gateways
+func (h *FSHandler) buildOutboundRouteDialplans(req *XMLCurlRequest) string {
+	var routes []models.DefaultOutboundRoute
+	h.DB.Where("enabled = ?", true).Order("\"order\" ASC").Find(&routes)
+
+	if len(routes) == 0 {
+		return ""
+	}
+
+	// Build a map of gateways by ID
+	var gateways []models.Gateway
+	h.DB.Where("enabled = ?", true).Find(&gateways)
+	gatewayMap := make(map[uint]*models.Gateway)
+	for i := range gateways {
+		gatewayMap[gateways[i].ID] = &gateways[i]
+	}
+
+	var b strings.Builder
+	b.WriteString(`      <!-- Outbound Routes -->`)
+	b.WriteString("\n")
+
+	for _, route := range routes {
+		gw := gatewayMap[route.GatewayID]
+		if gw == nil {
+			continue // No gateway assigned, skip
+		}
+
+		// Build regex pattern from route config
+		var pattern string
+		if route.DialString != "" {
+			// Custom dial string pattern
+			pattern = route.DialString
+		} else {
+			// Build from digit prefix/min/max
+			if route.DigitPrefix != "" {
+				digitRange := fmt.Sprintf("{%d,%d}", route.DigitMin-len(route.DigitPrefix), route.DigitMax-len(route.DigitPrefix))
+				pattern = fmt.Sprintf("^%s(\\d%s)$", route.DigitPrefix, digitRange)
+			} else {
+				pattern = fmt.Sprintf("^(\\d{%d,%d})$", route.DigitMin, route.DigitMax)
+			}
+		}
+
+		b.WriteString(fmt.Sprintf(`      <extension name="outbound_%s" continue="true">`, xmlEscape(route.Name)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`        <condition field="destination_number" expression="%s">`, xmlEscape(pattern)))
+		b.WriteString("\n")
+
+		// Set outbound caller ID and variables
+		b.WriteString(`          <action application="set" data="hangup_after_bridge=true"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <action application="set" data="continue_on_fail=true"/>`)
+		b.WriteString("\n")
+
+		// Build the bridge destination
+		// $1 is the captured digits from the regex
+		dialDest := "$1"
+		if route.StripDigits > 0 {
+			// Stripping is handled by regex capture group
+			dialDest = "$1"
+		}
+		if route.PrependDigits != "" {
+			dialDest = route.PrependDigits + dialDest
+		}
+
+		bridgeStr := fmt.Sprintf("sofia/gateway/%s/%s", gw.GatewayName, dialDest)
+
+		// Add failover gateway if configured
+		if route.Gateway2ID != nil {
+			gw2 := gatewayMap[*route.Gateway2ID]
+			if gw2 != nil {
+				bridgeStr += fmt.Sprintf("|sofia/gateway/%s/%s", gw2.GatewayName, dialDest)
+			}
+		}
+
+		b.WriteString(fmt.Sprintf(`          <action application="bridge" data="%s"/>`, xmlEscape(bridgeStr)))
+		b.WriteString("\n")
+
+		b.WriteString(`        </condition>`)
+		b.WriteString("\n")
+		b.WriteString(`      </extension>`)
+		b.WriteString("\n")
+	}
+
+	return b.String()
 }
 
 // handlePhrases processes phrase section requests

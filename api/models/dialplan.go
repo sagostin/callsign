@@ -119,6 +119,11 @@ type Destination struct {
 
 	// Order
 	DestinationOrder int `json:"destination_order" gorm:"default:100"`
+
+	// SMS/MMS capabilities
+	SMSEnabled    bool   `json:"sms_enabled" gorm:"default:false"`
+	SMSMode       string `json:"sms_mode" gorm:"default:'disabled'"` // disabled, shared, dedicated
+	SMSProviderID *uint  `json:"sms_provider_id" gorm:"index"`       // FK to MessagingProvider
 }
 
 // GatewayAssociation links a number to a gateway for outbound use

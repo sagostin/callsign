@@ -148,6 +148,10 @@ type ChatThread struct {
 	// For internal/room threads
 	RoomID *uint `json:"room_id,omitempty" gorm:"index"`
 
+	// For group SMS — a shared number that multiple users can participate on
+	IsGroupSMS     bool   `json:"is_group_sms" gorm:"default:false"`
+	GroupSMSNumber string `json:"group_sms_number,omitempty"`
+
 	// For queue-based threads
 	QueueID    *uint `json:"queue_id,omitempty" gorm:"index"`
 	AssignedTo *uint `json:"assigned_to,omitempty" gorm:"index"` // Extension ID
@@ -191,6 +195,7 @@ type ChatMessage struct {
 	// Sender
 	SenderType string `json:"sender_type" gorm:"not null"` // extension, contact, system, bot
 	SenderID   uint   `json:"sender_id"`                   // Extension ID or Contact ID
+	SenderName string `json:"sender_name" gorm:"-"`        // Populated at read time, not persisted
 
 	// Content (encrypted for SMS/external)
 	ContentType   string `json:"content_type" gorm:"default:'text'"` // text, image, video, file, audio

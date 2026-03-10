@@ -4,7 +4,9 @@ import (
 	"callsign/middleware"
 	"callsign/models"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/smtp"
 
 	"github.com/kataras/iris/v12"
 )
@@ -306,8 +308,80 @@ func (h *Handler) UpdateTenantSMTP(ctx iris.Context) {
 
 // TestTenantSMTP sends a test email
 func (h *Handler) TestTenantSMTP(ctx iris.Context) {
-	// TODO: Implement actual SMTP test
-	ctx.JSON(iris.Map{"message": "Test email sent successfully"})
+	tenantID := middleware.GetTenantID(ctx)
+	claims := middleware.GetClaims(ctx)
+
+	// Get tenant SMTP settings
+	var tenant models.Tenant
+	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Tenant not found"})
+		return
+	}
+
+	// Parse settings to get SMTP config
+	var settings TenantSettings
+	if tenant.Settings != "" && tenant.Settings != "{}" {
+		json.Unmarshal([]byte(tenant.Settings), &settings)
+	}
+
+	if settings.SMTPHost == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "SMTP not configured"})
+		return
+	}
+
+	// Build SMTP address
+	smtpPort := settings.SMTPPort
+	if smtpPort == "" {
+		smtpPort = "587"
+	}
+	smtpAddr := settings.SMTPHost + ":" + smtpPort
+
+	// Determine recipient — use current user's email or a fallback
+	recipient := ""
+	if claims != nil && claims.Email != "" {
+		recipient = claims.Email
+	} else {
+		recipient = settings.SMTPFromEmail
+	}
+
+	if recipient == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "No recipient email available"})
+		return
+	}
+
+	// Compose test message
+	from := settings.SMTPFromEmail
+	if from == "" {
+		from = settings.SMTPUsername
+	}
+
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: CallSign SMTP Test\r\n\r\n"+
+		"This is a test email from CallSign PBX.\r\nYour SMTP settings are working correctly.\r\n",
+		from, recipient)
+
+	// Try to send
+	var auth smtp.Auth
+	if settings.SMTPUsername != "" {
+		auth = smtp.PlainAuth("", settings.SMTPUsername, settings.SMTPPassword, settings.SMTPHost)
+	}
+
+	err := smtp.SendMail(smtpAddr, auth, from, []string{recipient}, []byte(msg))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadGateway)
+		ctx.JSON(iris.Map{
+			"error":   "SMTP test failed",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(iris.Map{
+		"message":   "Test email sent successfully",
+		"recipient": recipient,
+	})
 }
 
 // GetTenantMessaging returns messaging/SMS settings

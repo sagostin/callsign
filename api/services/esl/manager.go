@@ -2,7 +2,9 @@ package esl
 
 import (
 	"callsign/config"
+	"callsign/models"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/fiorix/go-eventsocket/eventsocket"
@@ -122,7 +124,7 @@ func (m *Manager) registerServices() {
 	m.Registry.Register("featurecodes", "127.0.0.6:9001", m.handleFeatureCodes)
 }
 
-// handleCallControl handles general call control
+// handleCallControl handles general call control with full routing
 func (m *Manager) handleCallControl(conn *eventsocket.Connection) {
 	defer conn.Close()
 
@@ -136,35 +138,357 @@ func (m *Manager) handleCallControl(conn *eventsocket.Connection) {
 	uuid := ev.Get("Unique-ID")
 	dest := ev.Get("Caller-Destination-Number")
 	domain := ev.Get("variable_domain_name")
+	callerID := ev.Get("Caller-Caller-ID-Number")
+	tenantIDStr := ev.Get("variable_tenant_id")
+	ringGroupUUID := ev.Get("variable_ring_group_uuid")
 
 	log.WithFields(log.Fields{
-		"uuid":        uuid,
-		"destination": dest,
-		"domain":      domain,
+		"uuid":            uuid,
+		"destination":     dest,
+		"domain":          domain,
+		"caller":          callerID,
+		"ring_group_uuid": ringGroupUUID,
 	}).Info("Call control: handling call")
 
 	// Subscribe to events for this channel
 	conn.Send("linger")
 	conn.Send("myevents")
 
-	// TODO: Implement actual call routing logic
-	// For now, just bridge to the destination
+	// Parse tenant ID
+	var tenantID uint = 1
+	if tenantIDStr != "" {
+		fmt.Sscanf(tenantIDStr, "%d", &tenantID)
+	}
 
-	// Example: Bridge to user
-	dialString := fmt.Sprintf("user/%s@%s", dest, domain)
-	conn.Execute("bridge", dialString, true)
+	// Route based on what variables are set by the dialplan
+	if ringGroupUUID != "" {
+		// Ring group call — handle with strategy
+		m.handleRingGroupCall(conn, ringGroupUUID, dest, domain, tenantID)
+		return
+	}
 
-	// Wait for hangup
-	for {
-		ev, err := conn.ReadEvent()
-		if err != nil {
-			break
+	// Check if this is an internal extension call
+	var ext struct {
+		ID                     uint
+		Extension              string
+		ForwardAllEnabled      bool
+		ForwardAllDest         string
+		ForwardBusyEnabled     bool
+		ForwardBusyDest        string
+		ForwardNoAnswerEnabled bool
+		ForwardNoAnswerDest    string
+		DoNotDisturb           bool
+		VoicemailEnabled       bool
+	}
+	err = m.DB.Table("extensions").
+		Joins("JOIN tenants ON tenants.id = extensions.tenant_id").
+		Where("tenants.domain = ? AND extensions.extension = ? AND extensions.enabled = ?", domain, dest, true).
+		Select("extensions.id, extensions.extension, extensions.forward_all_enabled, extensions.forward_all_dest, " +
+			"extensions.forward_busy_enabled, extensions.forward_busy_dest, " +
+			"extensions.forward_no_answer_enabled, extensions.forward_no_answer_dest, " +
+			"extensions.do_not_disturb, extensions.voicemail_enabled").
+		First(&ext).Error
+
+	if err == nil {
+		// Found internal extension
+		// Check DND
+		if ext.DoNotDisturb {
+			log.Infof("Call control: DND active for %s, sending to voicemail", dest)
+			if ext.VoicemailEnabled {
+				conn.Execute("answer", "", true)
+				conn.Execute("voicemail", fmt.Sprintf("default %s %s", domain, dest), true)
+			} else {
+				conn.Execute("respond", "486 Busy Here", false)
+			}
+			return
 		}
 
-		if ev.Get("Event-Name") == "CHANNEL_HANGUP_COMPLETE" {
-			break
+		// Check unconditional forwarding
+		if ext.ForwardAllEnabled && ext.ForwardAllDest != "" {
+			log.Infof("Call control: forwarding %s to %s (forward all)", dest, ext.ForwardAllDest)
+			conn.Execute("set", "call_timeout=30", true)
+			conn.Execute("bridge", fmt.Sprintf("user/%s@%s", ext.ForwardAllDest, domain), true)
+			return
+		}
+
+		// Try to ring the extension with no-answer/busy fallback
+		conn.Execute("set", "call_timeout=30", true)
+		conn.Execute("set", "hangup_after_bridge=true", true)
+		conn.Execute("set", "continue_on_fail=true", true)
+
+		dialString := fmt.Sprintf("user/%s@%s", dest, domain)
+		conn.Execute("bridge", dialString, true)
+
+		// Check bridge result for forwarding
+		resultEv, err := conn.ReadEvent()
+		if err != nil {
+			return
+		}
+
+		hangupCause := resultEv.Get("variable_hangup_cause")
+		if hangupCause == "" {
+			hangupCause = resultEv.Get("variable_originate_disposition")
+		}
+
+		switch hangupCause {
+		case "USER_BUSY":
+			if ext.ForwardBusyEnabled && ext.ForwardBusyDest != "" {
+				log.Infof("Call control: busy forwarding %s to %s", dest, ext.ForwardBusyDest)
+				conn.Execute("bridge", fmt.Sprintf("user/%s@%s", ext.ForwardBusyDest, domain), true)
+				return
+			}
+			if ext.VoicemailEnabled {
+				conn.Execute("answer", "", true)
+				conn.Execute("voicemail", fmt.Sprintf("default %s %s", domain, dest), true)
+			}
+
+		case "NO_ANSWER", "ALLOTTED_TIMEOUT", "NO_USER_RESPONSE":
+			if ext.ForwardNoAnswerEnabled && ext.ForwardNoAnswerDest != "" {
+				log.Infof("Call control: no-answer forwarding %s to %s", dest, ext.ForwardNoAnswerDest)
+				conn.Execute("bridge", fmt.Sprintf("user/%s@%s", ext.ForwardNoAnswerDest, domain), true)
+				return
+			}
+			if ext.VoicemailEnabled {
+				conn.Execute("answer", "", true)
+				conn.Execute("voicemail", fmt.Sprintf("default %s %s", domain, dest), true)
+			}
+		}
+
+		return
+	}
+
+	// Not an internal extension — try outbound routing
+	m.handleOutboundCall(conn, dest, domain, tenantID)
+}
+
+// handleRingGroupCall handles calls routed to ring groups
+func (m *Manager) handleRingGroupCall(conn *eventsocket.Connection, ringGroupUUID, dest, domain string, tenantID uint) {
+	var rg models.RingGroup
+	if err := m.DB.Where("uuid = ? AND enabled = ?", ringGroupUUID, true).
+		Preload("Destinations", func(db *gorm.DB) *gorm.DB {
+			return db.Order("priority ASC")
+		}).
+		First(&rg).Error; err != nil {
+		log.Errorf("Ring group %s not found: %v", ringGroupUUID, err)
+		conn.Execute("hangup", "UNALLOCATED_NUMBER", false)
+		return
+	}
+
+	if len(rg.Destinations) == 0 {
+		log.Warnf("Ring group %s has no destinations", rg.Name)
+		conn.Execute("hangup", "UNALLOCATED_NUMBER", false)
+		return
+	}
+
+	conn.Execute("set", "hangup_after_bridge=true", true)
+	conn.Execute("set", "continue_on_fail=true", true)
+
+	if rg.RingbackTone != "" {
+		conn.Execute("set", fmt.Sprintf("ringback=%s", rg.RingbackTone), true)
+	}
+
+	switch rg.Strategy {
+	case models.RingStrategySimultaneous:
+		// Ring all destinations at once
+		var dialStrings []string
+		for _, d := range rg.Destinations {
+			ds := m.buildRingGroupDialString(d, domain)
+			if ds != "" {
+				dialStrings = append(dialStrings, ds)
+			}
+		}
+		if len(dialStrings) > 0 {
+			timeout := rg.RingTimeout
+			if timeout <= 0 {
+				timeout = 30
+			}
+			conn.Execute("set", fmt.Sprintf("call_timeout=%d", timeout), true)
+			// Simultaneous: comma-separated
+			conn.Execute("bridge", strings.Join(dialStrings, ","), true)
+		}
+
+	case models.RingStrategySequence:
+		// Ring destinations one after another
+		for _, d := range rg.Destinations {
+			ds := m.buildRingGroupDialString(d, domain)
+			if ds == "" {
+				continue
+			}
+			timeout := d.Timeout
+			if timeout <= 0 {
+				timeout = rg.RingTimeout
+			}
+			if timeout <= 0 {
+				timeout = 30
+			}
+
+			if d.Delay > 0 {
+				conn.Execute("sleep", fmt.Sprintf("%d", d.Delay*1000), true)
+			}
+
+			conn.Execute("set", fmt.Sprintf("call_timeout=%d", timeout), true)
+			conn.Execute("bridge", ds, true)
+
+			// Check if bridge succeeded
+			ev, err := conn.ReadEvent()
+			if err != nil {
+				return
+			}
+			cause := ev.Get("variable_originate_disposition")
+			if cause == "SUCCESS" || cause == "" {
+				return // Call connected
+			}
+		}
+
+	case models.RingStrategyRandom:
+		// Shuffle destinations and ring sequentially
+		// Use a simple approach: try each destination with randomized order
+		perm := make([]int, len(rg.Destinations))
+		for i := range perm {
+			perm[i] = i
+		}
+		// Fisher-Yates shuffle using UUID-based seed
+		for i := len(perm) - 1; i > 0; i-- {
+			j := int(rg.UUID[0]+rg.UUID[1]) % (i + 1)
+			perm[i], perm[j] = perm[j], perm[i]
+		}
+
+		for _, idx := range perm {
+			d := rg.Destinations[idx]
+			ds := m.buildRingGroupDialString(d, domain)
+			if ds == "" {
+				continue
+			}
+			timeout := rg.RingTimeout
+			if timeout <= 0 {
+				timeout = 30
+			}
+			conn.Execute("set", fmt.Sprintf("call_timeout=%d", timeout), true)
+			conn.Execute("bridge", ds, true)
+
+			ev, err := conn.ReadEvent()
+			if err != nil {
+				return
+			}
+			cause := ev.Get("variable_originate_disposition")
+			if cause == "SUCCESS" || cause == "" {
+				return
+			}
+		}
+
+	default:
+		// Fallback: ring all simultaneously
+		var dialStrings []string
+		for _, d := range rg.Destinations {
+			ds := m.buildRingGroupDialString(d, domain)
+			if ds != "" {
+				dialStrings = append(dialStrings, ds)
+			}
+		}
+		if len(dialStrings) > 0 {
+			conn.Execute("set", "call_timeout=30", true)
+			conn.Execute("bridge", strings.Join(dialStrings, ","), true)
 		}
 	}
+
+	// If we get here, all ring group destinations failed
+	// Check for timeout destination
+	if rg.TimeoutDestination != "" {
+		action := rg.TimeoutDestinationType
+		switch action {
+		case "voicemail":
+			conn.Execute("answer", "", true)
+			conn.Execute("voicemail", fmt.Sprintf("default %s %s", domain, rg.TimeoutDestination), true)
+		case "extension":
+			conn.Execute("bridge", fmt.Sprintf("user/%s@%s", rg.TimeoutDestination, domain), true)
+		default:
+			conn.Execute("transfer", fmt.Sprintf("%s XML %s", rg.TimeoutDestination, domain), true)
+		}
+	}
+}
+
+// buildRingGroupDialString builds a FreeSWITCH dial string for a ring group destination
+func (m *Manager) buildRingGroupDialString(d models.RingGroupDestination, domain string) string {
+	switch d.DestinationType {
+	case "extension":
+		return fmt.Sprintf("user/%s@%s", d.Destination, domain)
+	case "external":
+		return fmt.Sprintf("sofia/gateway/default/%s", d.Destination)
+	case "gateway":
+		return fmt.Sprintf("sofia/gateway/%s/%s", d.Destination, d.Destination)
+	default:
+		if d.Destination != "" {
+			return fmt.Sprintf("user/%s@%s", d.Destination, domain)
+		}
+		return ""
+	}
+}
+
+// handleOutboundCall routes calls to PSTN via gateways
+func (m *Manager) handleOutboundCall(conn *eventsocket.Connection, dest, domain string, tenantID uint) {
+	// Find matching outbound route
+	var routes []models.DefaultOutboundRoute
+	m.DB.Where("enabled = ?", true).Order("\"order\" ASC").Find(&routes)
+
+	for _, route := range routes {
+		// Simple prefix matching
+		if route.DigitPrefix != "" && !strings.HasPrefix(dest, route.DigitPrefix) {
+			continue
+		}
+
+		// Check digit length
+		if len(dest) < route.DigitMin || len(dest) > route.DigitMax {
+			continue
+		}
+
+		// Found a matching route — get the gateway
+		var gw models.Gateway
+		if err := m.DB.Where("id = ? AND enabled = ?", route.GatewayID, true).First(&gw).Error; err != nil {
+			continue
+		}
+
+		// Build dial destination
+		dialDest := dest
+		if route.StripDigits > 0 && len(dialDest) > route.StripDigits {
+			dialDest = dialDest[route.StripDigits:]
+		}
+		if route.PrependDigits != "" {
+			dialDest = route.PrependDigits + dialDest
+		}
+
+		log.WithFields(log.Fields{
+			"route":   route.Name,
+			"gateway": gw.GatewayName,
+			"dest":    dialDest,
+		}).Info("Call control: outbound route matched")
+
+		conn.Execute("set", "hangup_after_bridge=true", true)
+
+		bridgeStr := fmt.Sprintf("sofia/gateway/%s/%s", gw.GatewayName, dialDest)
+		conn.Execute("bridge", bridgeStr, true)
+
+		// If primary fails and failover is configured
+		if route.Gateway2ID != nil {
+			ev, err := conn.ReadEvent()
+			if err != nil {
+				return
+			}
+			cause := ev.Get("variable_originate_disposition")
+			if cause != "SUCCESS" && cause != "" {
+				var gw2 models.Gateway
+				if err := m.DB.Where("id = ? AND enabled = ?", *route.Gateway2ID, true).First(&gw2).Error; err == nil {
+					failoverStr := fmt.Sprintf("sofia/gateway/%s/%s", gw2.GatewayName, dialDest)
+					conn.Execute("bridge", failoverStr, true)
+				}
+			}
+		}
+
+		return
+	}
+
+	// No matching outbound route
+	log.Warnf("Call control: no outbound route for %s", dest)
+	conn.Execute("respond", "404 Not Found", false)
 }
 
 // handleVoicemail handles voicemail operations
@@ -308,6 +632,85 @@ func (m *Manager) API(command string) (string, error) {
 		return "", fmt.Errorf("not connected")
 	}
 	return client.API(command)
+}
+
+// ReloadXML sends a reloadxml command to FreeSWITCH
+// Call this after config changes that affect xml_curl-served data
+func (m *Manager) ReloadXML() error {
+	_, err := m.API("reloadxml")
+	if err != nil {
+		log.Warnf("Failed to reload XML: %v", err)
+	} else {
+		log.Info("FreeSWITCH XML reloaded")
+	}
+	return err
+}
+
+// SofiaRescan rescans a Sofia profile to pick up new gateways
+func (m *Manager) SofiaRescan(profileName string) error {
+	cmd := fmt.Sprintf("sofia profile %s rescan", profileName)
+	_, err := m.API(cmd)
+	if err != nil {
+		log.Warnf("Failed to rescan Sofia profile %s: %v", profileName, err)
+	} else {
+		log.Infof("Sofia profile %s rescanned", profileName)
+	}
+	return err
+}
+
+// SofiaRestart restarts a Sofia profile (for profile-level config changes)
+func (m *Manager) SofiaRestart(profileName string) error {
+	cmd := fmt.Sprintf("sofia profile %s restart reloadxml", profileName)
+	_, err := m.API(cmd)
+	if err != nil {
+		log.Warnf("Failed to restart Sofia profile %s: %v", profileName, err)
+	} else {
+		log.Infof("Sofia profile %s restarted", profileName)
+	}
+	return err
+}
+
+// CallcenterReload reloads mod_callcenter configuration
+func (m *Manager) CallcenterReload() error {
+	_, err := m.API("reload mod_callcenter")
+	if err != nil {
+		log.Warnf("Failed to reload mod_callcenter: %v", err)
+	} else {
+		log.Info("mod_callcenter reloaded")
+	}
+	return err
+}
+
+// ReloadACL reloads the access control list configuration
+func (m *Manager) ReloadACL() error {
+	_, err := m.API("reloadacl")
+	if err != nil {
+		log.Warnf("Failed to reload ACL: %v", err)
+	} else {
+		log.Info("ACL reloaded")
+	}
+	return err
+}
+
+// FreeSwitchStatus returns the status of the FreeSWITCH connection and system info
+func (m *Manager) FreeSwitchStatus() map[string]interface{} {
+	status := map[string]interface{}{
+		"esl_connected": m.IsConnected(),
+		"esl_running":   m.IsRunning(),
+		"active_calls":  m.GetActiveCalls(),
+	}
+
+	if m.IsConnected() {
+		// Try to get FreeSWITCH system status
+		if result, err := m.API("status"); err == nil {
+			status["freeswitch_status"] = result
+		}
+		if result, err := m.API("sofia status"); err == nil {
+			status["sofia_status"] = result
+		}
+	}
+
+	return status
 }
 
 // SubscribeEvents subscribes to additional FreeSWITCH events

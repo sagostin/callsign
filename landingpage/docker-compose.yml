@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: callsign-landing
+    restart: unless-stopped
+    ports:
+      - "8088:80"
+      - "8443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - .:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - landing
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  landing:
+    driver: bridge
