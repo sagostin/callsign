@@ -299,7 +299,16 @@ func (s *Service) nodeGather(ctx *flowContext, config map[string]interface{}) st
 		promptFile = getConfigStr(config, "audioFile", "silence_stream://250")
 	} else {
 		ttsText := getConfigStr(config, "ttsText", "Please make your selection")
-		promptFile = fmt.Sprintf("say:%s", ttsText)
+		// Try cached TTS playback first
+		if ctx.manager.TTS != nil {
+			if cached := ctx.manager.TTS.PlaybackCommand(ttsText, "flite", "kal"); cached != "" {
+				promptFile = cached
+			} else {
+				promptFile = fmt.Sprintf("say:%s", ttsText)
+			}
+		} else {
+			promptFile = fmt.Sprintf("say:%s", ttsText)
+		}
 	}
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
@@ -373,7 +382,15 @@ func (s *Service) nodePlayTTS(ctx *flowContext, config map[string]interface{}) s
 	engine := getConfigStr(config, "engine", "flite")
 	voice := getConfigStr(config, "voice", "default")
 
-	// FreeSWITCH TTS: speak <engine>|<voice>|<text>
+	// Use cached file if available, else fall back to inline speak
+	if ctx.manager.TTS != nil {
+		if cached := ctx.manager.TTS.PlaybackCommand(text, engine, voice); cached != "" {
+			ctx.conn.Execute("playback", cached, true)
+			return "next"
+		}
+	}
+
+	// Fallback: FreeSWITCH TTS inline speak <engine>|<voice>|<text>
 	cmd := fmt.Sprintf("%s|%s|%s", engine, voice, text)
 	ctx.conn.Execute("speak", cmd, true)
 	return "next"

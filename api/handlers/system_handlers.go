@@ -62,6 +62,14 @@ func (h *Handler) CreateTenant(ctx iris.Context) {
 		return
 	}
 
+	// Provision FreeSWITCH resources (feature codes, park slots, dialplans)
+	if err := models.ProvisionTenant(h.DB, &tenant); err != nil {
+		log.WithError(err).WithField("tenant_id", tenant.ID).Warn("Tenant created but provisioning failed")
+	}
+
+	// Reload FreeSWITCH so new dialplan context is available
+	h.reloadXML()
+
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(iris.Map{"data": tenant})
 }
@@ -123,11 +131,19 @@ func (h *Handler) DeleteTenant(ctx iris.Context) {
 		return
 	}
 
+	// Deprovision FreeSWITCH resources before deleting tenant
+	if err := models.DeprovisionTenant(h.DB, uint(id)); err != nil {
+		log.WithError(err).WithField("tenant_id", id).Warn("Tenant deprovisioning failed")
+	}
+
 	if err := h.DB.Delete(&models.Tenant{}, id).Error; err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
 		ctx.JSON(iris.Map{"error": "Failed to delete tenant"})
 		return
 	}
+
+	// Reload FreeSWITCH so removed dialplans/directory entries are cleared
+	h.reloadXML()
 
 	ctx.JSON(iris.Map{"message": "Tenant deleted successfully"})
 }

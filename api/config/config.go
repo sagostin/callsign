@@ -76,6 +76,9 @@ type Config struct {
 	MaxMMSSizeKB    int
 	FFmpegPath      string
 	TranscodeTmpDir string
+
+	// TTS caching
+	TTSCachePath string // Directory for cached TTS audio files
 }
 
 // Load reads configuration from environment variables
@@ -150,6 +153,9 @@ func Load() *Config {
 		MaxMMSSizeKB:    getEnvAsInt("MAX_MMS_SIZE_KB", 600),
 		FFmpegPath:      getEnv("FFMPEG_PATH", "ffmpeg"),
 		TranscodeTmpDir: getEnv("TRANSCODE_TMP_DIR", "/tmp/callsign-transcode"),
+
+		// TTS cache
+		TTSCachePath: getEnv("TTS_CACHE_PATH", getEnv("MEDIA_PATH", "/usr/share/freeswitch/sounds")+"/tts_cache"),
 	}
 }
 

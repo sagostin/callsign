@@ -3,6 +3,7 @@ package esl
 import (
 	"callsign/config"
 	"callsign/models"
+	"callsign/services/tts"
 	"callsign/services/websocket"
 	"fmt"
 	"io"
@@ -25,6 +26,7 @@ type Manager struct {
 	Processor *EventProcessor
 	Registry  *ServiceRegistry
 	WSHub     *websocket.Hub
+	TTS       *tts.Service
 
 	running bool
 	mu      sync.RWMutex
@@ -1396,7 +1398,17 @@ func (m *Manager) execIVRNode(conn *eventsocket.Connection, node *models.IVRFlow
 		if promptType == "audio" {
 			prompt = getStr("audioFile", "silence_stream://250")
 		} else {
-			prompt = fmt.Sprintf("say:%s", getStr("ttsText", "Please make your selection"))
+			ttsText := getStr("ttsText", "Please make your selection")
+			// Try cached TTS playback first
+			if m.TTS != nil {
+				if cached := m.TTS.PlaybackCommand(ttsText, "flite", "kal"); cached != "" {
+					prompt = cached
+				} else {
+					prompt = fmt.Sprintf("say:%s", ttsText)
+				}
+			} else {
+				prompt = fmt.Sprintf("say:%s", ttsText)
+			}
 		}
 		invalidSound := getStr("invalidSound", "ivr/ivr-invalid_entry.wav")
 
@@ -1429,7 +1441,16 @@ func (m *Manager) execIVRNode(conn *eventsocket.Connection, node *models.IVRFlow
 		if text != "" {
 			engine := getStr("engine", "flite")
 			voice := getStr("voice", "default")
-			conn.Execute("speak", fmt.Sprintf("%s|%s|%s", engine, voice, text), true)
+			// Use cached file if available, else fall back to inline speak
+			if m.TTS != nil {
+				if cached := m.TTS.PlaybackCommand(text, engine, voice); cached != "" {
+					conn.Execute("playback", cached, true)
+				} else {
+					conn.Execute("speak", fmt.Sprintf("%s|%s|%s", engine, voice, text), true)
+				}
+			} else {
+				conn.Execute("speak", fmt.Sprintf("%s|%s|%s", engine, voice, text), true)
+			}
 		}
 		return "next"
 

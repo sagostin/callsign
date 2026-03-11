@@ -10,6 +10,7 @@ import (
 	conferencemod "callsign/services/esl/modules/conference"
 	"callsign/services/fax"
 	"callsign/services/logging"
+	"callsign/services/tts"
 	"os"
 	"os/signal"
 	"syscall"
@@ -85,6 +86,18 @@ func main() {
 		}
 	}()
 	defer eslManager.Stop()
+
+	// Initialize TTS caching service
+	ttsService, err := tts.NewService(cfg, db)
+	if err != nil {
+		logManager.Warn("STARTUP", "Failed to init TTS cache (inline TTS will be used): "+err.Error(), nil)
+		log.Warnf("TTS cache init failed: %v", err)
+	} else {
+		eslManager.TTS = ttsService
+		// Warm the cache with system phrases in background
+		go ttsService.Init()
+		logManager.Info("STARTUP", "TTS cache service initialized", nil)
+	}
 
 	// Initialize fax manager (routing, queue processing, retry strategy)
 	faxManager := fax.NewManager(db, cfg, logManager)

@@ -80,11 +80,11 @@ export default api
 // Auth API
 // =====================
 export const authAPI = {
-    login: (username, password) =>
-        api.post('/auth/login', { username, password }),
+    login: (username, password, domain) =>
+        api.post('/auth/login', { username, password, domain }),
 
-    adminLogin: (username, password) =>
-        api.post('/auth/admin/login', { username, password }),
+    adminLogin: (username, password, domain) =>
+        api.post('/auth/admin/login', { username, password, domain }),
 
     logout: () => api.post('/auth/logout'),
 

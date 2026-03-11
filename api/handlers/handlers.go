@@ -10,9 +10,11 @@ import (
 	"callsign/services/messaging"
 	"callsign/services/websocket"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/kataras/iris/v12"
+	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -122,6 +124,26 @@ func (h *Handler) Health(ctx iris.Context) {
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Domain   string `json:"domain"`
+}
+
+// resolveTenantDomain determines the tenant domain from the request.
+// Priority: explicit domain field > Host header. Returns empty string
+// for localhost / 127.x which means "no tenant scoping".
+func (h *Handler) resolveTenantDomain(ctx iris.Context, explicit string) string {
+	domain := strings.TrimSpace(explicit)
+	if domain == "" {
+		domain = ctx.Host()
+	}
+	// Strip port if present
+	if idx := strings.Index(domain, ":"); idx != -1 {
+		domain = domain[:idx]
+	}
+	// Skip tenant scoping for local development
+	if domain == "" || domain == "localhost" || strings.HasPrefix(domain, "127.") {
+		return ""
+	}
+	return domain
 }
 
 // Login authenticates a user and returns a JWT token
@@ -133,8 +155,25 @@ func (h *Handler) Login(ctx iris.Context) {
 		return
 	}
 
+	// Resolve tenant from the connected domain
 	var user models.User
-	if err := h.DB.Where("username = ? OR email = ?", req.Username, req.Username).First(&user).Error; err != nil {
+	var userErr error
+
+	if domain := h.resolveTenantDomain(ctx, req.Domain); domain != "" {
+		var tenant models.Tenant
+		if err := h.DB.Where("domain = ? AND enabled = true", domain).First(&tenant).Error; err != nil {
+			log.WithField("domain", domain).Debug("Login: tenant not found for domain")
+			ctx.StatusCode(http.StatusUnauthorized)
+			ctx.JSON(iris.Map{"error": "Invalid credentials"})
+			return
+		}
+		userErr = h.DB.Where("(username = ? OR email = ?) AND tenant_id = ?", req.Username, req.Username, tenant.ID).First(&user).Error
+	} else {
+		// No tenant resolved (localhost) – global lookup for backward compat
+		userErr = h.DB.Where("username = ? OR email = ?", req.Username, req.Username).First(&user).Error
+	}
+
+	if userErr != nil {
 		ctx.StatusCode(http.StatusUnauthorized)
 		ctx.JSON(iris.Map{"error": "Invalid credentials"})
 		return
@@ -180,8 +219,27 @@ func (h *Handler) AdminLogin(ctx iris.Context) {
 		return
 	}
 
+	adminRoles := []models.UserRole{models.RoleSystemAdmin, models.RoleTenantAdmin}
+
 	var user models.User
-	if err := h.DB.Where("(username = ? OR email = ?) AND role IN ?", req.Username, req.Username, []models.UserRole{models.RoleSystemAdmin, models.RoleTenantAdmin}).First(&user).Error; err != nil {
+	var userErr error
+
+	if domain := h.resolveTenantDomain(ctx, req.Domain); domain != "" {
+		var tenant models.Tenant
+		if err := h.DB.Where("domain = ? AND enabled = true", domain).First(&tenant).Error; err != nil {
+			log.WithField("domain", domain).Debug("AdminLogin: tenant not found for domain")
+			ctx.StatusCode(http.StatusUnauthorized)
+			ctx.JSON(iris.Map{"error": "Invalid credentials or insufficient permissions"})
+			return
+		}
+		// Tenant-scoped lookup for tenant_admin; system_admin can log in from any domain
+		userErr = h.DB.Where("(username = ? OR email = ?) AND role IN ? AND (tenant_id = ? OR role = ?)",
+			req.Username, req.Username, adminRoles, tenant.ID, models.RoleSystemAdmin).First(&user).Error
+	} else {
+		userErr = h.DB.Where("(username = ? OR email = ?) AND role IN ?", req.Username, req.Username, adminRoles).First(&user).Error
+	}
+
+	if userErr != nil {
 		ctx.StatusCode(http.StatusUnauthorized)
 		ctx.JSON(iris.Map{"error": "Invalid credentials or insufficient permissions"})
 		return

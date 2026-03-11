@@ -36,7 +36,8 @@ async function login(username, password) {
     state.error = null
 
     try {
-        const response = await authAPI.login(username, password)
+        const domain = window.location.hostname
+        const response = await authAPI.login(username, password, domain)
         const { token, user } = response.data
 
         setAuth(token, user)
@@ -54,7 +55,8 @@ async function adminLogin(username, password) {
     state.error = null
 
     try {
-        const response = await authAPI.adminLogin(username, password)
+        const domain = window.location.hostname
+        const response = await authAPI.adminLogin(username, password, domain)
         const { token, user } = response.data
 
         setAuth(token, user)

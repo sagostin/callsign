@@ -92,6 +92,9 @@ func (h *Handler) CreateInboundRoute(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(route)
+
+	// Reload FreeSWITCH so new inbound route is active
+	h.reloadXML()
 }
 
 func (h *Handler) GetInboundRoute(ctx iris.Context) {
@@ -152,6 +155,7 @@ func (h *Handler) UpdateInboundRoute(ctx iris.Context) {
 		return db.Order("detail_order ASC")
 	}).First(&route, id)
 
+	h.reloadXML()
 	ctx.JSON(iris.Map{"data": route, "message": "Inbound route updated"})
 }
 
@@ -169,6 +173,7 @@ func (h *Handler) DeleteInboundRoute(ctx iris.Context) {
 	// Delete details first
 	h.DB.Where("dialplan_uuid = ?", route.UUID).Delete(&models.DialplanDetail{})
 	h.DB.Delete(&route)
+	h.reloadXML()
 	ctx.StatusCode(http.StatusNoContent)
 }
 
@@ -243,6 +248,8 @@ func (h *Handler) CreateOutboundRoute(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(route)
+
+	h.reloadXML()
 }
 
 func (h *Handler) GetOutboundRoute(ctx iris.Context) {
@@ -308,6 +315,7 @@ func (h *Handler) UpdateOutboundRoute(ctx iris.Context) {
 		return db.Order("detail_order ASC")
 	}).First(&route, id)
 
+	h.reloadXML()
 	ctx.JSON(iris.Map{"data": route, "message": "Outbound route updated"})
 }
 
@@ -325,6 +333,7 @@ func (h *Handler) DeleteOutboundRoute(ctx iris.Context) {
 	// Delete details first
 	h.DB.Where("dialplan_uuid = ?", route.UUID).Delete(&models.DialplanDetail{})
 	h.DB.Delete(&route)
+	h.reloadXML()
 	ctx.StatusCode(http.StatusNoContent)
 }
 
@@ -395,6 +404,8 @@ func (h *Handler) CreateDialPlan(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(dialplan)
+
+	h.reloadXML()
 }
 
 func (h *Handler) GetDialPlan(ctx iris.Context) {
@@ -456,6 +467,7 @@ func (h *Handler) UpdateDialPlan(ctx iris.Context) {
 		return db.Order("detail_order ASC")
 	}).First(&dialplan, id)
 
+	h.reloadXML()
 	ctx.JSON(dialplan)
 }
 
@@ -474,6 +486,7 @@ func (h *Handler) DeleteDialPlan(ctx iris.Context) {
 	h.DB.Where("dialplan_uuid = ?", dialplan.UUID).Delete(&models.DialplanDetail{})
 
 	h.DB.Delete(&dialplan)
+	h.reloadXML()
 	ctx.StatusCode(http.StatusNoContent)
 }
 
@@ -535,6 +548,8 @@ func (h *Handler) CreateFeatureCode(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(code)
+
+	h.reloadXML()
 }
 
 func (h *Handler) GetFeatureCode(ctx iris.Context) {
@@ -570,6 +585,7 @@ func (h *Handler) UpdateFeatureCode(ctx iris.Context) {
 
 	code.TenantID = &tenantID
 	h.DB.Save(&code)
+	h.reloadXML()
 	ctx.JSON(code)
 }
 
@@ -585,6 +601,7 @@ func (h *Handler) DeleteFeatureCode(ctx iris.Context) {
 	}
 
 	h.DB.Delete(&code)
+	h.reloadXML()
 	ctx.StatusCode(http.StatusNoContent)
 }
 
@@ -621,6 +638,8 @@ func (h *Handler) CreateTimeCondition(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(condition)
+
+	h.reloadXML()
 }
 
 func (h *Handler) GetTimeCondition(ctx iris.Context) {
@@ -656,6 +675,7 @@ func (h *Handler) UpdateTimeCondition(ctx iris.Context) {
 
 	condition.TenantID = tenantID
 	h.DB.Save(&condition)
+	h.reloadXML()
 	ctx.JSON(condition)
 }
 
@@ -671,6 +691,7 @@ func (h *Handler) DeleteTimeCondition(ctx iris.Context) {
 	}
 
 	h.DB.Delete(&condition)
+	h.reloadXML()
 	ctx.StatusCode(http.StatusNoContent)
 }
 
@@ -816,6 +837,8 @@ func (h *Handler) CreateCallFlow(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(flow)
+
+	h.reloadXML()
 }
 
 func (h *Handler) GetCallFlow(ctx iris.Context) {
@@ -851,6 +874,7 @@ func (h *Handler) UpdateCallFlow(ctx iris.Context) {
 
 	flow.TenantID = tenantID
 	h.DB.Save(&flow)
+	h.reloadXML()
 	ctx.JSON(flow)
 }
 
@@ -866,6 +890,7 @@ func (h *Handler) DeleteCallFlow(ctx iris.Context) {
 	}
 
 	h.DB.Delete(&flow)
+	h.reloadXML()
 	ctx.StatusCode(http.StatusNoContent)
 }
 
@@ -893,6 +918,8 @@ func (h *Handler) ToggleCallFlow(ctx iris.Context) {
 	if numStates > 0 && flow.CurrentState < numStates {
 		stateLabel = flow.Destinations[flow.CurrentState].Label
 	}
+
+	h.reloadXML()
 
 	ctx.JSON(iris.Map{
 		"data":        flow,
@@ -958,6 +985,8 @@ func (h *Handler) CreateNumber(ctx iris.Context) {
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(number)
+
+	h.reloadXML()
 }
 
 func (h *Handler) GetNumber(ctx iris.Context) {
@@ -1009,6 +1038,7 @@ func (h *Handler) UpdateNumber(ctx iris.Context) {
 
 	number.TenantID = tenantID
 	h.DB.Save(&number)
+	h.reloadXML()
 	ctx.JSON(number)
 }
 
@@ -1024,6 +1054,7 @@ func (h *Handler) DeleteNumber(ctx iris.Context) {
 	}
 
 	h.DB.Delete(&number)
+	h.reloadXML()
 	ctx.StatusCode(http.StatusNoContent)
 }
 

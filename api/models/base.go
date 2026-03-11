@@ -88,6 +88,7 @@ func AutoMigrate(db *gorm.DB) error {
 
 		// Feature codes & Presence
 		&FeatureCode{},
+		&ParkSlot{},
 		&ExtensionPresence{},
 
 		// IVR & Routing
