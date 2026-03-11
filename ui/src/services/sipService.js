@@ -68,6 +68,9 @@ export function useSipService() {
     extension: '',
     password: '',
     displayName: '',
+    authToken: '',   // JWT for API calls
+    userId: null,    // User ID for provisioning
+    extensionId: null, // Extension ID for provisioning
     stunServers: ['stun:stun.l.google.com:19302'],
     turnServers: []
   })
@@ -88,12 +91,15 @@ export function useSipService() {
    */
   async function initialize(options) {
     console.log('[SIP] Initializing SIP service...', options)
-    
+
     config.server = options.server || config.server
     config.domain = options.domain || config.domain
     config.extension = options.extension || config.extension
     config.password = options.password || config.password
     config.displayName = options.displayName || config.displayName
+    config.authToken = options.authToken || config.authToken
+    config.userId = options.userId || config.userId
+    config.extensionId = options.extensionId || config.extensionId
 
     // Create audio elements for media
     if (state.audioMode === AudioMode.SOFTPHONE) {
@@ -102,7 +108,7 @@ export function useSipService() {
 
     // Fetch available devices for binding
     await fetchRegisteredDevices()
-    
+
     return true
   }
 
@@ -122,17 +128,114 @@ export function useSipService() {
   }
 
   /**
-   * Fetch devices registered to this extension for binding
+   * Fetch devices/endpoints registered to this extension from the API
    */
   async function fetchRegisteredDevices() {
-    // This would be an API call to get registered devices
-    // For now, mock data
-    state.registeredDevices = [
-      { id: 'softphone', type: 'softphone', name: 'Browser Softphone', status: 'available', mac: null },
-      { id: 'yealink-t46u', type: 'desk_phone', name: 'Yealink T46U (Desk)', status: 'registered', mac: '80:5E:C0:12:34:56' },
-      { id: 'poly-vvx450', type: 'desk_phone', name: 'Polycom VVX 450 (Conf Room)', status: 'registered', mac: '64:16:7F:78:90:AB' },
-      { id: 'mobile-app', type: 'mobile', name: 'Mobile App (iPhone)', status: 'available', mac: null },
-    ]
+    try {
+      const extensionId = config.extensionId
+      if (!extensionId) {
+        // Fallback to softphone only if no extension ID configured
+        state.registeredDevices = [
+          { id: 'softphone', type: 'softphone', name: 'Browser Softphone', status: 'available', mac: null }
+        ]
+        return
+      }
+
+      const response = await fetch(`/api/registrations/extension/${extensionId}`, {
+        headers: {
+          'Authorization': `Bearer ${config.authToken}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Always include browser softphone as first option
+        const devices = [
+          { id: 'softphone', type: 'softphone', name: 'Browser Softphone', status: 'available', mac: null }
+        ]
+        // Add registered endpoints from API
+        if (data.registrations) {
+          for (const reg of data.registrations) {
+            devices.push({
+              id: reg.uuid,
+              type: reg.endpoint_type === 'device' ? 'desk_phone' : reg.endpoint_type,
+              name: reg.device_label || reg.registration_user,
+              status: reg.status,
+              mac: reg.device?.mac || null,
+              registrationUser: reg.registration_user,
+              endpointType: reg.endpoint_type
+            })
+          }
+        }
+        state.registeredDevices = devices
+      } else {
+        console.warn('[SIP] Failed to fetch registered devices, using defaults')
+        state.registeredDevices = [
+          { id: 'softphone', type: 'softphone', name: 'Browser Softphone', status: 'available', mac: null }
+        ]
+      }
+    } catch (error) {
+      console.warn('[SIP] Error fetching devices:', error)
+      state.registeredDevices = [
+        { id: 'softphone', type: 'softphone', name: 'Browser Softphone', status: 'available', mac: null }
+      ]
+    }
+  }
+
+  /**
+   * Get or create a persistent instance ID for this browser
+   */
+  function getInstanceId() {
+    let instanceId = localStorage.getItem('callsign_sip_instance_id')
+    if (!instanceId) {
+      instanceId = crypto.randomUUID ? crypto.randomUUID().substring(0, 8) : Math.random().toString(36).substring(2, 10)
+      localStorage.setItem('callsign_sip_instance_id', instanceId)
+    }
+    return instanceId
+  }
+
+  /**
+   * Provision this browser as a WebRTC client endpoint
+   * Returns SIP credentials for independent registration with FreeSWITCH
+   */
+  async function provisionWebClient() {
+    const instanceId = getInstanceId()
+
+    try {
+      const response = await fetch('/api/registrations/provision', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.authToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          endpoint_type: 'web_client',
+          instance_id: instanceId,
+          device_label: `Browser (${navigator.platform || 'Web'})`,
+          os_info: navigator.userAgent.substring(0, 100),
+          user_id: config.userId || undefined,
+          extension_id: config.extensionId || undefined
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log('[SIP] Web client provisioned:', data.sip_user)
+        return {
+          sipUser: data.sip_user,
+          sipPassword: data.sip_password,
+          alreadyProvisioned: data.already_provisioned || false
+        }
+      } else {
+        const err = await response.json()
+        console.error('[SIP] Provision failed:', err.error)
+        return null
+      }
+    } catch (error) {
+      console.error('[SIP] Provision error:', error)
+      return null
+    }
   }
 
   // ============================================
@@ -153,18 +256,31 @@ export function useSipService() {
 
     try {
       console.log('[SIP] Connecting to', config.server)
-      
+
+      // Provision as independent web client if in softphone mode
+      let sipUser = config.extension
+      let sipPassword = config.password
+
+      if (state.audioMode === AudioMode.SOFTPHONE && config.authToken) {
+        const provisioned = await provisionWebClient()
+        if (provisioned) {
+          sipUser = provisioned.sipUser
+          sipPassword = provisioned.sipPassword
+          console.log('[SIP] Using provisioned web client identity:', sipUser)
+        }
+      }
+
       // ===== SIP.js Integration Point =====
       // When sip.js is installed, uncomment this:
       /*
       const { UserAgent, Registerer, Inviter, SessionState } = await import('sip.js')
       
-      const uri = UserAgent.makeURI(`sip:${config.extension}@${config.domain}`)
+      const uri = UserAgent.makeURI(`sip:${sipUser}@${config.domain}`)
       
       userAgent = new UserAgent({
         uri: uri,
-        authorizationUsername: config.extension,
-        authorizationPassword: config.password,
+        authorizationUsername: sipUser,
+        authorizationPassword: sipPassword,
         transportOptions: {
           server: config.server
         },
@@ -211,12 +327,12 @@ export function useSipService() {
     if (session) {
       await hangup()
     }
-    
+
     if (userAgent) {
       await userAgent.stop()
       userAgent = null
     }
-    
+
     state.connectionState = SipState.DISCONNECTED
     console.log('[SIP] Disconnected')
   }
@@ -230,18 +346,18 @@ export function useSipService() {
    */
   function bindToDevice(device) {
     console.log('[SIP] Binding to device:', device)
-    
+
     state.boundDevice = device
     state.audioMode = device.type === 'softphone' ? AudioMode.SOFTPHONE :
-                      device.type === 'desk_phone' ? AudioMode.DESK_PHONE :
-                      device.type === 'mobile' ? AudioMode.MOBILE : AudioMode.SOFTPHONE
-    
+      device.type === 'desk_phone' ? AudioMode.DESK_PHONE :
+        device.type === 'mobile' ? AudioMode.MOBILE : AudioMode.SOFTPHONE
+
     // If binding to physical device, we need to tell server to route audio there
     if (device.type !== 'softphone') {
       console.log('[SIP] Audio will be routed to:', device.name)
       // API call to set device binding would go here
     }
-    
+
     return true
   }
 
@@ -270,7 +386,7 @@ export function useSipService() {
 
     console.log('[SIP] Calling:', number)
     state.callState = CallState.DIALING
-    
+
     currentCall.id = Date.now().toString()
     currentCall.remoteNumber = number
     currentCall.direction = 'outbound'
@@ -313,12 +429,12 @@ export function useSipService() {
       // Mock call progress
       await new Promise(r => setTimeout(r, 1000))
       state.callState = CallState.RINGING
-      
+
       await new Promise(r => setTimeout(r, 2000))
       state.callState = CallState.ESTABLISHED
       currentCall.startTime = new Date()
       startDurationTimer()
-      
+
       return true
 
     } catch (error) {
@@ -338,7 +454,7 @@ export function useSipService() {
     }
 
     console.log('[SIP] Answering call')
-    
+
     // ===== SIP.js Integration Point =====
     /*
     if (session) {
@@ -354,7 +470,7 @@ export function useSipService() {
     state.callState = CallState.ESTABLISHED
     currentCall.startTime = new Date()
     startDurationTimer()
-    
+
     return true
   }
 
@@ -363,9 +479,9 @@ export function useSipService() {
    */
   async function hangup() {
     if (state.callState === CallState.IDLE) return false
-    
+
     console.log('[SIP] Hanging up')
-    
+
     // ===== SIP.js Integration Point =====
     /*
     if (session) {
@@ -377,12 +493,12 @@ export function useSipService() {
 
     stopDurationTimer()
     state.callState = CallState.TERMINATED
-    
+
     setTimeout(() => {
       state.callState = CallState.IDLE
       resetCallInfo()
     }, 1000)
-    
+
     return true
   }
 
@@ -392,7 +508,7 @@ export function useSipService() {
   function toggleMute() {
     currentCall.muted = !currentCall.muted
     console.log('[SIP] Mute:', currentCall.muted)
-    
+
     // ===== SIP.js Integration Point =====
     /*
     if (session) {
@@ -405,7 +521,7 @@ export function useSipService() {
     }
     */
     // =====================================
-    
+
     return currentCall.muted
   }
 
@@ -432,7 +548,7 @@ export function useSipService() {
     currentCall.onHold = !currentCall.onHold
     state.callState = currentCall.onHold ? CallState.HOLDING : CallState.ESTABLISHED
     console.log('[SIP] Hold:', currentCall.onHold)
-    
+
     return currentCall.onHold
   }
 
@@ -441,9 +557,9 @@ export function useSipService() {
    */
   function sendDtmf(tone) {
     if (state.callState !== CallState.ESTABLISHED) return false
-    
+
     console.log('[SIP] DTMF:', tone)
-    
+
     // ===== SIP.js Integration Point =====
     /*
     if (session) {
@@ -451,7 +567,7 @@ export function useSipService() {
     }
     */
     // =====================================
-    
+
     return true
   }
 
@@ -460,9 +576,9 @@ export function useSipService() {
    */
   async function transfer(targetNumber) {
     if (state.callState !== CallState.ESTABLISHED) return false
-    
+
     console.log('[SIP] Transferring to:', targetNumber)
-    
+
     // ===== SIP.js Integration Point =====
     /*
     if (session) {
@@ -471,7 +587,7 @@ export function useSipService() {
     }
     */
     // =====================================
-    
+
     return true
   }
 
@@ -483,7 +599,7 @@ export function useSipService() {
     console.log('[SIP] Incoming call')
     session = invitation
     state.callState = CallState.RINGING
-    
+
     currentCall.id = Date.now().toString()
     currentCall.remoteNumber = invitation.remoteIdentity?.uri?.user || 'Unknown'
     currentCall.remoteName = invitation.remoteIdentity?.displayName || ''
@@ -531,18 +647,18 @@ export function useSipService() {
   // COMPUTED / GETTERS
   // ============================================
 
-  const isConnected = computed(() => 
-    state.connectionState === SipState.CONNECTED || 
+  const isConnected = computed(() =>
+    state.connectionState === SipState.CONNECTED ||
     state.connectionState === SipState.REGISTERED
   )
 
-  const isOnCall = computed(() => 
-    state.callState !== CallState.IDLE && 
+  const isOnCall = computed(() =>
+    state.callState !== CallState.IDLE &&
     state.callState !== CallState.TERMINATED
   )
 
-  const canCall = computed(() => 
-    isConnected.value && 
+  const canCall = computed(() =>
+    isConnected.value &&
     state.callState === CallState.IDLE
   )
 
@@ -557,19 +673,20 @@ export function useSipService() {
     state,
     currentCall,
     config,
-    
+
     // Computed
     isConnected,
     isOnCall,
     canCall,
     formattedDuration,
-    
+
     // Methods
     initialize,
     connect,
     disconnect,
     bindToDevice,
     unbindDevice,
+    provisionWebClient,
     call,
     answer,
     hangup,

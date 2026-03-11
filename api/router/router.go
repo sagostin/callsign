@@ -227,6 +227,17 @@ func (r *Router) Init() {
 					devices.Put("/{id}/lines", r.Handler.UpdateDeviceLines)
 				}
 
+				// Client Registrations (apps, web clients, device registrations)
+				registrations := tenantScoped.Party("/registrations")
+				{
+					registrations.Get("/", r.Handler.ListClientRegistrations)
+					registrations.Post("/provision", r.Handler.ProvisionClientRegistration)
+					registrations.Delete("/{id}", r.Handler.DeleteClientRegistration)
+					registrations.Get("/unassigned", r.Handler.ListUnassignedRegistrations)
+					registrations.Post("/{id}/assign", r.Handler.AssignRegistration)
+					registrations.Get("/extension/{id}", r.Handler.ListExtensionRegistrations)
+				}
+
 				// Device Profiles (tenant-level device grouping)
 				deviceProfiles := tenantScoped.Party("/device-profiles")
 				{

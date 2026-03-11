@@ -14,6 +14,9 @@ const (
 	DeviceTypeProvisioned DeviceType = "provisioned" // Auto-provisioned via HTTP
 	DeviceTypeGenericSIP  DeviceType = "generic_sip" // Manual SIP registration
 	DeviceTypeSoftphone   DeviceType = "softphone"   // WebRTC/mobile app
+	DeviceTypeMobileApp   DeviceType = "mobile_app"  // Mobile application (iOS/Android)
+	DeviceTypeDesktopApp  DeviceType = "desktop_app" // Desktop application (Electron/native)
+	DeviceTypeWebClient   DeviceType = "web_client"  // Browser WebRTC client
 )
 
 // DeviceManufacturer represents a configurable device manufacturer grouping

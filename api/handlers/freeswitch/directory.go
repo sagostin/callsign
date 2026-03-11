@@ -79,6 +79,15 @@ func (h *FSHandler) handleDirectoryUser(req *XMLCurlRequest) string {
 		}
 	}
 
+	// Check if this is an app or web client registration
+	if strings.HasPrefix(req.User, "app_") || strings.HasPrefix(req.User, "web_") {
+		xml := h.handleClientRegistration(req)
+		if xml != "" {
+			h.Cache.Set(cacheKey, xml, CacheTTL.Directory)
+			return xml
+		}
+	}
+
 	// Query extension from database
 	var ext models.Extension
 	result := h.DB.Where(
@@ -171,16 +180,200 @@ func (h *FSHandler) buildDeviceDirectoryXML(device *models.Device, req *XMLCurlR
 	b.WriteString(fmt.Sprintf(`                <variable name="user_context" value="%s"/>`, xmlEscape(req.Domain)))
 	b.WriteString("\n")
 
-	// Can't make outbound calls directly (device registration is for receiving only)
-	// Outbound calls go through the assigned extension
-	b.WriteString(`                <variable name="toll_allow" value=""/>`)
-	b.WriteString("\n")
+	// Mark as device endpoint
 	b.WriteString(`                <variable name="is_device" value="true"/>`)
 	b.WriteString("\n")
+
+	// If the device is assigned to a user/extension, set linked_extension
+	// and inherit outbound permissions
+	if device.UserID != nil {
+		var ext models.Extension
+		if err := h.DB.Where("user_id = ? AND enabled = ?", *device.UserID, true).First(&ext).Error; err == nil {
+			b.WriteString(fmt.Sprintf(`                <variable name="linked_extension" value="%s"/>`, xmlEscape(ext.Extension)))
+			b.WriteString("\n")
+			b.WriteString(fmt.Sprintf(`                <variable name="linked_extension_uuid" value="%s"/>`, ext.UUID.String()))
+			b.WriteString("\n")
+			if ext.TollAllow != "" {
+				b.WriteString(fmt.Sprintf(`                <variable name="toll_allow" value="%s"/>`, xmlEscape(ext.TollAllow)))
+				b.WriteString("\n")
+			}
+			if ext.EffectiveCallerIDName != "" {
+				b.WriteString(fmt.Sprintf(`                <variable name="effective_caller_id_name" value="%s"/>`, xmlEscape(ext.EffectiveCallerIDName)))
+				b.WriteString("\n")
+			}
+			if ext.EffectiveCallerIDNumber != "" {
+				b.WriteString(fmt.Sprintf(`                <variable name="effective_caller_id_number" value="%s"/>`, xmlEscape(ext.EffectiveCallerIDNumber)))
+				b.WriteString("\n")
+			}
+			if ext.OutboundCallerIDName != "" {
+				b.WriteString(fmt.Sprintf(`                <variable name="outbound_caller_id_name" value="%s"/>`, xmlEscape(ext.OutboundCallerIDName)))
+				b.WriteString("\n")
+			}
+			if ext.OutboundCallerIDNumber != "" {
+				b.WriteString(fmt.Sprintf(`                <variable name="outbound_caller_id_number" value="%s"/>`, xmlEscape(ext.OutboundCallerIDNumber)))
+				b.WriteString("\n")
+			}
+		} else {
+			// User exists but no extension found
+			b.WriteString(`                <variable name="toll_allow" value=""/>`)
+			b.WriteString("\n")
+			b.WriteString(`                <variable name="unassigned_extension" value="true"/>`)
+			b.WriteString("\n")
+		}
+	} else {
+		// Unassigned device — no outbound calling
+		b.WriteString(`                <variable name="toll_allow" value=""/>`)
+		b.WriteString("\n")
+		b.WriteString(`                <variable name="unassigned_device" value="true"/>`)
+		b.WriteString("\n")
+	}
 
 	b.WriteString(`              </variables>`)
 	b.WriteString("\n")
 
+	b.WriteString(`            </user>`)
+	b.WriteString("\n")
+	b.WriteString(`          </users>`)
+	b.WriteString("\n")
+	b.WriteString(`        </group>`)
+	b.WriteString("\n")
+	b.WriteString(`      </groups>`)
+	b.WriteString("\n")
+	b.WriteString(`    </domain>`)
+	b.WriteString("\n")
+	b.WriteString(`  </section>`)
+	b.WriteString("\n")
+	b.WriteString(`</document>`)
+
+	return b.String()
+}
+
+// handleClientRegistration handles app/web client SIP registration
+func (h *FSHandler) handleClientRegistration(req *XMLCurlRequest) string {
+	// Look up client registration by registration user
+	var reg models.ClientRegistration
+	if err := h.DB.Where("registration_user = ? AND enabled = ?", req.User, true).
+		First(&reg).Error; err != nil {
+		log.Debugf("Client registration not found: %s@%s", req.User, req.Domain)
+		return ""
+	}
+
+	// Verify domain matches tenant
+	var tenant models.Tenant
+	h.DB.First(&tenant, reg.TenantID)
+	if tenant.Domain != req.Domain {
+		log.Warnf("Client registration domain mismatch: %s vs %s", req.Domain, tenant.Domain)
+		return ""
+	}
+
+	// Build the directory XML for this client
+	return h.buildClientDirectoryXML(&reg, req)
+}
+
+// buildClientDirectoryXML generates directory XML for an app/web client registration
+func (h *FSHandler) buildClientDirectoryXML(reg *models.ClientRegistration, req *XMLCurlRequest) string {
+	var b strings.Builder
+
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
+	b.WriteString("\n")
+	b.WriteString(`<document type="freeswitch/xml">`)
+	b.WriteString("\n")
+	b.WriteString(`  <section name="directory">`)
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf(`    <domain name="%s">`, xmlEscape(req.Domain)))
+	b.WriteString("\n")
+
+	groupName := "clients"
+	if reg.EndpointType == models.EndpointTypeWebClient {
+		groupName = "web_clients"
+	}
+
+	b.WriteString(`      <groups>`)
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf(`        <group name="%s">`, groupName))
+	b.WriteString("\n")
+	b.WriteString(`          <users>`)
+	b.WriteString("\n")
+
+	// Client user entry
+	b.WriteString(fmt.Sprintf(`            <user id="%s">`, xmlEscape(reg.RegistrationUser)))
+	b.WriteString("\n")
+
+	// Params
+	b.WriteString(`              <params>`)
+	b.WriteString("\n")
+
+	// A1 hash for auth
+	a1Hash := generateA1Hash(reg.RegistrationUser, req.Domain, reg.RegistrationPass)
+	b.WriteString(fmt.Sprintf(`                <param name="a1-hash" value="%s"/>`, a1Hash))
+	b.WriteString("\n")
+
+	b.WriteString(`              </params>`)
+	b.WriteString("\n")
+
+	// Variables
+	b.WriteString(`              <variables>`)
+	b.WriteString("\n")
+
+	b.WriteString(fmt.Sprintf(`                <variable name="registration_uuid" value="%s"/>`, reg.UUID.String()))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf(`                <variable name="endpoint_type" value="%s"/>`, string(reg.EndpointType)))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf(`                <variable name="user_context" value="%s"/>`, xmlEscape(req.Domain)))
+	b.WriteString("\n")
+	b.WriteString(`                <variable name="is_device" value="true"/>`)
+	b.WriteString("\n")
+
+	if reg.InstanceID != "" {
+		b.WriteString(fmt.Sprintf(`                <variable name="instance_id" value="%s"/>`, xmlEscape(reg.InstanceID)))
+		b.WriteString("\n")
+	}
+
+	// WebRTC NAT traversal settings
+	if reg.WebRTC {
+		b.WriteString(`                <variable name="sip-force-contact" value="NDLB-connectile-dysfunction"/>`)
+		b.WriteString("\n")
+	}
+
+	// If linked to an extension, inherit outbound permissions
+	if reg.ExtensionID != nil {
+		var ext models.Extension
+		if err := h.DB.First(&ext, *reg.ExtensionID).Error; err == nil {
+			b.WriteString(fmt.Sprintf(`                <variable name="linked_extension" value="%s"/>`, xmlEscape(ext.Extension)))
+			b.WriteString("\n")
+			b.WriteString(fmt.Sprintf(`                <variable name="linked_extension_uuid" value="%s"/>`, ext.UUID.String()))
+			b.WriteString("\n")
+			if ext.TollAllow != "" {
+				b.WriteString(fmt.Sprintf(`                <variable name="toll_allow" value="%s"/>`, xmlEscape(ext.TollAllow)))
+				b.WriteString("\n")
+			}
+			if ext.EffectiveCallerIDName != "" {
+				b.WriteString(fmt.Sprintf(`                <variable name="effective_caller_id_name" value="%s"/>`, xmlEscape(ext.EffectiveCallerIDName)))
+				b.WriteString("\n")
+			}
+			if ext.EffectiveCallerIDNumber != "" {
+				b.WriteString(fmt.Sprintf(`                <variable name="effective_caller_id_number" value="%s"/>`, xmlEscape(ext.EffectiveCallerIDNumber)))
+				b.WriteString("\n")
+			}
+			if ext.OutboundCallerIDName != "" {
+				b.WriteString(fmt.Sprintf(`                <variable name="outbound_caller_id_name" value="%s"/>`, xmlEscape(ext.OutboundCallerIDName)))
+				b.WriteString("\n")
+			}
+			if ext.OutboundCallerIDNumber != "" {
+				b.WriteString(fmt.Sprintf(`                <variable name="outbound_caller_id_number" value="%s"/>`, xmlEscape(ext.OutboundCallerIDNumber)))
+				b.WriteString("\n")
+			}
+		}
+	} else {
+		// Unassigned — no outbound calling
+		b.WriteString(`                <variable name="toll_allow" value=""/>`)
+		b.WriteString("\n")
+		b.WriteString(`                <variable name="unassigned_device" value="true"/>`)
+		b.WriteString("\n")
+	}
+
+	b.WriteString(`              </variables>`)
+	b.WriteString("\n")
 	b.WriteString(`            </user>`)
 	b.WriteString("\n")
 	b.WriteString(`          </users>`)

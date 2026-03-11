@@ -139,6 +139,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&DeviceManufacturer{},
 		&DeviceProfile{},
 		&Firmware{},
+		&ClientRegistration{},
 
 		// Call Recording & Transcription
 		&CallRecording{},

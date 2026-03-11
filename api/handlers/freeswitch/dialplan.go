@@ -225,6 +225,12 @@ func (h *FSHandler) buildMultiDialplan(req *XMLCurlRequest) string {
 		if outboundXML != "" {
 			b.WriteString(outboundXML)
 		}
+
+		// 2g. Add per-extension routing (rings all registered endpoints for each extension)
+		extensionXML := h.buildExtensionDialplans(req)
+		if extensionXML != "" {
+			b.WriteString(extensionXML)
+		}
 	}
 
 	// 3. Add context-specific and domain dialplans
@@ -906,6 +912,83 @@ func (h *FSHandler) buildOutboundRouteDialplans(req *XMLCurlRequest) string {
 		}
 
 		b.WriteString(fmt.Sprintf(`          <action application="bridge" data="%s"/>`, xmlEscape(bridgeStr)))
+		b.WriteString("\n")
+
+		b.WriteString(`        </condition>`)
+		b.WriteString("\n")
+		b.WriteString(`      </extension>`)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// buildExtensionDialplans generates per-extension routing that sends calls
+// to the ESL socket for multi-device ringing across all registered endpoints.
+// For each extension in the tenant, this creates a dialplan entry that:
+//  1. Sets extension metadata (UUID, ring strategy, tenant_id)
+//  2. Routes to the ESL call control socket which handles ringing all
+//     registered endpoints (devices, apps, web clients) per the extension's
+//     ring strategy (simultaneous or sequential)
+func (h *FSHandler) buildExtensionDialplans(req *XMLCurlRequest) string {
+	domain := req.Context
+	if domain == "default" || domain == "" {
+		domain = req.Domain
+	}
+
+	var tenant models.Tenant
+	if err := h.DB.Where("domain = ?", domain).First(&tenant).Error; err != nil {
+		return ""
+	}
+
+	var extensions []models.Extension
+	h.DB.Where("tenant_id = ? AND enabled = ?", tenant.ID, true).Find(&extensions)
+
+	if len(extensions) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString(`      <!-- Extension Routing (multi-device) -->`)
+	b.WriteString("\n")
+
+	for _, ext := range extensions {
+		b.WriteString(fmt.Sprintf(`      <extension name="ext_%s" continue="false">`, xmlEscape(ext.Extension)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`        <condition field="destination_number" expression="^%s$">`, xmlEscape(ext.Extension)))
+		b.WriteString("\n")
+
+		// Set extension metadata
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="extension_uuid=%s"/>`, ext.UUID.String()))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="dialed_extension=%s"/>`, xmlEscape(ext.Extension)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="ring_strategy=%s"/>`, xmlEscape(ext.RingStrategy)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="tenant_id=%d"/>`, tenant.ID))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(`          <action application="set" data="call_timeout=%d"/>`, ext.CallTimeout))
+		b.WriteString("\n")
+
+		// Caller ID for the extension
+		if ext.EffectiveCallerIDName != "" {
+			b.WriteString(fmt.Sprintf(`          <action application="set" data="callee_id_name=%s"/>`, xmlEscape(ext.EffectiveCallerIDName)))
+			b.WriteString("\n")
+		}
+		if ext.EffectiveCallerIDNumber != "" {
+			b.WriteString(fmt.Sprintf(`          <action application="set" data="callee_id_number=%s"/>`, xmlEscape(ext.EffectiveCallerIDNumber)))
+			b.WriteString("\n")
+		}
+
+		b.WriteString(`          <action application="set" data="hangup_after_bridge=true"/>`)
+		b.WriteString("\n")
+		b.WriteString(`          <action application="set" data="continue_on_fail=true"/>`)
+		b.WriteString("\n")
+
+		// Route to ESL socket for smart multi-device ringing
+		// The ESL handler queries all ClientRegistrations for this extension
+		// and builds the appropriate dial string based on ring_strategy
+		b.WriteString(`          <action application="socket" data="127.0.0.1:9001 async full"/>`)
 		b.WriteString("\n")
 
 		b.WriteString(`        </condition>`)
