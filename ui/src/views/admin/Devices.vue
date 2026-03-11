@@ -334,7 +334,7 @@ async function fetchDevices() {
   isLoading.value = true
   try {
     const response = await devicesAPI.list()
-    const data = response.data.data || response.data || []
+    const data = response.data || []
     devices.value = data.map(d => ({
       id: d.id,
       mac: formatMac(d.mac),
@@ -362,7 +362,7 @@ async function fetchDevices() {
 async function fetchDeviceProfiles() {
   try {
     const response = await deviceProfilesAPI.list()
-    deviceProfiles.value = (response.data?.data || response.data || []).map(p => ({
+    deviceProfiles.value = (response.data || []).map(p => ({
       id: p.id,
       name: p.name,
       color: p.color || '#6366f1'

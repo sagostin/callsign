@@ -149,7 +149,7 @@ const loadACLs = async () => {
   loading.value = true
   try {
     const response = await systemAPI.listACLs()
-    acls.value = response.data.data || response.data || []
+    acls.value = response.data || []
   } catch (e) {
     console.error('Failed to load ACLs:', e)
   } finally {

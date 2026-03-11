@@ -247,7 +247,7 @@ const loadFirmware = async () => {
   loading.value = true
   try {
     const response = await systemAPI.listFirmware()
-    const firmware = response.data?.data || response.data || []
+    const firmware = response.data || []
     
     // Group firmware by model
     const modelMap = new Map()

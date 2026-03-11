@@ -114,6 +114,7 @@ func (r *Router) Init() {
 		{
 			auth.Post("/login", r.Handler.Login)
 			auth.Post("/admin/login", r.Handler.AdminLogin)
+			auth.Post("/extension/login", r.Handler.ExtensionLogin)
 			auth.Post("/register", r.Handler.Register) // If self-registration is enabled
 			auth.Post("/password/reset", r.Handler.RequestPasswordReset)
 		}

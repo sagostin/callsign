@@ -226,7 +226,7 @@ const loadDialplans = async () => {
   loading.value = true
   try {
     const response = await systemAPI.listDialplans()
-    rules.value = response.data.data || response.data || []
+    rules.value = response.data || []
   } catch (e) {
     console.error('Failed to load dial plans:', e)
   } finally {

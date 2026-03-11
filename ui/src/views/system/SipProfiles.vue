@@ -449,7 +449,7 @@ async function refreshAll() {
   try {
     // Load profiles from DB
     const response = await systemAPI.listSIPProfiles()
-    profiles.value = response.data?.data || response.data || []
+    profiles.value = response.data || []
 
     // Load live status from FreeSWITCH
     try {

@@ -8,6 +8,7 @@ const state = reactive({
     token: localStorage.getItem('token') || null,
     isAuthenticated: !!localStorage.getItem('token'),
     currentTenantId: localStorage.getItem('tenantId') || null,
+    sipCredentials: JSON.parse(localStorage.getItem('sipCredentials') || 'null'),
     tenants: [],
     isLoading: false,
     error: null,
@@ -37,10 +38,27 @@ async function login(username, password) {
 
     try {
         const domain = window.location.hostname
-        const response = await authAPI.login(username, password, domain)
-        const { token, user } = response.data
+        const response = await authAPI.extensionLogin(username, password, domain)
+        const { token, extension, sip_user, sip_password, sip_domain } = response.data
+
+        // Store as a user-like object for compatibility
+        const user = {
+            id: extension.id,
+            uuid: extension.uuid,
+            username: extension.extension,
+            extension: extension.extension,
+            tenant_id: extension.tenant_id,
+            role: 'user',
+            caller_id: extension.caller_id,
+        }
 
         setAuth(token, user)
+
+        // Store SIP credentials for WebRTC
+        const sipCreds = { sip_user, sip_password, sip_domain }
+        state.sipCredentials = sipCreds
+        localStorage.setItem('sipCredentials', JSON.stringify(sipCreds))
+
         return { success: true, user }
     } catch (error) {
         state.error = error.message || 'Login failed'
@@ -97,11 +115,13 @@ function clearAuth() {
     state.user = null
     state.isAuthenticated = false
     state.currentTenantId = null
+    state.sipCredentials = null
 
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     localStorage.removeItem('tenantId')
     localStorage.removeItem('refreshToken')
+    localStorage.removeItem('sipCredentials')
 }
 
 async function refreshProfile() {

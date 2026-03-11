@@ -46,7 +46,7 @@ const loadTenants = async () => {
   loading.value = true
   try {
     const response = await systemAPI.listTenants()
-    const data = response.data.data || response.data || []
+    const data = response.data || []
     tenants.value = data.map(t => ({
       id: t.id,
       name: t.name,

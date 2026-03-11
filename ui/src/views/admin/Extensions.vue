@@ -327,7 +327,7 @@ onMounted(async () => {
 async function fetchProfiles() {
   try {
     const response = await extensionProfilesAPI.list()
-    profiles.value = (response.data.data || []).map(p => {
+    profiles.value = (response.data || []).map(p => {
       const ch = p.call_handling || {}
       return {
         id: p.id,
@@ -358,8 +358,7 @@ async function fetchExtensions() {
   isLoading.value = true
   try {
     const response = await extensionsAPI.list()
-    // Handle both {data: [...]} wrapper and direct array formats
-    const data = response.data?.data || response.data || []
+    const data = response.data || []
     extensions.value = data.map(ext => ({
       id: ext.id,
       ext: ext.extension, // for router link

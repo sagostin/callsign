@@ -363,7 +363,7 @@ const loadTemplates = async () => {
     }
 
     const response = await systemAPI.listDeviceTemplates()
-    const templates = response.data?.data || response.data || []
+    const templates = response.data || []
     allTemplates.value = templates.map(t => ({
       id: t.id,
       uuid: t.uuid,

@@ -15,11 +15,12 @@ import (
 
 // Claims represents the JWT claims structure
 type Claims struct {
-	UserID   uint            `json:"user_id"`
-	Username string          `json:"username"`
-	Email    string          `json:"email"`
-	Role     models.UserRole `json:"role"`
-	TenantID *uint           `json:"tenant_id,omitempty"`
+	UserID      uint            `json:"user_id"`
+	Username    string          `json:"username"`
+	Email       string          `json:"email"`
+	Role        models.UserRole `json:"role"`
+	TenantID    *uint           `json:"tenant_id,omitempty"`
+	ExtensionID *uint           `json:"extension_id,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -47,6 +48,29 @@ func (a *AuthMiddleware) GenerateToken(user *models.User) (string, error) {
 		Email:    user.Email,
 		Role:     user.Role,
 		TenantID: user.TenantID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    "callsign",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(a.Config.JWTSecret))
+}
+
+// GenerateExtensionToken creates a JWT token for an extension-based login session
+func (a *AuthMiddleware) GenerateExtensionToken(ext *models.Extension) (string, error) {
+	expirationTime := time.Now().Add(time.Duration(a.Config.JWTExpiration) * time.Hour)
+	tenantID := ext.TenantID
+
+	claims := &Claims{
+		UserID:      0, // No User model association
+		Username:    ext.Extension,
+		Email:       "",
+		Role:        models.RoleUser,
+		TenantID:    &tenantID,
+		ExtensionID: &ext.ID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

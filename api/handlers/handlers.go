@@ -283,6 +283,140 @@ func (h *Handler) Register(ctx iris.Context) {
 	ctx.JSON(iris.Map{"error": "Registration not implemented"})
 }
 
+// ExtensionLoginRequest represents a client/extension login payload
+type ExtensionLoginRequest struct {
+	Extension    string `json:"extension"`
+	Password     string `json:"password"`
+	Domain       string `json:"domain"`
+	EndpointType string `json:"endpoint_type"` // web_client, mobile_app, desktop_app
+	InstanceID   string `json:"instance_id"`   // Client-generated unique ID
+	DeviceLabel  string `json:"device_label"`  // e.g. "Chrome Browser"
+	AppVersion   string `json:"app_version"`
+	OSInfo       string `json:"os_info"`
+}
+
+// ExtensionLogin authenticates an extension user and returns a JWT + SIP credentials
+func (h *Handler) ExtensionLogin(ctx iris.Context) {
+	var req ExtensionLoginRequest
+	if err := ctx.ReadJSON(&req); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	if req.Extension == "" || req.Password == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Extension and password are required"})
+		return
+	}
+
+	// Resolve tenant from the connected domain
+	domain := h.resolveTenantDomain(ctx, req.Domain)
+	if domain == "" {
+		// Extension login always requires a tenant context
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Tenant domain is required for extension login"})
+		return
+	}
+
+	var tenant models.Tenant
+	if err := h.DB.Where("domain = ? AND enabled = true", domain).First(&tenant).Error; err != nil {
+		log.WithField("domain", domain).Debug("ExtensionLogin: tenant not found for domain")
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Invalid credentials"})
+		return
+	}
+
+	// Look up extension within this tenant
+	var ext models.Extension
+	if err := h.DB.Where("extension = ? AND tenant_id = ? AND enabled = true", req.Extension, tenant.ID).First(&ext).Error; err != nil {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Invalid credentials"})
+		return
+	}
+
+	// Verify web login password
+	if !ext.CheckWebPassword(req.Password) {
+		ctx.StatusCode(http.StatusUnauthorized)
+		ctx.JSON(iris.Map{"error": "Invalid credentials"})
+		return
+	}
+
+	// Generate JWT with extension context
+	token, err := h.Auth.GenerateExtensionToken(&ext)
+	if err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to generate token"})
+		return
+	}
+
+	// Determine endpoint type, default to web_client
+	endpointType := models.EndpointTypeWebClient
+	switch models.EndpointType(req.EndpointType) {
+	case models.EndpointTypeMobileApp, models.EndpointTypeDesktopApp, models.EndpointTypeWebClient:
+		endpointType = models.EndpointType(req.EndpointType)
+	}
+
+	// Auto-generate instance ID if not provided
+	instanceID := req.InstanceID
+	if instanceID == "" {
+		instanceID = ext.UUID.String()[:8]
+	}
+
+	// Check for existing registration for this extension + instance + type
+	var reg models.ClientRegistration
+	reused := false
+	if err := h.DB.Where(
+		"extension_id = ? AND instance_id = ? AND endpoint_type = ? AND tenant_id = ?",
+		ext.ID, instanceID, endpointType, tenant.ID,
+	).First(&reg).Error; err == nil {
+		reused = true
+	} else {
+		// Provision a new client registration
+		regUser := models.GenerateRegistrationUser(endpointType, ext.Extension, instanceID)
+		reg = models.ClientRegistration{
+			TenantID:         tenant.ID,
+			ExtensionID:      &ext.ID,
+			EndpointType:     endpointType,
+			RegistrationUser: regUser,
+			InstanceID:       instanceID,
+			DisplayName:      ext.EffectiveCallerIDName,
+			DeviceLabel:      req.DeviceLabel,
+			AppVersion:       req.AppVersion,
+			OSInfo:           req.OSInfo,
+			AllowOutbound:    true,
+			WebRTC:           endpointType == models.EndpointTypeWebClient,
+			Status:           "provisioned",
+			Enabled:          true,
+		}
+		if ext.UserID != nil {
+			reg.UserID = ext.UserID
+		}
+
+		if err := h.DB.Create(&reg).Error; err != nil {
+			ctx.StatusCode(http.StatusInternalServerError)
+			ctx.JSON(iris.Map{"error": "Failed to provision SIP credentials"})
+			return
+		}
+		h.reloadXML()
+	}
+
+	ctx.JSON(iris.Map{
+		"token": token,
+		"extension": iris.Map{
+			"id":        ext.ID,
+			"uuid":      ext.UUID,
+			"extension": ext.Extension,
+			"tenant_id": ext.TenantID,
+			"caller_id": ext.EffectiveCallerIDName,
+		},
+		"sip_user":     reg.RegistrationUser,
+		"sip_password": reg.RegistrationPass,
+		"sip_domain":   tenant.Domain,
+		"reused":       reused,
+	})
+}
+
 // RequestPasswordReset initiates a password reset
 func (h *Handler) RequestPasswordReset(ctx iris.Context) {
 	// NOTE: Implement password reset logic

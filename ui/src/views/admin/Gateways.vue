@@ -45,7 +45,7 @@ const loadTrunks = async () => {
   loading.value = true
   try {
     const response = await systemAPI.listGateways()
-    const data = response.data?.data || response.data || []
+    const data = response.data || []
     gateways.value = data.map(g => ({
       ...g,
       status: g.enabled ? (g.register ? 'Registered' : 'Active') : 'Disabled',

@@ -318,7 +318,7 @@ const loadData = async () => {
   loading.value = true
   try {
     const response = await featureCodesAPI.list()
-    featureCodes.value = response.data.data || response.data || []
+    featureCodes.value = response.data || []
   } catch (error) {
     notify.error('Failed to load feature codes')
     console.error(error)

@@ -128,7 +128,7 @@ async function fetchTemplates() {
   isLoading.value = true
   try {
     const response = await deviceTemplatesAPI.list()
-    templates.value = (response.data?.data || response.data || []).map(t => ({
+    templates.value = (response.data || []).map(t => ({
       id: t.id,
       name: t.name,
       model: t.model || t.device_model || 'Unknown',

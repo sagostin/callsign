@@ -253,7 +253,7 @@ onMounted(async () => {
 async function fetchProfiles() {
   try {
     const response = await deviceProfilesAPI.list()
-    profiles.value = (response.data?.data || response.data || []).map(p => ({
+    profiles.value = (response.data || []).map(p => ({
       id: p.id,
       name: p.name,
       color: p.color || '#6366f1',
@@ -281,7 +281,7 @@ async function fetchProfiles() {
 async function fetchTemplates() {
   try {
     const response = await deviceTemplatesAPI.list()
-    templates.value = (response.data?.data || response.data || []).map(t => ({
+    templates.value = (response.data || []).map(t => ({
       id: t.id,
       name: t.name
     }))

@@ -30,7 +30,25 @@ api.interceptors.request.use(
 
 // Response interceptor - handles errors and token refresh
 api.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        // Backend wraps list/get responses in { data: [...] } via iris.Map.
+        // Auto-unwrap so views can use response.data directly as the payload.
+        const body = response.data
+        if (body && typeof body === 'object' && !Array.isArray(body) && 'data' in body) {
+            response.data = body.data
+            // Preserve any sibling fields (e.g. "message", "box", "interval")
+            const meta = { ...body }
+            delete meta.data
+            if (Object.keys(meta).length > 0) {
+                response._meta = meta
+            }
+        }
+        // Guard against null (Go nil slice serialises as JSON null)
+        if (response.data === null || response.data === undefined) {
+            response.data = []
+        }
+        return response
+    },
     async (error) => {
         const originalRequest = error.config
 
@@ -85,6 +103,9 @@ export const authAPI = {
 
     adminLogin: (username, password, domain) =>
         api.post('/auth/admin/login', { username, password, domain }),
+
+    extensionLogin: (extension, password, domain) =>
+        api.post('/auth/extension/login', { extension, password, domain }),
 
     logout: () => api.post('/auth/logout'),
 

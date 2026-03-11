@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -22,7 +23,8 @@ type Extension struct {
 	// Basic extension info
 	Extension   string `json:"extension" gorm:"index;not null"` // e.g., "1001"
 	NumberAlias string `json:"number_alias"`                    // Alternative number
-	Password    string `json:"-" gorm:"not null"`               // SIP password (never expose)
+	Password    string `json:"-" gorm:"not null"`               // SIP password for physical devices (never expose)
+	WebPassword string `json:"-"`                               // Bcrypt-hashed login password for web/app portal
 	Enabled     bool   `json:"enabled" gorm:"default:true"`
 
 	// User context (domain for call routing)
@@ -129,6 +131,24 @@ func (e *Extension) BeforeCreate(tx *gorm.DB) error {
 // GetDialString returns the FreeSWITCH dial string for this extension
 func (e *Extension) GetDialString() string {
 	return "${sofia_contact(" + e.Extension + "@" + e.Domain + ")}"
+}
+
+// SetWebPassword hashes and sets the extension's web login password
+func (e *Extension) SetWebPassword(password string) error {
+	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	e.WebPassword = string(hashed)
+	return nil
+}
+
+// CheckWebPassword verifies a password against the stored bcrypt hash
+func (e *Extension) CheckWebPassword(password string) bool {
+	if e.WebPassword == "" {
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(e.WebPassword), []byte(password)) == nil
 }
 
 // ExtensionSetting stores additional key-value settings for an extension

@@ -244,7 +244,7 @@ const loadGateways = async () => {
   loading.value = true
   try {
     const response = await systemAPI.listGateways()
-    const data = response.data.data || response.data || []
+    const data = response.data || []
     gateways.value = data.map(g => ({
       id: g.id,
       name: g.name,

@@ -302,7 +302,7 @@ const loadProviders = async () => {
   loading.value = true
   try {
     const response = await systemAPI.listMessagingProviders()
-    const data = response.data.data || response.data || []
+    const data = response.data || []
     providers.value = data.map(p => ({
       id: p.id,
       name: p.name,

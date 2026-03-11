@@ -234,7 +234,7 @@ async function fetchTimeConditions() {
   isLoading.value = true
   try {
     const response = await timeConditionsAPI.list()
-    const rawData = response.data?.data || response.data || []
+    const rawData = response.data || []
     timeConditions.value = rawData.map(tc => {
       // Convert backend model to UI format
       const schedule = buildSchedule(tc)
@@ -375,7 +375,7 @@ const holidayLists = ref([])
 async function fetchHolidayLists() {
   try {
     const response = await holidaysAPI.list()
-    holidayLists.value = (response.data?.data || response.data || []).map(list => ({
+    holidayLists.value = (response.data || []).map(list => ({
       id: list.id,
       name: list.name,
       count: list.dates?.length || list.count || 0,

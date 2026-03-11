@@ -465,7 +465,7 @@ const form = ref({
 const loadProfiles = async () => {
   try {
     const response = await systemAPI.listProfiles()
-    profiles.value = response.data.data || response.data || []
+    profiles.value = response.data || []
   } catch (e) {
     console.error('Failed to load profiles:', e)
   }
