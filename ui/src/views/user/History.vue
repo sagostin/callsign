@@ -161,7 +161,7 @@ import {
   MessageSquare as MessageSquareIcon, UserPlus as UserPlusIcon,
   X as XIcon, Play as PlayIcon
 } from 'lucide-vue-next'
-import { userPortalAPI, contactsAPI } from '../../services/api'
+import { extensionPortalAPI, contactsAPI } from '../../services/api'
 
 const router = useRouter()
 const searchQuery = ref('')
@@ -206,7 +206,7 @@ const formatCallRecord = (record) => {
 const fetchHistory = async () => {
   loading.value = true
   try {
-    const res = await userPortalAPI.getCallHistory({ limit: 100 })
+    const res = await extensionPortalAPI.getCallHistory({ limit: 100 })
     callHistory.value = (res.data?.records || res.data || []).map(formatCallRecord)
   } catch (err) {
     console.error('Failed to load call history:', err)

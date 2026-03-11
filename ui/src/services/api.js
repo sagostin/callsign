@@ -762,6 +762,19 @@ export const userPortalAPI = {
 }
 
 // =====================
+// Extension Portal API (extension-scoped, preferred for web client / extension panel)
+// =====================
+export const extensionPortalAPI = {
+    getDevices: () => api.get('/extension/portal/devices'),
+    getCallHistory: (params) => api.get('/extension/portal/call-history', { params }),
+    getVoicemail: () => api.get('/extension/portal/voicemail'),
+    getSettings: () => api.get('/extension/portal/settings'),
+    updateSettings: (data) => api.put('/extension/portal/settings', data),
+    getContacts: () => api.get('/extension/portal/contacts'),
+    createContact: (data) => api.post('/extension/portal/contacts', data),
+}
+
+// =====================
 // Reports & Analytics API
 // =====================
 export const reportsAPI = {

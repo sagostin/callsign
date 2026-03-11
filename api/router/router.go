@@ -873,6 +873,19 @@ func (r *Router) Init() {
 				user.Get("/contacts", r.Handler.GetUserContacts)
 				user.Post("/contacts", r.Handler.CreateUserContact)
 			}
+
+			// Extension portal routes (for extension panel / web client)
+			extPortal := protected.Party("/extension/portal")
+			extPortal.Use(r.Tenant.RequireTenant())
+			{
+				extPortal.Get("/devices", r.Handler.GetExtensionDevices)
+				extPortal.Get("/call-history", r.Handler.GetExtensionCallHistory)
+				extPortal.Get("/voicemail", r.Handler.GetExtensionVoicemail)
+				extPortal.Get("/settings", r.Handler.GetExtensionSettings)
+				extPortal.Put("/settings", r.Handler.UpdateExtensionSettings)
+				extPortal.Get("/contacts", r.Handler.GetExtensionContacts)
+				extPortal.Post("/contacts", r.Handler.CreateExtensionContact)
+			}
 		}
 	}
 

@@ -204,6 +204,16 @@ func GetTenantID(ctx iris.Context) uint {
 	return ctx.Values().GetUintDefault("tenant_id", 0)
 }
 
+// GetExtensionID extracts the extension ID from the JWT claims.
+// Returns 0 when the token was not generated via extension login.
+func GetExtensionID(ctx iris.Context) uint {
+	claims := GetClaims(ctx)
+	if claims != nil && claims.ExtensionID != nil {
+		return *claims.ExtensionID
+	}
+	return 0
+}
+
 // GetRole extracts the role from the context
 func GetRole(ctx iris.Context) models.UserRole {
 	if role, ok := ctx.Values().Get("role").(models.UserRole); ok {

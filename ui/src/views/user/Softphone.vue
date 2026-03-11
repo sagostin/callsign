@@ -204,7 +204,7 @@ import {
   ChevronDown as ChevronDownIcon, Monitor as MonitorIcon, Smartphone as SmartphoneIcon,
   Headphones as HeadphonesIcon, X as XIcon, Info as InfoIcon
 } from 'lucide-vue-next'
-import { userPortalAPI } from '../../services/api'
+import { extensionPortalAPI } from '../../services/api'
 
 const toast = inject('toast')
 
@@ -231,7 +231,7 @@ const getDeviceIcon = (device) => {
 
 const fetchDevices = async () => {
   try {
-    const res = await userPortalAPI.getDevices()
+    const res = await extensionPortalAPI.getDevices()
     const data = res.data?.data || res.data || []
     userDevices.value = [
       { id: 'softphone', type: 'softphone', name: 'Browser Softphone', meta: 'WebRTC', status: 'online', icon: HeadphonesIcon },
@@ -455,7 +455,7 @@ const recentCalls = ref([])
 
 const fetchRecentCalls = async () => {
   try {
-    const res = await userPortalAPI.getCallHistory({ limit: 10 })
+    const res = await extensionPortalAPI.getCallHistory({ limit: 10 })
     const data = res.data?.data || res.data || []
     recentCalls.value = data.slice(0, 10).map(c => ({
       id: c.id,

@@ -87,7 +87,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Phone, MessageSquare, Bot, Zap } from 'lucide-vue-next'
-import { extensionsAPI, userPortalAPI, speedDialsAPI } from '../../services/api'
+import { extensionsAPI, extensionPortalAPI, speedDialsAPI } from '../../services/api'
 
 const router = useRouter()
 const activeTab = ref('local')
@@ -119,7 +119,7 @@ const fetchContacts = async () => {
 
   try {
     // Personal contacts
-    const contactRes = await userPortalAPI.getContacts()
+    const contactRes = await extensionPortalAPI.getContacts()
     const list = contactRes.data?.contacts || contactRes.data || []
     contacts.value.added = list.map(c => ({
       id: c.id,
