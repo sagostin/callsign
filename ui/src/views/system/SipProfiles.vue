@@ -572,14 +572,22 @@ function editProfile(profile) {
   activeTab.value = 'Basic'
   settingsSearch.value = ''
   
-  // Initialize allSettings from profile or defaults
+  // Initialize allSettings from profile — deduplicate by setting name
   if (profile.settings?.length > 0) {
-    allSettings.value = profile.settings.map(s => ({
-      name: s.setting_name,
-      value: s.setting_value,
-      enabled: s.enabled !== false
-    }))
+    const seen = new Set()
+    allSettings.value = profile.settings
+      .map(s => ({
+        name: s.setting_name,
+        value: s.setting_value,
+        enabled: s.enabled !== false
+      }))
+      .filter(s => {
+        if (seen.has(s.name)) return false
+        seen.add(s.name)
+        return true
+      })
   } else {
+    // Only use defaults for profiles with NO saved settings at all
     allSettings.value = JSON.parse(JSON.stringify(defaultSettings))
   }
   

@@ -87,35 +87,34 @@
       </div>
     </div>
 
-    <!-- NUMBER ROUTING TAB -->
+    <!-- NUMBER MANAGEMENT TAB -->
     <div class="tab-content" v-else-if="activeTab === 'routing'">
-      <p class="panel-desc">Route messages to specific providers based on number patterns.</p>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <p class="panel-desc" style="margin-bottom: 0;">Phone numbers assigned to providers. Inbound routing is carrier-agnostic — outbound uses provider association.</p>
+        <button class="btn-secondary" @click="showNumberModal = true"><PlusIcon class="btn-icon" /> Add Number</button>
+      </div>
 
-      <div class="routing-rules">
-        <div class="rule-item" v-for="rule in routingRules" :key="rule.id">
-          <div class="rule-handle">
-            <GripVerticalIcon class="grip" />
-            <span class="rule-priority">{{ rule.priority }}</span>
-          </div>
+      <div class="routing-rules" v-if="messagingNumbers.length">
+        <div class="rule-item" v-for="num in messagingNumbers" :key="num.id">
           <div class="rule-pattern">
-            <span class="pattern-label">Pattern:</span>
-            <code>{{ rule.pattern }}</code>
+            <code>{{ num.phone_number }}</code>
           </div>
           <div class="rule-arrow">→</div>
           <div class="rule-provider">
-            <span class="provider-badge" :class="rule.providerType">{{ rule.provider }}</span>
+            <span class="provider-badge" :class="num.provider?.type">{{ num.provider?.name || 'Unknown' }}</span>
           </div>
-          <div class="rule-description">{{ rule.description }}</div>
+          <div class="rule-description">
+            {{ num.friendly_name || '' }}
+            <span v-if="num.sms_enabled" style="margin-left: 6px; font-size: 10px; background: #dcfce7; color: #16a34a; padding: 2px 6px; border-radius: 3px;">SMS</span>
+            <span v-if="num.mms_enabled" style="margin-left: 4px; font-size: 10px; background: #dbeafe; color: #2563eb; padding: 2px 6px; border-radius: 3px;">MMS</span>
+          </div>
           <div class="rule-actions">
-            <button class="action-btn" @click="editRule(rule)"><EditIcon class="icon-sm" /></button>
-            <button class="action-btn danger" @click="deleteRule(rule)"><TrashIcon class="icon-sm" /></button>
+            <button class="action-btn" @click="editNumber(num)"><EditIcon class="icon-sm" /></button>
+            <button class="action-btn danger" @click="deleteNumber(num)"><TrashIcon class="icon-sm" /></button>
           </div>
         </div>
       </div>
-
-      <button class="btn-secondary" style="margin-top: 16px;" @click="showRuleModal = true">
-        <PlusIcon class="btn-icon" /> Add Routing Rule
-      </button>
+      <div v-else class="panel-desc" style="text-align:center; padding: 40px;">No messaging numbers configured. Click "Add Number" to assign a number to a provider.</div>
     </div>
 
     <!-- TRANSFORMATIONS TAB -->
@@ -392,6 +391,74 @@ const deleteRule = (rule) => { routingRules.value = routingRules.value.filter(r 
 const editTransform = (t) => alert(`Edit transform: ${t.match}`)
 const deleteTransform = (t) => alert('Transform deleted')
 const addTransform = (type) => alert(`Add ${type} transform`)
+
+// =====================
+// Messaging Numbers
+// =====================
+const messagingNumbers = ref([])
+const showNumberModal = ref(false)
+const editingNumber = ref(null)
+const numberForm = ref({
+  phone_number: '',
+  provider_id: null,
+  friendly_name: '',
+  sms_enabled: true,
+  mms_enabled: false,
+  enabled: true
+})
+
+const loadNumbers = async () => {
+  try {
+    const response = await systemAPI.listMessagingNumbers()
+    messagingNumbers.value = response.data || []
+  } catch (e) {
+    console.error('Failed to load messaging numbers', e)
+  }
+}
+
+const editNumber = (num) => {
+  editingNumber.value = num
+  numberForm.value = {
+    phone_number: num.phone_number,
+    provider_id: num.provider_id,
+    friendly_name: num.friendly_name || '',
+    sms_enabled: num.sms_enabled,
+    mms_enabled: num.mms_enabled,
+    enabled: num.enabled
+  }
+  showNumberModal.value = true
+}
+
+const saveNumber = async () => {
+  try {
+    if (editingNumber.value) {
+      await systemAPI.updateMessagingNumber(editingNumber.value.id, numberForm.value)
+    } else {
+      await systemAPI.createMessagingNumber(numberForm.value)
+    }
+    await loadNumbers()
+    showNumberModal.value = false
+    editingNumber.value = null
+    numberForm.value = { phone_number: '', provider_id: null, friendly_name: '', sms_enabled: true, mms_enabled: false, enabled: true }
+  } catch (e) {
+    alert('Failed to save number: ' + (e.message || 'Unknown error'))
+  }
+}
+
+const deleteNumber = async (num) => {
+  if (confirm(`Delete number ${num.phone_number}?`)) {
+    try {
+      await systemAPI.deleteMessagingNumber(num.id)
+      await loadNumbers()
+    } catch (e) {
+      alert('Failed to delete number: ' + (e.message || 'Unknown error'))
+    }
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([loadProviders(), loadNumbers()])
+})
 </script>
 
 <style scoped>

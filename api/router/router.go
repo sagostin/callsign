@@ -768,6 +768,15 @@ func (r *Router) Init() {
 					messaging.Delete("/{id}", r.Handler.DeleteMessagingProvider)
 				}
 
+				// Messaging numbers (per-provider phone numbers)
+				msgNumbers := system.Party("/messaging-numbers")
+				{
+					msgNumbers.Get("/", r.Handler.ListMessagingNumbers)
+					msgNumbers.Post("/", r.Handler.CreateMessagingNumber)
+					msgNumbers.Put("/{id}", r.Handler.UpdateMessagingNumber)
+					msgNumbers.Delete("/{id}", r.Handler.DeleteMessagingNumber)
+				}
+
 				// Global dial plans
 				dialplans := system.Party("/dialplans")
 				{

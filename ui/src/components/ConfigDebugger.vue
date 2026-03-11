@@ -6,6 +6,14 @@
 
       <div class="form-grid">
         <div class="form-group full-width" v-if="mode === 'system'">
+          <label>Tenant</label>
+          <select v-model="selectedTenantId" class="input-field" @change="onTenantChange">
+            <option :value="null">— No Tenant (system-wide) —</option>
+            <option v-for="t in tenants" :key="t.id" :value="t.id">{{ t.name }} ({{ t.domain }})</option>
+          </select>
+        </div>
+
+        <div class="form-group full-width" v-if="mode === 'system'">
           <label>Section</label>
           <select v-model="form.section" class="input-field">
             <option value="dialplan">Dialplan (Routing)</option>
@@ -59,10 +67,23 @@
            <div class="form-group full-width">
              <label>Config Name</label>
              <select v-model="form.config_name" class="input-field">
-               <option value="sofia.conf">Sofia (SIP)</option>
-               <option value="acl.conf">ACL (Access Control)</option>
-               <option value="post_load_modules.conf">Modules</option>
-               <option value="event_socket.conf">Event Socket</option>
+               <optgroup label="Core">
+                 <option value="sofia.conf">Sofia (SIP Profiles)</option>
+                 <option value="acl.conf">ACL (Access Control)</option>
+                 <option value="post_load_modules.conf">Modules</option>
+                 <option value="event_socket.conf">Event Socket</option>
+               </optgroup>
+               <optgroup label="Features">
+                 <option value="callcenter.conf">Call Center (Queues)</option>
+                 <option value="conference.conf">Conference</option>
+                 <option value="ivr.conf">IVR</option>
+                 <option value="voicemail.conf">Voicemail</option>
+               </optgroup>
+               <optgroup label="Other">
+                 <option value="cdr_pg_csv.conf">CDR Postgres</option>
+                 <option value="local_stream.conf">Local Stream (MOH)</option>
+                 <option value="xml_cdr.conf">XML CDR</option>
+               </optgroup>
              </select>
            </div>
         </template>
@@ -90,9 +111,10 @@
 </template>
 
 <script setup>
-import { ref, inject } from 'vue'
+import { ref, inject, onMounted } from 'vue'
 import { Copy as CopyIcon } from 'lucide-vue-next'
 import api from '@/services/api' 
+import { systemAPI } from '@/services/api'
 
 const props = defineProps({
   mode: {
@@ -105,8 +127,11 @@ const toast = inject('toast')
 const loading = ref(false)
 const result = ref('')
 
+const tenants = ref([])
+const selectedTenantId = ref(null)
+
 const form = ref({
-  section: 'dialplan', // Default
+  section: 'dialplan',
   domain: '',
   context: 'public', 
   destination_number: '',
@@ -119,6 +144,29 @@ const form = ref({
 if (props.mode === 'tenant') {
   form.value.section = 'dialplan'
 }
+
+async function loadTenants() {
+  if (props.mode !== 'system') return
+  try {
+    const response = await systemAPI.listTenants()
+    tenants.value = response.data || []
+  } catch (e) {
+    console.error('Failed to load tenants for config inspector', e)
+  }
+}
+
+function onTenantChange() {
+  const tenant = tenants.value.find(t => t.id === selectedTenantId.value)
+  if (tenant) {
+    form.value.domain = tenant.domain
+  } else {
+    form.value.domain = ''
+  }
+}
+
+onMounted(() => {
+  loadTenants()
+})
 
 async function runDebug() {
   loading.value = true

@@ -105,6 +105,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&Message{},
 		&MessageMedia{},
 		&MessagingProvider{},
+		&MessagingNumber{},
 		&Chatplan{},
 		&Phrase{},
 		&Sound{},

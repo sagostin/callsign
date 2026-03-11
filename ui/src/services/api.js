@@ -643,6 +643,12 @@ export const systemAPI = {
     updateMessagingProvider: (id, data) => api.put(`/system/messaging-providers/${id}`, data),
     deleteMessagingProvider: (id) => api.delete(`/system/messaging-providers/${id}`),
 
+    // Messaging Numbers
+    listMessagingNumbers: (params) => api.get('/system/messaging-numbers', { params }),
+    createMessagingNumber: (data) => api.post('/system/messaging-numbers', data),
+    updateMessagingNumber: (id, data) => api.put(`/system/messaging-numbers/${id}`, data),
+    deleteMessagingNumber: (id) => api.delete(`/system/messaging-numbers/${id}`),
+
     // Global Dial Plans
     listDialplans: () => api.get('/system/dialplans'),
     getDialplan: (id) => api.get(`/system/dialplans/${id}`),

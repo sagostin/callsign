@@ -670,6 +670,16 @@ func (h *Handler) writeSIPProfileToDisk(profile *models.SIPProfile) error {
 }
 
 func (h *Handler) ListSIPProfiles(ctx iris.Context) {
+	// Dedup cleanup: remove duplicate settings (same profile + setting_name)
+	// This fixes any historical duplication from GORM auto-cascade creates
+	h.DB.Exec(`
+		DELETE FROM sip_profile_settings
+		WHERE id NOT IN (
+			SELECT MIN(id) FROM sip_profile_settings
+			GROUP BY sip_profile_uuid, setting_name
+		)
+	`)
+
 	var profiles []models.SIPProfile
 	if err := h.DB.Preload("Settings").Preload("Domains").Order("profile_name").Find(&profiles).Error; err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
@@ -679,8 +689,9 @@ func (h *Handler) ListSIPProfiles(ctx iris.Context) {
 	ctx.JSON(iris.Map{"data": profiles})
 }
 
-// SyncSIPProfiles imports SIP profiles from disk XML files that don't exist in DB
-// This allows adding new profiles by placing XML files in sip_profiles folder
+// SyncSIPProfiles imports SIP profiles from disk XML files that don't exist in DB.
+// DB is the source of truth — existing profiles are NOT overwritten.
+// Only new profiles found on disk (not yet in DB) are imported.
 func (h *Handler) SyncSIPProfiles(ctx iris.Context) {
 	profilesPath := h.Config.SIPProfilesPath
 	if profilesPath == "" {
@@ -689,11 +700,10 @@ func (h *Handler) SyncSIPProfiles(ctx iris.Context) {
 
 	importer := freeswitch.NewProfileImporter(profilesPath, h.DB)
 
-	// Log what path we're looking at
 	log.WithField("path", profilesPath).Info("Syncing SIP profiles from disk")
 
-	// Force overwrite when syncing manually via API
-	if err := importer.SyncProfiles(true); err != nil {
+	// Do NOT overwrite existing profiles — DB is source of truth
+	if err := importer.SyncProfiles(false); err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
 		ctx.JSON(iris.Map{"error": "Failed to sync profiles: " + err.Error()})
 		return
@@ -711,56 +721,76 @@ func (h *Handler) SyncSIPProfiles(ctx iris.Context) {
 }
 
 func (h *Handler) CreateSIPProfile(ctx iris.Context) {
-	var profile models.SIPProfile
-	if err := ctx.ReadJSON(&profile); err != nil {
+	var input models.SIPProfile
+	if err := ctx.ReadJSON(&input); err != nil {
 		ctx.StatusCode(http.StatusBadRequest)
 		ctx.JSON(iris.Map{"error": "Invalid request payload"})
 		return
 	}
 
+	// Stash settings/domains from payload before creating profile
+	incomingSettings := input.Settings
+	incomingDomains := input.Domains
+	input.Settings = nil
+	input.Domains = nil
+
 	// Check for soft-deleted profile with same name and permanently delete it
 	var existingSoftDeleted models.SIPProfile
-	if err := h.DB.Unscoped().Where("profile_name = ? AND deleted_at IS NOT NULL", profile.ProfileName).First(&existingSoftDeleted).Error; err == nil {
-		// Found a soft-deleted profile with the same name - permanently delete it and its related records
+	if err := h.DB.Unscoped().Where("profile_name = ? AND deleted_at IS NOT NULL", input.ProfileName).First(&existingSoftDeleted).Error; err == nil {
 		h.DB.Unscoped().Where("sip_profile_uuid = ?", existingSoftDeleted.UUID).Delete(&models.SIPProfileSetting{})
 		h.DB.Unscoped().Where("sip_profile_uuid = ?", existingSoftDeleted.UUID).Delete(&models.SIPProfileDomain{})
 		h.DB.Unscoped().Delete(&existingSoftDeleted)
 	}
 
-	// Create profile first
-	if err := h.DB.Create(&profile).Error; err != nil {
+	// Create profile WITHOUT associations (prevents GORM auto-cascade duplication)
+	if err := h.DB.Omit("Settings", "Domains").Create(&input).Error; err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
 		ctx.JSON(iris.Map{"error": "Failed to create SIP profile"})
 		return
 	}
 
-	// Add default settings based on profile type if no settings provided
-	if len(profile.Settings) == 0 {
+	// Create settings explicitly
+	if len(incomingSettings) > 0 {
+		for i := range incomingSettings {
+			incomingSettings[i].SIPProfileUUID = input.UUID
+			incomingSettings[i].ID = 0
+		}
+		h.DB.Create(&incomingSettings)
+		input.Settings = incomingSettings
+	} else {
+		// Add defaults if no settings provided
 		var defaultSettings []models.SIPProfileSetting
-		if profile.ProfileName == "external" {
+		if input.ProfileName == "external" {
 			defaultSettings = models.DefaultExternalProfileSettings()
 		} else {
 			defaultSettings = models.DefaultInternalProfileSettings()
 		}
-
 		for i := range defaultSettings {
-			defaultSettings[i].SIPProfileUUID = profile.UUID
+			defaultSettings[i].SIPProfileUUID = input.UUID
 		}
-
 		if len(defaultSettings) > 0 {
 			h.DB.Create(&defaultSettings)
-			profile.Settings = defaultSettings
+			input.Settings = defaultSettings
 		}
 	}
 
+	// Create domains explicitly
+	if len(incomingDomains) > 0 {
+		for i := range incomingDomains {
+			incomingDomains[i].SIPProfileUUID = input.UUID
+			incomingDomains[i].ID = 0
+		}
+		h.DB.Create(&incomingDomains)
+		input.Domains = incomingDomains
+	}
+
 	// Write profile XML to disk (required for Sofia X-PRE-PROCESS)
-	if err := h.writeSIPProfileToDisk(&profile); err != nil {
-		// Log error but don't fail - DB is source of truth
+	if err := h.writeSIPProfileToDisk(&input); err != nil {
 		ctx.Application().Logger().Warnf("Failed to write SIP profile to disk: %v", err)
 	}
 
 	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(profile)
+	ctx.JSON(input)
 }
 
 func (h *Handler) GetSIPProfile(ctx iris.Context) {
@@ -1176,23 +1206,107 @@ func (h *Handler) GetSystemStats(ctx iris.Context) {
 	h.DB.Model(&models.Extension{}).Count(&extensionCount)
 	h.DB.Model(&models.Gateway{}).Count(&gatewayCount)
 
-	// Device registration stats (placeholder - would come from ESL/FreeSWITCH)
-	// For now, return estimated values based on extension count
-	deviceStats := iris.Map{
-		"desk_phones": iris.Map{"total": extensionCount, "online": extensionCount * 85 / 100},
-		"softphones":  iris.Map{"total": extensionCount * 40 / 100, "online": extensionCount * 30 / 100},
-		"mobile":      iris.Map{"total": extensionCount * 15 / 100, "online": extensionCount * 10 / 100},
-		"trunks":      iris.Map{"total": gatewayCount, "online": gatewayCount},
+	// Live stats from FreeSWITCH ESL
+	activeChannels := int64(0)
+	eslConnected := h.ESLManager != nil && h.ESLManager.IsConnected()
+
+	// Registration counters
+	totalRegs := int64(0)
+	trunkOnline := int64(0)
+	trunkTotal := gatewayCount
+
+	if eslConnected {
+		// Get active channel count
+		if result, err := h.ESLManager.API("show channels count"); err == nil {
+			// Output: "N total." — parse the number
+			resultStr := strings.TrimSpace(result)
+			lines := strings.Split(resultStr, "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if strings.Contains(line, "total") {
+					parts := strings.Fields(line)
+					if len(parts) > 0 {
+						if n, err := strconv.ParseInt(parts[0], 10, 64); err == nil {
+							activeChannels = n
+						}
+					}
+				}
+			}
+		}
+
+		// Get registration counts from sofia status
+		if result, err := h.ESLManager.API("sofia status"); err == nil {
+			lines := strings.Split(result, "\n")
+			for _, line := range lines {
+				// Sofia status lines contain RUNNING and registration count
+				if strings.Contains(line, "RUNNING") {
+					fields := strings.Fields(line)
+					// Typical line: "internal-ipv4  sip:mod_sofia@... RUNNING (0)"
+					// The last field in parens is the registration count
+					for _, f := range fields {
+						if strings.HasPrefix(f, "(") && strings.HasSuffix(f, ")") {
+							numStr := strings.Trim(f, "()")
+							if n, err := strconv.ParseInt(numStr, 10, 64); err == nil {
+								totalRegs += n
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Get gateway status
+		if result, err := h.ESLManager.API("sofia status gateway"); err == nil {
+			lines := strings.Split(result, "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if strings.Contains(line, "REGED") || strings.Contains(line, "NOREG") {
+					if strings.Contains(line, "REGED") {
+						trunkOnline++
+					}
+				}
+			}
+		}
 	}
+
+	// Count devices from DB (registered client registrations)
+	var deskPhones, softphones, mobileApps int64
+	h.DB.Model(&models.ClientRegistration{}).Where("endpoint_type = ? AND enabled = true", "desk_phone").Count(&deskPhones)
+	h.DB.Model(&models.ClientRegistration{}).Where("endpoint_type = ? AND enabled = true", "web_client").Count(&softphones)
+	h.DB.Model(&models.ClientRegistration{}).Where("endpoint_type = ? AND enabled = true", "mobile_app").Count(&mobileApps)
+
+	deviceStats := iris.Map{
+		"desk_phones": iris.Map{"total": deskPhones, "online": 0},
+		"softphones":  iris.Map{"total": softphones, "online": 0},
+		"mobile":      iris.Map{"total": mobileApps, "online": 0},
+		"trunks":      iris.Map{"total": trunkTotal, "online": trunkOnline},
+	}
+
+	// If ESL connected, set online counts from total registrations (best-effort split)
+	if eslConnected && totalRegs > 0 {
+		totalDevices := deskPhones + softphones + mobileApps
+		if totalDevices > 0 {
+			// Proportional split of actual registrations across device types
+			deviceStats["desk_phones"] = iris.Map{"total": deskPhones, "online": totalRegs * deskPhones / totalDevices}
+			deviceStats["softphones"] = iris.Map{"total": softphones, "online": totalRegs * softphones / totalDevices}
+			deviceStats["mobile"] = iris.Map{"total": mobileApps, "online": totalRegs * mobileApps / totalDevices}
+		}
+	}
+
+	// System alerts — count recent error-level log entries
+	var alertCount int64
+	h.DB.Model(&models.AuditLog{}).Where("action = 'error' AND created_at > NOW() - INTERVAL '24 hours'").Count(&alertCount)
 
 	ctx.JSON(iris.Map{
 		"tenants":         tenantCount,
 		"users":           userCount,
 		"extensions":      extensionCount,
-		"active_channels": 0, // Would come from ESL/FreeSWITCH
-		"alerts":          0, // System alerts
+		"active_channels": activeChannels,
+		"alerts":          alertCount,
 		"gateways":        gatewayCount,
 		"devices":         deviceStats,
+		"esl_connected":   eslConnected,
+		"registrations":   totalRegs,
 	})
 }
 
@@ -1305,8 +1419,105 @@ func (h *Handler) DeleteMessagingProvider(ctx iris.Context) {
 }
 
 // =====================
-// Global Dial Plans
+// Messaging Numbers
 // =====================
+
+func (h *Handler) ListMessagingNumbers(ctx iris.Context) {
+	var numbers []models.MessagingNumber
+	query := h.DB.Preload("Provider").Order("phone_number ASC")
+
+	// Optionally filter by provider
+	if providerID := ctx.URLParam("provider_id"); providerID != "" {
+		query = query.Where("provider_id = ?", providerID)
+	}
+
+	if err := query.Find(&numbers).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to retrieve messaging numbers"})
+		return
+	}
+	ctx.JSON(iris.Map{"data": numbers})
+}
+
+func (h *Handler) CreateMessagingNumber(ctx iris.Context) {
+	var number models.MessagingNumber
+	if err := ctx.ReadJSON(&number); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	// Verify provider exists
+	var provider models.MessagingProvider
+	if err := h.DB.First(&provider, number.ProviderID).Error; err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid provider ID"})
+		return
+	}
+
+	if err := h.DB.Create(&number).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to create messaging number"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusCreated)
+	ctx.JSON(number)
+}
+
+func (h *Handler) UpdateMessagingNumber(ctx iris.Context) {
+	id, err := strconv.Atoi(ctx.Params().Get("id"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid number ID"})
+		return
+	}
+
+	var number models.MessagingNumber
+	if err := h.DB.First(&number, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Messaging number not found"})
+		return
+	}
+
+	if err := ctx.ReadJSON(&number); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request payload"})
+		return
+	}
+
+	if err := h.DB.Save(&number).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to update messaging number"})
+		return
+	}
+
+	ctx.JSON(number)
+}
+
+func (h *Handler) DeleteMessagingNumber(ctx iris.Context) {
+	id, err := strconv.Atoi(ctx.Params().Get("id"))
+	if err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid number ID"})
+		return
+	}
+
+	var number models.MessagingNumber
+	if err := h.DB.First(&number, id).Error; err != nil {
+		ctx.StatusCode(http.StatusNotFound)
+		ctx.JSON(iris.Map{"error": "Messaging number not found"})
+		return
+	}
+
+	if err := h.DB.Delete(&number).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to delete messaging number"})
+		return
+	}
+
+	ctx.StatusCode(http.StatusNoContent)
+}
 
 func (h *Handler) ListGlobalDialplans(ctx iris.Context) {
 	var dialplans []models.Dialplan

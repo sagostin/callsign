@@ -334,8 +334,7 @@
           <label>Gateway / Trunk</label>
           <select v-model="outboundForm.gateway" class="input-field">
             <option value="">Select System Gateway...</option>
-            <option value="system_pri">System PRI</option>
-            <option value="system_sip">System SIP Trunk</option>
+            <option v-for="gw in gateways" :key="gw.id" :value="gw.gateway_name">{{ gw.name || gw.gateway_name }}</option>
           </select>
         </div>
 
@@ -459,23 +458,29 @@ const recalculateOrder = async () => {
     return [...routes].sort((a, b) => {
       const aPattern = a.conditions?.[0]?.value || ''
       const bPattern = b.conditions?.[0]?.value || ''
-      
-      // Exact patterns (no wildcards) first
       const aIsExact = !aPattern.includes('*') && !aPattern.includes('.')
       const bIsExact = !bPattern.includes('*') && !bPattern.includes('.')
       if (aIsExact && !bIsExact) return -1
       if (!aIsExact && bIsExact) return 1
-      
-      // Longer patterns = more specific
       return bPattern.length - aPattern.length
     })
   }
   
   inboundRoutes.value = sortBySpecificity(inboundRoutes.value)
   outboundRoutes.value = sortBySpecificity(outboundRoutes.value)
-  
-  // TODO: Save new order to backend
-  alert('Route order recalculated by specificity! Don\'t forget to save.')
+
+  // Persist the new order to the backend
+  try {
+    const allRoutes = [...inboundRoutes.value, ...outboundRoutes.value]
+    for (let i = 0; i < allRoutes.length; i++) {
+      const route = allRoutes[i]
+      if (route.id) {
+        await systemAPI.updateDialplan(route.id, { dialplan_order: (i + 1) * 10 })
+      }
+    }
+  } catch (e) {
+    console.error('Failed to persist route order', e)
+  }
 }
 
 const loadAllNumbers = async () => {
@@ -633,17 +638,65 @@ const outboundForm = ref({ dialplan_name: '', dialplan_context: 'default', enabl
 // Looking at the code, `SystemRoutes.vue` has a specific outbound modal with pattern/strip/prepend/gateway fields.
 // I need to map these to Dialplan Details on save, and map back on edit.
 
+const gateways = ref([])
+
+const loadGateways = async () => {
+  try {
+    const response = await systemAPI.listGateways()
+    gateways.value = response.data || []
+  } catch (e) {
+    console.error('Failed to load gateways', e)
+  }
+}
+
 const editOutboundRoute = (route) => {
-    // Attempt to reverse engineer the simplified fields from details
-    // This is tricky. For MVP, I might just map what I can.
-    // ... logic needed here ...
-    // For now, let's just assume we want to support the raw form or simple form.
-    // The previous implementation used: { name, pattern, strip, prepend, gateway }
+    // Reverse-map from dialplan conditions/actions to simplified outbound form
+    const conds = route.conditions || []
+    const acts = route.actions || []
     
-    // Simplification: We will just populate the form with basic data and let backend handle it, 
-    // OR we fully implement the translation logic.
-    // Given the constraints, I will implement a basic version.
-    alert("Advanced outbound editing not fully implemented yet in this iteration.")
+    // Extract pattern from first condition
+    const pattern = conds.length > 0 ? conds[0].value : ''
+    
+    // Extract gateway, strip, prepend from the bridge action
+    let gateway = ''
+    let strip = 0
+    let prepend = ''
+    let continueOnFail = true
+    
+    const bridgeAction = acts.find(a => a.app === 'bridge')
+    if (bridgeAction && bridgeAction.data) {
+        // Parse bridge string: sofia/gateway/NAME/PREPEND$1
+        const gwMatch = bridgeAction.data.match(/sofia\/gateway\/([^\/]+)/)
+        if (gwMatch) gateway = gwMatch[1]
+    }
+    
+    // Look for set actions for strip/prepend
+    acts.forEach(a => {
+        if (a.app === 'set' && a.data) {
+            if (a.data.includes('effective_caller_id')) return
+            if (a.data.startsWith('sip_h_X-Prepend=')) prepend = a.data.split('=')[1] || ''
+        }
+    })
+    
+    // Check for strip_digits condition data
+    conds.forEach(c => {
+        if (c.variable === 'strip_digits' && c.value) {
+            strip = parseInt(c.value) || 0
+        }
+    })
+    
+    outboundForm.value = {
+        id: route.id,
+        name: route.name,
+        pattern: pattern,
+        strip: strip,
+        prepend: prepend,
+        gateway: gateway,
+        continue: continueOnFail,
+        enabled: route.enabled
+    }
+    editingOutbound.value = true
+    showOutboundModal.value = true
 }
 
 const deleteOutboundRoute = async (route) => {
@@ -658,18 +711,82 @@ const deleteOutboundRoute = async (route) => {
 }
 
 const saveOutboundRoute = async () => {
-    // ... placeholder for outbound save logic ...
-    // To properly support the UI's 'strip', 'prepend', 'gateway', we need to generate:
-    // Condition: destination_number =~ pattern
-    // Action: bridge sofia/gateway/gateway_name/prepend$1
-    // This logic should ideally be in the backend or shared.
-    alert("Save outbound not implemented yet.")
+    try {
+        const form = outboundForm.value
+        
+        // Build dialplan details from simplified form
+        const details = []
+        
+        // Condition: destination_number matches pattern
+        details.push({
+            detail_type: 'condition',
+            condition_field: 'destination_number',
+            condition_expression: form.pattern,
+            condition_expression_type: 'regex',
+            condition_break: 'on-false',
+            detail_order: 10
+        })
+        
+        // Action: set strip digits if needed
+        if (form.strip && parseInt(form.strip) > 0) {
+            details.push({
+                detail_type: 'action',
+                action_application: 'set',
+                action_data: `effective_caller_id_number=\${caller_id_number:${form.strip}}`,
+                detail_order: 20
+            })
+        }
+        
+        // Action: bridge to gateway
+        let bridgeStr = `sofia/gateway/${form.gateway}/`
+        if (form.prepend) bridgeStr += form.prepend
+        bridgeStr += '$1'
+        
+        details.push({
+            detail_type: 'action',
+            action_application: 'bridge',
+            action_data: bridgeStr,
+            detail_order: 30
+        })
+        
+        // Set continue on fail
+        if (form.continue) {
+            details.splice(details.length - 1, 0, {
+                detail_type: 'action',
+                action_application: 'set',
+                action_data: 'continue_on_fail=true',
+                detail_order: 25
+            })
+        }
+        
+        const payload = {
+            dialplan_name: form.name,
+            dialplan_context: 'default',
+            enabled: form.enabled !== false,
+            details: details
+        }
+        
+        if (editingOutbound.value && form.id) {
+            await systemAPI.updateDialplan(form.id, payload)
+        } else {
+            await systemAPI.createDialplan(payload)
+        }
+        
+        await loadRoutes()
+        showOutboundModal.value = false
+        editingOutbound.value = false
+        outboundForm.value = { name: '', pattern: '', strip: 0, prepend: '', gateway: '', continue: true, enabled: true }
+    } catch (e) {
+        console.error(e)
+        alert('Failed to save outbound route: ' + (e.message || 'Unknown error'))
+    }
 }
 
 // Initial Load
 onMounted(() => {
   loadAllNumbers()
   loadRoutes()
+  loadGateways()
 })
 
 // Settings
@@ -678,7 +795,26 @@ const settings = ref({
   format: 'e164'
 })
 
-const saveSettings = () => alert('System Settings saved!')
+const loadSettings = async () => {
+  try {
+    const response = await systemAPI.getSettings()
+    const data = response.data || {}
+    if (data.region) settings.value.region = data.region
+    if (data.format) settings.value.format = data.format
+  } catch (e) {
+    // Settings may not exist yet
+    console.debug('No system settings found, using defaults')
+  }
+}
+
+const saveSettings = async () => {
+  try {
+    await systemAPI.updateSettings(settings.value)
+  } catch (e) {
+    console.error(e)
+    alert('Failed to save settings: ' + (e.message || 'Unknown error'))
+  }
+}
 </script>
 
 <style scoped>

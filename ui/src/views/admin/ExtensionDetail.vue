@@ -505,7 +505,7 @@ onMounted(async () => {
 async function fetchProfiles() {
   try {
     const response = await extensionProfilesAPI.list()
-    profiles.value = (response.data.data || []).map(p => ({
+    profiles.value = (response.data || []).map(p => ({
       id: p.id,
       name: p.name,
       color: p.color || '#6366f1',
@@ -520,7 +520,7 @@ async function fetchExtension() {
   isLoading.value = true
   try {
     const response = await extensionsAPI.get(route.params.id)
-    const ext = response.data.data
+    const ext = response.data
     extension.value = {
       id: ext.id,
       ext: ext.extension,
@@ -615,9 +615,14 @@ async function saveExtension() {
       voicemail_pin: extension.value.vmPin || undefined
     }
     
-    // Only include password if it's set (for new extensions or regeneration)
+    // Only include SIP password if it's set (for new extensions or regeneration)
     if (extension.value.sipPassword) {
       payload.password = extension.value.sipPassword
+    }
+
+    // Include web password if the user entered one
+    if (extension.value.webPassword) {
+      payload.web_password = extension.value.webPassword
     }
     
     if (isNew.value) {
@@ -665,7 +670,10 @@ const saveCallHandling = async () => {
   }
 }
 
-const resetWebPassword = () => toast?.info('Password reset email would be sent')
+const resetWebPassword = () => {
+  extension.value.webPassword = generatePassword(12)
+  toast?.success('Web password generated — remember to save changes')
+}
 const regenerateSipPassword = () => {
   extension.value.sipPassword = generatePassword(16)
   toast?.success('SIP password regenerated - remember to save changes')

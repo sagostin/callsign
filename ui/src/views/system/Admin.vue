@@ -131,7 +131,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { Building, Users, Phone, AlertTriangle, Monitor as MonitorIcon, Smartphone as SmartphoneIcon, Phone as PhoneIcon, Server as ServerIcon } from 'lucide-vue-next'
 import { systemAPI } from '../../services/api'
 
@@ -141,6 +141,8 @@ const stats = ref({
   users: 0,
   active_channels: 0,
   alerts: 0,
+  esl_connected: false,
+  registrations: 0,
   devices: {
     desk_phones: { total: 0, online: 0 },
     softphones: { total: 0, online: 0 },
@@ -151,17 +153,29 @@ const stats = ref({
 
 const loading = ref(true)
 const error = ref(null)
+let refreshInterval = null
 
-onMounted(async () => {
+async function loadStats() {
   try {
     const response = await systemAPI.getStats()
-    stats.value = response.data
+    stats.value = { ...stats.value, ...response.data }
+    error.value = null
   } catch (e) {
     error.value = e.message
     console.error('Failed to load system stats:', e)
   } finally {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  loadStats()
+  // Auto-refresh every 30 seconds
+  refreshInterval = setInterval(loadStats, 30000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval) clearInterval(refreshInterval)
 })
 </script>
 

@@ -53,6 +53,7 @@ func (h *Handler) CreateExtension(ctx iris.Context) {
 	var input struct {
 		Extension               string `json:"extension"`
 		Password                string `json:"password"`
+		WebPassword             string `json:"web_password"`
 		DisplayName             string `json:"display_name"`
 		Email                   string `json:"email"`
 		VoicemailPin            string `json:"voicemail_pin"`
@@ -118,6 +119,15 @@ func (h *Handler) CreateExtension(ctx iris.Context) {
 		DirectoryVisible:        true,
 	}
 
+	// Hash web password if provided
+	if input.WebPassword != "" {
+		if err := ext.SetWebPassword(input.WebPassword); err != nil {
+			ctx.StatusCode(http.StatusInternalServerError)
+			ctx.JSON(iris.Map{"error": "Failed to hash web password"})
+			return
+		}
+	}
+
 	if err := h.DB.Create(&ext).Error; err != nil {
 		ctx.StatusCode(http.StatusInternalServerError)
 		ctx.JSON(iris.Map{"error": "Failed to create extension: " + err.Error()})
@@ -181,6 +191,7 @@ func (h *Handler) UpdateExtension(ctx iris.Context) {
 	var input struct {
 		Extension               *string `json:"extension"`
 		Password                *string `json:"password"`
+		WebPassword             *string `json:"web_password"`
 		Enabled                 *bool   `json:"enabled"`
 		ProfileID               *uint   `json:"profile_id"`
 		EffectiveCallerIDName   *string `json:"effective_caller_id_name"`
@@ -275,6 +286,15 @@ func (h *Handler) UpdateExtension(ctx iris.Context) {
 	}
 	if input.NoAnswerForwardTo != nil {
 		ext.NoAnswerForwardTo = *input.NoAnswerForwardTo
+	}
+
+	// Hash web password if provided
+	if input.WebPassword != nil && *input.WebPassword != "" {
+		if err := ext.SetWebPassword(*input.WebPassword); err != nil {
+			ctx.StatusCode(http.StatusInternalServerError)
+			ctx.JSON(iris.Map{"error": "Failed to hash web password"})
+			return
+		}
 	}
 
 	if err := h.DB.Save(&ext).Error; err != nil {
