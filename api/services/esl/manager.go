@@ -3,9 +3,13 @@ package esl
 import (
 	"callsign/config"
 	"callsign/models"
+	"callsign/services/websocket"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/fiorix/go-eventsocket/eventsocket"
 	log "github.com/sirupsen/logrus"
@@ -20,6 +24,7 @@ type Manager struct {
 	Sessions  *SessionManager
 	Processor *EventProcessor
 	Registry  *ServiceRegistry
+	WSHub     *websocket.Hub
 
 	running bool
 	mu      sync.RWMutex
@@ -33,6 +38,11 @@ func NewManager(cfg *config.Config, db *gorm.DB) *Manager {
 		Sessions: NewSessionManager(),
 		Registry: NewServiceRegistry(),
 	}
+}
+
+// SetWSHub sets the WebSocket hub for real-time event broadcasting
+func (m *Manager) SetWSHub(hub *websocket.Hub) {
+	m.WSHub = hub
 }
 
 // Start starts the ESL manager
@@ -122,6 +132,9 @@ func (m *Manager) registerServices() {
 
 	// Feature codes service
 	m.Registry.Register("featurecodes", "127.0.0.6:9001", m.handleFeatureCodes)
+
+	// Custom IVR/Auto-Attendant engine (walks flow graph via ESL)
+	m.Registry.Register("ivr", "127.0.0.7:9001", m.handleIVR)
 }
 
 // handleCallControl handles general call control with full routing
@@ -158,6 +171,16 @@ func (m *Manager) handleCallControl(conn *eventsocket.Connection) {
 	var tenantID uint = 1
 	if tenantIDStr != "" {
 		fmt.Sscanf(tenantIDStr, "%d", &tenantID)
+	}
+
+	// Broadcast call event via WebSocket
+	if m.WSHub != nil {
+		m.WSHub.NotifyCallEvent(tenantID, "ringing", map[string]interface{}{
+			"uuid":        uuid,
+			"caller":      callerID,
+			"destination": dest,
+			"domain":      domain,
+		})
 	}
 
 	// Route based on what variables are set by the dialplan
@@ -519,23 +542,135 @@ func (m *Manager) handleVoicemail(conn *eventsocket.Connection) {
 	// Answer the call
 	conn.Execute("answer", "", true)
 
-	// TODO: Implement voicemail logic
-	// - Check if this is deposit or retrieval
-	// - For retrieval: authenticate user, play messages
-	// - For deposit: record message, save to DB
+	// Parse tenant ID
+	var tenantID uint = 1
+	if tidStr := ev.Get("variable_tenant_id"); tidStr != "" {
+		fmt.Sscanf(tidStr, "%d", &tenantID)
+	}
 
-	// For now, play a placeholder greeting
-	conn.Execute("playback", "ivr/ivr-please_leave_message.wav", true)
+	// Determine if this is voicemail retrieval (*97) or deposit
+	isRetrieval := dest == "*97" || dest == "*98"
 
-	// Record message
-	recordPath := fmt.Sprintf("/tmp/voicemail_%s.wav", uuid)
-	conn.Execute("record", fmt.Sprintf("%s 60 100 5", recordPath), true)
+	if isRetrieval {
+		// Voicemail retrieval — authenticate with extension and PIN
+		conn.Execute("playback", "voicemail/vm-enter_id.wav", true)
+		result, _ := conn.Execute("read", "3 8 voicemail/vm-enter_id.wav # 5000", true)
+		extNum := ""
+		if result != nil {
+			extNum = result.Get("variable_read_result")
+		}
+		if extNum == "" {
+			extNum = callerID // Default to caller's extension
+		}
 
-	// Thank the caller
-	conn.Execute("playback", "ivr/ivr-thank_you.wav", true)
+		// Look up voicemail box for PIN verification
+		var box models.VoicemailBox
+		if err := m.DB.Where("extension = ? AND tenant_id = ? AND enabled = true", extNum, tenantID).
+			First(&box).Error; err != nil {
+			conn.Execute("playback", "voicemail/vm-goodbye.wav", true)
+			conn.Execute("hangup", "", false)
+			return
+		}
 
-	// Hangup
-	conn.Execute("hangup", "", false)
+		// PIN authentication
+		if box.Password != "" {
+			conn.Execute("playback", "voicemail/vm-enter_pass.wav", true)
+			pinResult, _ := conn.Execute("read", "4 8 voicemail/vm-enter_pass.wav # 5000", true)
+			pin := ""
+			if pinResult != nil {
+				pin = pinResult.Get("variable_read_result")
+			}
+			if pin != box.Password {
+				conn.Execute("playback", "voicemail/vm-fail_auth.wav", true)
+				conn.Execute("hangup", "", false)
+				return
+			}
+		}
+
+		// Play message count and iterate through messages
+		var count int64
+		m.DB.Model(&models.VoicemailMessage{}).Where("box_id = ? AND is_new = true", box.ID).Count(&count)
+
+		if count == 0 {
+			conn.Execute("playback", "voicemail/vm-no_more_messages.wav", true)
+		} else {
+			conn.Execute("say", fmt.Sprintf("en number pronounced %d", count), true)
+			conn.Execute("playback", "voicemail/vm-messages.wav", true)
+
+			// Play messages
+			var messages []models.VoicemailMessage
+			m.DB.Where("box_id = ? AND is_new = true", box.ID).Order("created_at DESC").Find(&messages)
+			for i := range messages {
+				if messages[i].FilePath != "" {
+					conn.Execute("playback", messages[i].FilePath, true)
+					// Mark as read
+					now := time.Now()
+					m.DB.Model(&messages[i]).Updates(map[string]interface{}{"is_new": false, "read_at": &now})
+				}
+			}
+		}
+
+		conn.Execute("playback", "voicemail/vm-goodbye.wav", true)
+		conn.Execute("hangup", "", false)
+
+	} else {
+		// Voicemail deposit — record a message
+		// Look up voicemail box for destination extension
+		var box models.VoicemailBox
+		err := m.DB.Where("extension = ? AND tenant_id = ? AND enabled = true", dest, tenantID).
+			First(&box).Error
+
+		// Play greeting
+		if err == nil && box.GreetingPath != "" {
+			conn.Execute("playback", box.GreetingPath, true)
+		} else {
+			conn.Execute("playback", "ivr/ivr-please_leave_message.wav", true)
+		}
+
+		// Record beep + message
+		conn.Execute("playback", "tone_stream://%(200,0,800)", true)
+
+		recordDir := "/var/lib/callsign/voicemail"
+		recordPath := fmt.Sprintf("%s/%s_%s.wav", recordDir, dest, uuid)
+		maxSecs := 180
+		if box.MaxMessageSecs > 0 {
+			maxSecs = box.MaxMessageSecs
+		}
+		conn.Execute("record", fmt.Sprintf("%s %d 100 5", recordPath, maxSecs), true)
+
+		// Save voicemail to database
+		if box.ID > 0 {
+			vm := models.VoicemailMessage{
+				BoxID:          box.ID,
+				TenantID:       tenantID,
+				CallerIDNumber: callerID,
+				CallerIDName:   ev.Get("Caller-Caller-ID-Name"),
+				FilePath:       recordPath,
+				RecordedAt:     time.Now(),
+				IsNew:          true,
+				ChannelUUID:    uuid,
+			}
+			if err := m.DB.Create(&vm).Error; err != nil {
+				log.Errorf("Voicemail: failed to save: %v", err)
+			}
+
+			// Update box message count
+			m.DB.Model(&box).UpdateColumn("new_messages", gorm.Expr("new_messages + 1"))
+
+			// Broadcast MWI (Message Waiting Indicator) via WebSocket
+			if m.WSHub != nil {
+				m.WSHub.BroadcastToTenant(tenantID, websocket.EventVoicemail, "new_message", map[string]interface{}{
+					"box_id":       box.ID,
+					"extension_id": box.ExtensionID,
+					"caller":       callerID,
+					"extension":    dest,
+				})
+			}
+		}
+
+		conn.Execute("playback", "ivr/ivr-thank_you.wav", true)
+		conn.Execute("hangup", "", false)
+	}
 }
 
 // handleConference handles conference rooms
@@ -560,20 +695,63 @@ func (m *Manager) handleConference(conn *eventsocket.Connection) {
 		"domain":     domain,
 	}).Info("Conference: joining caller")
 
+	// Broadcast conference join via WebSocket
+	if m.WSHub != nil {
+		var confTenantID uint = 1
+		if tenantIDStr := ev.Get("variable_tenant_id"); tenantIDStr != "" {
+			fmt.Sscanf(tenantIDStr, "%d", &confTenantID)
+		}
+		m.WSHub.NotifyConferenceEvent(confTenantID, "member_join", map[string]interface{}{
+			"uuid":       uuid,
+			"caller":     callerID,
+			"conference": conferenceNum,
+		})
+	}
+
 	conn.Send("linger")
 	conn.Send("myevents")
 
 	// Answer
 	conn.Execute("answer", "", true)
 
-	// TODO: Implement conference logic
-	// - Look up conference by number/PIN
-	// - Authenticate if required
-	// - Join conference
+	// Look up conference by number and check for PIN
+	var conf models.Conference
+	confFound := m.DB.Where("extension = ? AND enabled = ?", conferenceNum, true).
+		Joins("JOIN tenants ON tenants.id = conferences.tenant_id AND tenants.domain = ?", domain).
+		First(&conf).Error == nil
 
-	// For now, join a simple conference
+	if confFound && conf.PIN != "" {
+		// Authenticate with PIN
+		conn.Execute("playback", "conference/conf-pin.wav", true)
+		pinResult, _ := conn.Execute("read", "4 8 conference/conf-pin.wav # 5000", true)
+		pin := ""
+		if pinResult != nil {
+			pin = pinResult.Get("variable_read_result")
+		}
+		if pin != conf.PIN {
+			conn.Execute("playback", "conference/conf-bad-pin.wav", true)
+			conn.Execute("hangup", "", false)
+			return
+		}
+	}
+
+	// Build conference flags
+	confProfile := "default"
+	if confFound {
+		if conf.MaxMembers > 0 {
+			conn.Execute("set", fmt.Sprintf("conference_max_members=%d", conf.MaxMembers), true)
+		}
+		if conf.RecordConference {
+			conn.Execute("set", "conference_auto_record=true", true)
+		}
+		if conf.MuteOnJoin {
+			confProfile = "default+mute"
+		}
+	}
+
+	// Join conference
 	confName := fmt.Sprintf("%s-%s", domain, conferenceNum)
-	conn.Execute("conference", fmt.Sprintf("%s@default", confName), true)
+	conn.Execute("conference", fmt.Sprintf("%s@%s", confName, confProfile), true)
 
 	// Wait for hangup
 	for {
@@ -758,6 +936,19 @@ func (m *Manager) handleQueue(conn *eventsocket.Connection) {
 		"queue":  queueNum,
 		"domain": domain,
 	}).Info("Queue: caller entering queue")
+
+	// Broadcast queue event via WebSocket
+	if m.WSHub != nil {
+		var qTenantID uint = 1
+		if tenantIDStr := ev.Get("variable_tenant_id"); tenantIDStr != "" {
+			fmt.Sscanf(tenantIDStr, "%d", &qTenantID)
+		}
+		m.WSHub.BroadcastToTenant(qTenantID, websocket.EventQueue, "caller_enter", map[string]interface{}{
+			"uuid":   uuid,
+			"caller": callerID,
+			"queue":  queueNum,
+		})
+	}
 
 	conn.Send("linger")
 	conn.Send("myevents")
@@ -1054,4 +1245,390 @@ func splitUserDomain(addr string) [2]string {
 		}
 	}
 	return [2]string{addr, ""}
+}
+
+// handleIVR handles IVR/Auto-Attendant calls using the custom flow engine
+func (m *Manager) handleIVR(conn *eventsocket.Connection) {
+	defer conn.Close()
+
+	ev, err := conn.Send("connect")
+	if err != nil {
+		log.Errorf("IVR: connect failed: %v", err)
+		return
+	}
+
+	uuid := ev.Get("Unique-ID")
+	callerID := ev.Get("Caller-Caller-ID-Number")
+	callerName := ev.Get("Caller-Caller-ID-Name")
+	dest := ev.Get("Caller-Destination-Number")
+	domain := ev.Get("variable_domain_name")
+
+	logger := log.WithFields(log.Fields{
+		"uuid":   uuid,
+		"caller": callerID,
+		"dest":   dest,
+		"domain": domain,
+	})
+	logger.Info("IVR: handling call")
+
+	conn.Send("linger")
+	conn.Send("myevents")
+
+	// Answer the call
+	conn.Execute("answer", "", true)
+
+	// Look up the IVR menu by extension
+	var menu models.IVRMenu
+	if err := m.DB.Where("extension = ? AND enabled = ?", dest, true).
+		Preload("Options").First(&menu).Error; err != nil {
+		logger.Errorf("IVR: no menu found for extension %s", dest)
+		conn.Execute("playback", "ivr/ivr-invalid_entry.wav", true)
+		conn.Execute("hangup", "", false)
+		return
+	}
+
+	logger = logger.WithField("ivr_menu", menu.Name)
+
+	// If we have visual flow data, execute the flow graph
+	if len(menu.FlowData.Nodes) > 0 {
+		logger.Info("IVR: executing visual flow graph")
+		m.executeIVRFlow(conn, &menu, uuid, callerID, callerName, dest, domain, logger)
+	} else {
+		// Legacy: use IVRMenuOption rows
+		logger.Info("IVR: executing legacy menu options")
+		m.executeIVRLegacy(conn, &menu, uuid, callerID, dest, domain, logger)
+	}
+}
+
+// executeIVRFlow walks the visual flow graph stored in menu.FlowData
+func (m *Manager) executeIVRFlow(conn *eventsocket.Connection, menu *models.IVRMenu,
+	uuid, callerID, callerName, dest, domain string, logger *log.Entry) {
+
+	nodes := menu.FlowData.Nodes
+	connections := menu.FlowData.Connections
+
+	// Build maps
+	nodeMap := make(map[string]*models.IVRFlowNode)
+	for i := range nodes {
+		nodeMap[nodes[i].ID] = &nodes[i]
+	}
+	connMap := make(map[string]string)
+	for _, c := range connections {
+		connMap[c.SourceID+":"+c.SourceOutput] = c.TargetID
+	}
+
+	// Context variables for ${var} substitution
+	vars := map[string]string{
+		"caller_id":   callerID,
+		"caller_name": callerName,
+		"destination": dest,
+		"domain":      domain,
+		"ivr_name":    menu.Name,
+	}
+
+	// Find start node
+	var current *models.IVRFlowNode
+	for _, n := range nodeMap {
+		if n.Type == "ivr_start" {
+			current = n
+			break
+		}
+	}
+	if current == nil && len(nodes) > 0 {
+		current = &nodes[0]
+	}
+
+	// Walk the graph (max 100 iterations for safety)
+	for step := 0; step < 100 && current != nil; step++ {
+		logger.WithFields(log.Fields{"step": step, "node": current.Type, "id": current.ID}).Debug("IVR: exec node")
+
+		output := m.execIVRNode(conn, current, uuid, domain, vars, logger)
+		if output == "__hangup__" || output == "" {
+			break
+		}
+
+		// Find next node via connection map
+		nextID := connMap[current.ID+":"+output]
+		if nextID == "" {
+			nextID = connMap[current.ID+":next"]
+		}
+		if nextID == "" {
+			nextID = connMap[current.ID+":"]
+		}
+		current = nodeMap[nextID]
+	}
+
+	conn.Execute("hangup", "", false)
+}
+
+// execIVRNode executes a single flow node and returns the output port name
+func (m *Manager) execIVRNode(conn *eventsocket.Connection, node *models.IVRFlowNode,
+	uuid, domain string, vars map[string]string, logger *log.Entry) string {
+
+	cfg := node.Config
+	getStr := func(key, def string) string {
+		if v, ok := cfg[key]; ok {
+			if s, ok := v.(string); ok {
+				return resolveIVRVars(s, vars)
+			}
+		}
+		return def
+	}
+	getInt := func(key string, def int) int {
+		if v, ok := cfg[key]; ok {
+			if f, ok := v.(float64); ok {
+				return int(f)
+			}
+		}
+		return def
+	}
+
+	switch node.Type {
+	case "ivr_start":
+		return "next"
+
+	case "gather":
+		maxDigits := getInt("maxDigits", 1)
+		timeout := getInt("timeout", 10)
+		maxRetries := getInt("maxRetries", 3)
+		promptType := getStr("promptType", "tts")
+		var prompt string
+		if promptType == "audio" {
+			prompt = getStr("audioFile", "silence_stream://250")
+		} else {
+			prompt = fmt.Sprintf("say:%s", getStr("ttsText", "Please make your selection"))
+		}
+		invalidSound := getStr("invalidSound", "ivr/ivr-invalid_entry.wav")
+
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			cmd := fmt.Sprintf("1 %d 1 %d # %s %s digits \\d+ %d",
+				maxDigits, timeout*1000, prompt, invalidSound, timeout*1000)
+			conn.Execute("play_and_get_digits", cmd, true)
+
+			ev, err := conn.Send("api uuid_getvar " + uuid + " digits")
+			if err != nil || strings.TrimSpace(ev.Body) == "" || ev.Body == "_undef_" {
+				continue
+			}
+			digits := strings.TrimSpace(ev.Body)
+			vars["caller_input"] = digits
+			vars["gathered_digits"] = digits
+			logger.WithField("digits", digits).Info("IVR: gathered digits")
+			return "match"
+		}
+		return "timeout"
+
+	case "play_audio":
+		file := getStr("audioFile", "")
+		if file != "" {
+			conn.Execute("playback", file, true)
+		}
+		return "next"
+
+	case "play_tts":
+		text := getStr("text", "")
+		if text != "" {
+			engine := getStr("engine", "flite")
+			voice := getStr("voice", "default")
+			conn.Execute("speak", fmt.Sprintf("%s|%s|%s", engine, voice, text), true)
+		}
+		return "next"
+
+	case "say_digits":
+		value := getStr("value", "")
+		if value != "" {
+			conn.Execute("say", fmt.Sprintf("en number iterated %s", value), true)
+		}
+		return "next"
+
+	case "web_request":
+		method := getStr("method", "GET")
+		url := getStr("url", "")
+		if url == "" {
+			return "error"
+		}
+		respVar := getStr("responseVar", "api_response")
+		timeout := getInt("timeout", 5)
+		bodyStr := getStr("body", "")
+
+		client := &http.Client{Timeout: time.Duration(timeout) * time.Second}
+		var body io.Reader
+		if bodyStr != "" && method != "GET" {
+			body = strings.NewReader(bodyStr)
+		}
+		req, err := http.NewRequest(method, url, body)
+		if err != nil {
+			return "error"
+		}
+		if method != "GET" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			vars[respVar] = ""
+			return "error"
+		}
+		defer resp.Body.Close()
+		respBody, _ := io.ReadAll(resp.Body)
+		vars[respVar] = string(respBody)
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return "success"
+		}
+		return "error"
+
+	case "condition":
+		variable := getStr("variable", "")
+		op := getStr("operator", "==")
+		value := getStr("value", "")
+		result := false
+		switch op {
+		case "==":
+			result = variable == value
+		case "!=":
+			result = variable != value
+		case "contains":
+			result = strings.Contains(variable, value)
+		case ">":
+			result = variable > value
+		case "<":
+			result = variable < value
+		}
+		if result {
+			return "true"
+		}
+		return "false"
+
+	case "set_variable":
+		name := getStr("name", "")
+		value := getStr("value", "")
+		if name != "" {
+			vars[name] = value
+		}
+		return "next"
+
+	case "extension":
+		ext := getStr("extension", "")
+		if ext != "" {
+			conn.Execute("transfer", fmt.Sprintf("%s XML %s", ext, domain), false)
+		}
+		return "__hangup__"
+
+	case "queue":
+		q := getStr("queueId", "")
+		if q != "" {
+			conn.Execute("transfer", fmt.Sprintf("%s XML %s", q, domain), false)
+		}
+		return "__hangup__"
+
+	case "ring_group":
+		rg := getStr("groupId", "")
+		if rg != "" {
+			conn.Execute("transfer", fmt.Sprintf("%s XML %s", rg, domain), false)
+		}
+		return "__hangup__"
+
+	case "ivr_menu":
+		menuID := getStr("menuId", "")
+		if menuID != "" {
+			conn.Execute("transfer", fmt.Sprintf("%s XML %s", menuID, domain), false)
+		}
+		return "__hangup__"
+
+	case "external":
+		number := getStr("number", "")
+		if number != "" {
+			conn.Execute("bridge", fmt.Sprintf("sofia/gateway/default/%s", number), true)
+		}
+		return "__hangup__"
+
+	case "voicemail":
+		mailbox := getStr("mailboxId", vars["destination"])
+		conn.Execute("transfer", fmt.Sprintf("*99%s XML %s", mailbox, domain), false)
+		return "__hangup__"
+
+	case "hangup":
+		conn.Execute("hangup", "", false)
+		return "__hangup__"
+
+	case "send_sms":
+		logger.Info("IVR: SMS sending requested (provider integration needed)")
+		return "sent"
+
+	default:
+		logger.Warnf("IVR: unknown node type: %s", node.Type)
+		return "next"
+	}
+}
+
+// executeIVRLegacy runs a traditional IVR using IVRMenuOption rows
+func (m *Manager) executeIVRLegacy(conn *eventsocket.Connection, menu *models.IVRMenu,
+	uuid, callerID, dest, domain string, logger *log.Entry) {
+
+	for attempt := 0; attempt < menu.MaxFailures+menu.MaxTimeouts; attempt++ {
+		greeting := menu.GreetLong
+		if attempt > 0 && menu.GreetShort != "" {
+			greeting = menu.GreetShort
+		}
+		if greeting != "" {
+			conn.Execute("playback", greeting, true)
+		}
+
+		timeout := menu.Timeout
+		if timeout == 0 {
+			timeout = 10
+		}
+		maxDigits := menu.DigitLen
+		if maxDigits == 0 {
+			maxDigits = 1
+		}
+
+		cmd := fmt.Sprintf("1 %d 1 %d # silence_stream://250 %s digits \\d+ %d",
+			maxDigits, timeout*1000, menu.InvalidSound, timeout*1000)
+		conn.Execute("play_and_get_digits", cmd, true)
+
+		ev, err := conn.Send("api uuid_getvar " + uuid + " digits")
+		if err != nil {
+			break
+		}
+		digits := strings.TrimSpace(ev.Body)
+		if digits == "" || digits == "_undef_" {
+			continue
+		}
+
+		for _, opt := range menu.Options {
+			if !opt.Enabled || opt.Digits != digits {
+				continue
+			}
+			logger.WithFields(log.Fields{"digits": digits, "action": opt.Action}).Info("IVR legacy: matched")
+			switch opt.Action {
+			case models.IVRActionPlayback:
+				conn.Execute("playback", opt.ActionParam, true)
+				continue
+			case models.IVRActionRepeat:
+				continue
+			case models.IVRActionHangup:
+				conn.Execute("hangup", "", false)
+			default:
+				conn.Execute("transfer", fmt.Sprintf("%s XML %s", opt.ActionParam, domain), false)
+			}
+			return
+		}
+
+		if menu.InvalidSound != "" {
+			conn.Execute("playback", menu.InvalidSound, true)
+		}
+	}
+
+	if menu.ExitSound != "" {
+		conn.Execute("playback", menu.ExitSound, true)
+	}
+	conn.Execute("hangup", "", false)
+}
+
+// resolveIVRVars replaces ${var} placeholders with values from the vars map
+func resolveIVRVars(input string, vars map[string]string) string {
+	result := input
+	for k, v := range vars {
+		result = strings.ReplaceAll(result, "${"+k+"}", v)
+	}
+	return result
 }

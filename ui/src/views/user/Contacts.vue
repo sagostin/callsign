@@ -84,50 +84,77 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Phone, MessageSquare, Bot, Zap } from 'lucide-vue-next'
+import { extensionsAPI, userPortalAPI, speedDialsAPI } from '../../services/api'
 
+const router = useRouter()
 const activeTab = ref('local')
+const loading = ref(false)
 
 const contacts = ref({
   added: [],
-  local: [
-    { id: 1, name: 'Alice Smith', ext: '101', initials: 'AS' },
-    { id: 2, name: 'Bob Jones', ext: '102', initials: 'BJ' },
-    { id: 3, name: 'Charlie Day', ext: '103', initials: 'CD' },
-    { id: 4, name: 'Dave Miller', ext: '104', initials: 'DM' },
-    { id: 5, name: 'Eve Polastri', ext: '105', initials: 'EP' },
-  ],
-  system: [
-    { id: 10, name: 'Main IVR', ext: '8000' },
-    { id: 11, name: 'Sales Queue', ext: '8001' },
-    { id: 12, name: 'Support Queue', ext: '8002' },
-  ]
+  local: [],
+  system: []
 })
 
-const speedDialGroups = ref([
-  { 
-    id: 1, 
-    name: 'Executive Directory', 
-    prefix: '*0', 
-    entries: [
-      { code: '1', label: 'CEO Mobile', destination: '+1 (555) 000-1001' },
-      { code: '2', label: 'CTO Mobile', destination: '+1 (555) 000-1002' },
-    ]
-  },
-  { 
-    id: 2, 
-    name: 'Vendor Support', 
-    prefix: '*9', 
-    entries: [
-      { code: '1', label: 'IT Helpdesk', destination: '1-800-555-1234' },
-      { code: '5', label: 'Building Security', destination: '+1 (555) 999-0000' },
-    ]
-  },
-])
+const speedDialGroups = ref([])
+
+const fetchContacts = async () => {
+  loading.value = true
+  try {
+    // Company directory from extensions
+    const extRes = await extensionsAPI.list()
+    const exts = extRes.data?.extensions || extRes.data || []
+    contacts.value.local = exts.map((e, i) => ({
+      id: e.id || i,
+      name: e.effective_caller_id_name || e.description || `Ext ${e.extension}`,
+      ext: e.extension,
+      initials: (e.effective_caller_id_name || e.description || 'X').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+    }))
+  } catch (err) {
+    console.error('Failed to load directory:', err)
+  }
+
+  try {
+    // Personal contacts
+    const contactRes = await userPortalAPI.getContacts()
+    const list = contactRes.data?.contacts || contactRes.data || []
+    contacts.value.added = list.map(c => ({
+      id: c.id,
+      name: c.name,
+      number: c.phone || c.number,
+      initials: (c.name || 'X').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+    }))
+  } catch (err) {
+    console.error('Failed to load personal contacts:', err)
+  }
+
+  try {
+    // Speed dials
+    const sdRes = await speedDialsAPI.list()
+    speedDialGroups.value = (sdRes.data?.groups || sdRes.data || []).map(g => ({
+      id: g.id,
+      name: g.name,
+      prefix: g.prefix || g.dial_prefix || '',
+      entries: (g.entries || []).map(e => ({
+        code: e.code || e.speed_code,
+        label: e.label || e.name,
+        destination: e.destination || e.number
+      }))
+    }))
+  } catch (err) {
+    console.error('Failed to load speed dials:', err)
+  }
+
+  loading.value = false
+}
+
+onMounted(fetchContacts)
 
 const dialSpeedDial = (prefix, code) => {
-  alert(`Dialing ${prefix}${code}...`)
+  router.push({ path: '/dialer', query: { dial: `${prefix}${code}` } })
 }
 </script>
 

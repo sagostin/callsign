@@ -37,7 +37,7 @@
       <div class="stat-card">
         <div class="stat-icon fax-number"><PhoneIcon class="icon" /></div>
         <div class="stat-info">
-          <span class="stat-value mono">(415) 555-3299</span>
+          <span class="stat-value mono">{{ myFaxNumber }}</span>
           <span class="stat-label">Your Fax Number</span>
         </div>
       </div>
@@ -298,7 +298,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, inject } from 'vue'
 import { 
   Send as SendIcon, Inbox as InboxIcon, Clock as ClockIcon, Phone as PhoneIcon,
   FileDown as FileDownIcon, FileUp as FileUpIcon, File as FileIcon, FileText as FileTextIcon,
@@ -306,17 +306,22 @@ import {
   RefreshCw as RefreshCwIcon, Loader as LoaderIcon, X as XIcon,
   UploadCloud as UploadCloudIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon
 } from 'lucide-vue-next'
+import { faxAPI } from '../../services/api'
 
+const toast = inject('toast')
 const activeTab = ref('inbox')
 const showSendModal = ref(false)
 const viewingFax = ref(null)
 const fileInput = ref(null)
 const isDragging = ref(false)
 
+// Fax settings
+const myFaxNumber = ref('—')
+
 // Send Form
 const sendForm = ref({
   to: '',
-  from: '(415) 555-3299',
+  from: '',
   coverPage: 'none',
   coverMessage: '',
   notifyComplete: true
@@ -330,24 +335,80 @@ const currentPreviewPage = ref(1)
 const previewImage = ref('')
 
 // Data
-const inboxData = ref([
-  { id: 1, date: 'Dec 9, 2:30 PM', from: '(555) 987-6543', pages: 3, box: 'My Fax', read: false },
-  { id: 2, date: 'Dec 9, 10:15 AM', from: '(555) 111-2222', pages: 1, box: 'My Fax', read: true },
-  { id: 3, date: 'Dec 8, 4:45 PM', from: '(212) 555-9876', pages: 5, box: 'Sales Fax', read: true },
-])
-
-const sentData = ref([
-  { id: 4, date: 'Dec 9, 11:00 AM', to: '(555) 555-1212', pages: 2, status: 'Sent' },
-  { id: 5, date: 'Dec 8, 3:00 PM', to: '(555) 555-9999', pages: 5, status: 'Failed' },
-  { id: 6, date: 'Dec 7, 9:30 AM', to: '(310) 555-4567', pages: 1, status: 'Sent' },
-])
-
-const pendingFaxes = ref([
-  { id: 7, to: '(415) 555-8888', pages: 3, progress: 65, statusText: 'Transmitting page 2 of 3...' }
-])
+const inboxData = ref([])
+const sentData = ref([])
+const pendingFaxes = ref([])
 
 const unreadCount = computed(() => inboxData.value.filter(f => !f.read).length)
 const canSend = computed(() => sendForm.value.to && uploadedFiles.value.length > 0 && previewState.value === 'ready')
+
+// Fetch data
+const fetchInbox = async () => {
+  try {
+    const res = await faxAPI.listInbox()
+    const data = res.data?.data || res.data || []
+    inboxData.value = data.map(f => ({
+      id: f.id,
+      date: new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+      from: f.caller_id || f.from || 'Unknown',
+      pages: f.pages || 0,
+      box: f.mailbox || 'My Fax',
+      read: f.read || false
+    }))
+  } catch (err) {
+    console.error('Failed to load inbox:', err)
+    inboxData.value = []
+  }
+}
+
+const fetchSent = async () => {
+  try {
+    const res = await faxAPI.listSent()
+    const data = res.data?.data || res.data || []
+    sentData.value = data.map(f => ({
+      id: f.id,
+      date: new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+      to: f.destination || f.to || '',
+      pages: f.pages || 0,
+      status: f.status || 'Sent'
+    }))
+  } catch (err) {
+    console.error('Failed to load sent faxes:', err)
+    sentData.value = []
+  }
+}
+
+const fetchPending = async () => {
+  try {
+    const res = await faxAPI.listPending()
+    const data = res.data?.data || res.data || []
+    pendingFaxes.value = data.map(f => ({
+      id: f.id,
+      to: f.destination || f.to || '',
+      pages: f.pages || 0,
+      progress: f.progress || 0,
+      statusText: f.status_text || 'Processing...'
+    }))
+  } catch (err) {
+    console.error('Failed to load pending faxes:', err)
+    pendingFaxes.value = []
+  }
+}
+
+const fetchSettings = async () => {
+  try {
+    const res = await faxAPI.getStats()
+    const s = res.data || {}
+    myFaxNumber.value = s.fax_number || s.caller_id || '—'
+    sendForm.value.from = myFaxNumber.value
+  } catch {
+    // Stats not critical for display
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([fetchSettings(), fetchInbox(), fetchSent(), fetchPending()])
+})
 
 // File Handling
 const triggerFileInput = () => fileInput.value?.click()
@@ -381,36 +442,29 @@ const formatFileSize = (bytes) => {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-// Document Processing (Mock)
+// Document Processing
 const processDocuments = async () => {
   previewState.value = 'processing'
   processingProgress.value = 0
   
-  // Simulate server processing
+  // Client-side progress simulation while rendering preview
   for (let i = 0; i <= 100; i += 10) {
-    await new Promise(r => setTimeout(r, 150))
+    await new Promise(r => setTimeout(r, 100))
     processingProgress.value = i
   }
   
-  // Mock preview ready
   previewPages.value = uploadedFiles.value.length + (sendForm.value.coverPage !== 'none' ? 1 : 0)
   currentPreviewPage.value = 1
-  previewImage.value = 'https://placehold.co/400x520/f8fafc/64748b?text=Page+1'
+  previewImage.value = ''
   previewState.value = 'ready'
 }
 
 const prevPage = () => {
-  if (currentPreviewPage.value > 1) {
-    currentPreviewPage.value--
-    previewImage.value = `https://placehold.co/400x520/f8fafc/64748b?text=Page+${currentPreviewPage.value}`
-  }
+  if (currentPreviewPage.value > 1) currentPreviewPage.value--
 }
 
 const nextPage = () => {
-  if (currentPreviewPage.value < previewPages.value) {
-    currentPreviewPage.value++
-    previewImage.value = `https://placehold.co/400x520/f8fafc/64748b?text=Page+${currentPreviewPage.value}`
-  }
+  if (currentPreviewPage.value < previewPages.value) currentPreviewPage.value++
 }
 
 watch(() => sendForm.value.coverPage, () => {
@@ -420,46 +474,29 @@ watch(() => sendForm.value.coverPage, () => {
 })
 
 // Actions
-const sendFax = () => {
-  const newFax = {
-    id: Date.now(),
-    to: sendForm.value.to,
-    pages: previewPages.value,
-    progress: 0,
-    statusText: 'Connecting...'
-  }
-  pendingFaxes.value.push(newFax)
-  closeSendModal()
-  activeTab.value = 'pending'
-  
-  // Simulate sending
-  simulateFaxSend(newFax)
-}
+const sendFax = async () => {
+  const formData = new FormData()
+  formData.append('to', sendForm.value.to)
+  formData.append('from', sendForm.value.from)
+  formData.append('cover_page', sendForm.value.coverPage)
+  if (sendForm.value.coverMessage) formData.append('cover_message', sendForm.value.coverMessage)
+  formData.append('notify_complete', sendForm.value.notifyComplete)
+  uploadedFiles.value.forEach(f => formData.append('files', f))
 
-const simulateFaxSend = async (fax) => {
-  for (let i = 0; i <= 100; i += 5) {
-    await new Promise(r => setTimeout(r, 200))
-    const idx = pendingFaxes.value.findIndex(f => f.id === fax.id)
-    if (idx !== -1) {
-      pendingFaxes.value[idx].progress = i
-      pendingFaxes.value[idx].statusText = i < 100 ? `Transmitting page ${Math.ceil(i / 33)} of ${fax.pages}...` : 'Completing...'
-    }
+  try {
+    await faxAPI.send(formData)
+    toast?.success('Fax queued for sending')
+    closeSendModal()
+    activeTab.value = 'pending'
+    fetchPending()
+  } catch (err) {
+    toast?.error(err.message, 'Failed to send fax')
   }
-  
-  // Move to sent
-  pendingFaxes.value = pendingFaxes.value.filter(f => f.id !== fax.id)
-  sentData.value.unshift({
-    id: fax.id,
-    date: 'Just now',
-    to: fax.to,
-    pages: fax.pages,
-    status: 'Sent'
-  })
 }
 
 const closeSendModal = () => {
   showSendModal.value = false
-  sendForm.value = { to: '', from: '(415) 555-3299', coverPage: 'none', coverMessage: '', notifyComplete: true }
+  sendForm.value = { to: '', from: myFaxNumber.value, coverPage: 'none', coverMessage: '', notifyComplete: true }
   uploadedFiles.value = []
   previewState.value = 'empty'
 }
@@ -468,17 +505,57 @@ const viewFax = (fax) => {
   viewingFax.value = fax
   if (!fax.read) fax.read = true
 }
-const downloadFax = (fax) => alert(`Downloading fax from ${fax.from || fax.to}`)
-const forwardFax = (fax) => alert(`Forward fax to...`)
-const deleteFax = (fax) => {
-  if (confirm('Delete this fax?')) {
-    inboxData.value = inboxData.value.filter(f => f.id !== fax.id)
-    sentData.value = sentData.value.filter(f => f.id !== fax.id)
+
+const downloadFax = async (fax) => {
+  try {
+    const res = await faxAPI.download(fax.id)
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `fax-${fax.id}.pdf`
+    a.click()
+    window.URL.revokeObjectURL(url)
+  } catch (err) {
+    toast?.error(err.message, 'Download failed')
   }
 }
-const resendFax = (fax) => alert(`Resending fax to ${fax.to}`)
-const cancelFax = (fax) => {
-  pendingFaxes.value = pendingFaxes.value.filter(f => f.id !== fax.id)
+
+const forwardFax = (fax) => {
+  sendForm.value.to = ''
+  showSendModal.value = true
+  toast?.info('Forward: set destination number and send')
+}
+
+const deleteFax = async (fax) => {
+  if (!confirm('Delete this fax?')) return
+  try {
+    await faxAPI.delete(fax.id)
+    inboxData.value = inboxData.value.filter(f => f.id !== fax.id)
+    sentData.value = sentData.value.filter(f => f.id !== fax.id)
+    toast?.success('Fax deleted')
+  } catch (err) {
+    toast?.error(err.message, 'Failed to delete fax')
+  }
+}
+
+const resendFax = async (fax) => {
+  try {
+    await faxAPI.resend(fax.id)
+    toast?.success(`Resending fax to ${fax.to}`)
+    fetchPending()
+  } catch (err) {
+    toast?.error(err.message, 'Failed to resend fax')
+  }
+}
+
+const cancelFax = async (fax) => {
+  try {
+    await faxAPI.cancel(fax.id)
+    pendingFaxes.value = pendingFaxes.value.filter(f => f.id !== fax.id)
+    toast?.success('Fax cancelled')
+  } catch (err) {
+    toast?.error(err.message, 'Failed to cancel fax')
+  }
 }
 </script>
 

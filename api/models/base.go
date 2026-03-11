@@ -163,6 +163,12 @@ func AutoMigrate(db *gorm.DB) error {
 		&FaxPageResult{},
 		&FaxNotificationLog{},
 
+		// E911 Locations
+		&Location{},
+
+		// Call Broadcast
+		&BroadcastCampaign{},
+
 		// SMS Number Assignments & Message Queue
 		&SMSNumberAssignment{},
 		&MessageQueueItem{},

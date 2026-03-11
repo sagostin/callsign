@@ -5,11 +5,15 @@ import (
 	"callsign/handlers/freeswitch"
 	"callsign/models"
 	"callsign/router"
+	"callsign/services/cdr"
 	"callsign/services/esl"
+	conferencemod "callsign/services/esl/modules/conference"
+	"callsign/services/fax"
 	"callsign/services/logging"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
@@ -82,11 +86,69 @@ func main() {
 	}()
 	defer eslManager.Stop()
 
+	// Initialize fax manager (routing, queue processing, retry strategy)
+	faxManager := fax.NewManager(db, cfg, logManager)
+	go func() {
+		if err := faxManager.Start(); err != nil {
+			logManager.Error("FAX", "Failed to start fax manager: "+err.Error(), nil)
+			log.Errorf("Failed to start fax manager: %v", err)
+		} else {
+			logManager.Info("FAX", "Fax manager started successfully", nil)
+		}
+	}()
+
+	// Initialize conference service (live control via ESL)
+	confService := conferencemod.New(db)
+	go func() {
+		// Wait briefly for ESL to connect before initializing
+		time.Sleep(2 * time.Second)
+		if err := confService.Init(eslManager); err != nil {
+			logManager.Error("CONFERENCE", "Failed to init conference service: "+err.Error(), nil)
+			log.Errorf("Failed to init conference service: %v", err)
+		} else {
+			logManager.Info("CONFERENCE", "Conference service initialized", nil)
+		}
+	}()
+
+	// Initialize ClickHouse CDR storage
+	chClient := cdr.NewClickHouseClient(cfg)
+	if err := chClient.Connect(); err != nil {
+		logManager.Warn("STARTUP", "ClickHouse connect failed (CDR sync disabled): "+err.Error(), nil)
+		log.Warnf("ClickHouse connect failed: %v", err)
+	} else if chClient.IsEnabled() {
+		logManager.Info("STARTUP", "ClickHouse connected — CDR sync enabled", nil)
+
+		// Start periodic PG → ClickHouse sync (every 5 minutes)
+		syncJob := cdr.NewSyncJob(db, chClient)
+		syncJob.StartPeriodicSync(5 * time.Minute)
+
+		// Start daily PG cleanup (remove synced records older than 90 days)
+		go func() {
+			ticker := time.NewTicker(24 * time.Hour)
+			defer ticker.Stop()
+			for range ticker.C {
+				if err := syncJob.CleanupOldRecords(90); err != nil {
+					log.Errorf("CDR cleanup failed: %v", err)
+				}
+			}
+		}()
+	}
+	defer chClient.Close()
+
 	// Initialize router with ESL manager reference
 	r := router.NewRouter(db, cfg)
 	r.Init()
 	r.Handler.SetESLManager(eslManager)
 	r.Handler.SetLogManager(logManager)
+	r.Handler.SetClickHouse(chClient)
+
+	// Wire fax manager and conference service into their handlers
+	r.SetFaxManager(faxManager)
+	r.SetConferenceService(confService)
+
+	// Wire WebSocket hub to ESL manager for real-time event broadcasting
+	// (call events, voicemail MWI, conference join/leave, queue events)
+	eslManager.SetWSHub(r.WSHub)
 
 	// Graceful shutdown handling
 	quit := make(chan os.Signal, 1)
@@ -96,6 +158,7 @@ func main() {
 		<-quit
 		logManager.Info("SHUTDOWN", "Server shutting down...", nil)
 		eslManager.Stop()
+		chClient.Close()
 		logManager.Close() // Ensure logs are flushed to Loki
 		os.Exit(0)
 	}()

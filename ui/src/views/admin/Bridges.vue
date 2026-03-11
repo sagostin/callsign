@@ -21,8 +21,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
+import { extensionsAPI } from '../../services/api'
 
 const columns = [
   { key: 'name', label: 'Name' },
@@ -31,13 +32,35 @@ const columns = [
   { key: 'target', label: 'Target' }
 ]
 
-const bridgeExtensions = ref([
-   { name: 'Conf Bridge A', extension: '7001', type: 'Conference', target: 'conf_alpha' },
-   { name: 'Page All', extension: '*99', type: 'Paging', target: 'group:all' },
-   { name: 'Intercom', extension: '*01', type: 'Intercom', target: 'auto_answer' }
-])
+const bridgeExtensions = ref([])
 
-const deleteExtension = () => confirm('Delete this bridge?') && alert('Bridge deleted.')
+const fetchBridges = async () => {
+  try {
+    const res = await extensionsAPI.listBridges ? await extensionsAPI.listBridges() : await extensionsAPI.list({ type: 'bridge' })
+    bridgeExtensions.value = (res.data?.extensions || res.data || []).map(b => ({
+      id: b.id,
+      name: b.description || b.effective_caller_id_name || b.extension,
+      extension: b.extension,
+      type: b.bridge_type || b.type || 'Conference',
+      target: b.bridge_target || b.destination || ''
+    }))
+  } catch (err) {
+    console.error('Failed to load bridges:', err)
+    bridgeExtensions.value = []
+  }
+}
+
+onMounted(fetchBridges)
+
+const deleteExtension = async (bridge) => {
+  if (!confirm(`Delete bridge "${bridge.name}"?`)) return
+  try {
+    await extensionsAPI.delete(bridge.id)
+    bridgeExtensions.value = bridgeExtensions.value.filter(b => b.id !== bridge.id)
+  } catch (err) {
+    console.error('Failed to delete bridge:', err)
+  }
+}
 </script>
 
 <style scoped>

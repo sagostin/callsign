@@ -284,11 +284,7 @@ async function fetchCDR() {
     }))
   } catch (error) {
     toast?.error(error.message, 'Failed to load CDR')
-    // Fallback to demo data
-    records.value = [
-      { id: 1, direction: 'inbound', extension: '101', callerName: 'John Smith', callerNumber: '+1 555-123-4567', destination: '101', hasRecording: true, dateTime: 'Dec 10, 2024 08:45 AM', codec: 'PCMU/8000', tta: 3, pdd: 180, mos: 4.2, duration: 185, status: 'Answered' },
-      { id: 2, direction: 'outbound', extension: '102', callerName: 'Jane Doe', callerNumber: '+1 555-987-6543', destination: '+1 555-111-2222', hasRecording: true, dateTime: 'Dec 10, 2024 08:30 AM', codec: 'G722/8000', tta: 5, pdd: 210, mos: 4.5, duration: 342, status: 'Answered' },
-    ]
+    records.value = []
   } finally {
     isLoading.value = false
   }

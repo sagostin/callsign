@@ -237,8 +237,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import { systemAPI, tenantMediaAPI } from '../../services/api'
+
+const toast = inject('toast')
 import { 
   Upload as UploadIcon, Music as MusicIcon, Folder as FolderIcon, FolderPlus as FolderPlusIcon,
   ChevronRight as ChevronRightIcon, X as XIcon, PlayCircle as PlayCircleIcon, StopCircle as StopCircleIcon,
@@ -452,24 +454,37 @@ const submitUpload = async () => {
 }
 
 const createFolder = async () => {
-  if (newFolderType.value === 'preset') {
-    if (selectedPresets.value.length === 0) return
-    // Create multiple folders from presets
-    for (const preset of selectedPresets.value) {
-      // TODO: API call to create folder
-      console.log(`Creating folder: ${preset}`)
+  const apiCall = isTenant.value ? tenantMediaAPI.uploadMusic : systemAPI.uploadMusic
+  try {
+    if (newFolderType.value === 'preset') {
+      if (selectedPresets.value.length === 0) return
+      for (const preset of selectedPresets.value) {
+        const fd = new FormData()
+        fd.append('folder', preset)
+        fd.append('rate', activeRate.value)
+        fd.append('create_only', 'true')
+        await apiCall(fd)
+      }
+      toast?.success(`${selectedPresets.value.length} folders created`)
+      selectedPresets.value = []
+    } else {
+      if (!newFolderName.value.trim()) return
+      const fd = new FormData()
+      fd.append('folder', newFolderName.value.trim())
+      fd.append('rate', activeRate.value)
+      fd.append('create_only', 'true')
+      if (newFolderDescription.value) fd.append('description', newFolderDescription.value)
+      await apiCall(fd)
+      toast?.success(`Folder "${newFolderName.value}" created`)
     }
-    alert(`${selectedPresets.value.length} folders created: ${selectedPresets.value.join(', ')}`)
-    selectedPresets.value = []
-  } else {
-    if (!newFolderName.value.trim()) return
-    // TODO: API call to create folder
-    alert(`Folder "${newFolderName.value}" created under ${newFolderType.value} category.`)
+    showCreateFolderModal.value = false
+    newFolderName.value = ''
+    newFolderDescription.value = ''
+    newFolderType.value = 'genre'
+    loadMusic()
+  } catch (e) {
+    toast?.error(e.message || 'Failed to create folder')
   }
-  showCreateFolderModal.value = false
-  newFolderName.value = ''
-  newFolderDescription.value = ''
-  newFolderType.value = 'genre'
 }
 
 const deleteFile = async (file) => {

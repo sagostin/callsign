@@ -386,12 +386,7 @@ async function fetchHolidayLists() {
     }))
   } catch (error) {
     console.error('Failed to load holiday lists', error)
-    // Use fallback demo data
-    holidayLists.value = [
-      { id: 1, name: 'US Federal 2025', count: 11, source: 'External URL', upcoming: [
-        { name: 'New Year', date: 'Jan 1' }, { name: 'MLK Day', date: 'Jan 20' }
-      ]}
-    ]
+    holidayLists.value = []
   }
 }
 

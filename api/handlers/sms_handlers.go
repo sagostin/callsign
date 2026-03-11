@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"callsign/models"
+	"callsign/services/messaging"
 	"net/http"
 
 	"github.com/kataras/iris/v12"
@@ -10,12 +11,13 @@ import (
 
 // SMSHandler handles SMS/MMS-related API requests
 type SMSHandler struct {
-	DB *gorm.DB
+	DB         *gorm.DB
+	MsgManager *messaging.Manager
 }
 
 // NewSMSHandler creates a new SMS handler
-func NewSMSHandler(db *gorm.DB) *SMSHandler {
-	return &SMSHandler{DB: db}
+func NewSMSHandler(db *gorm.DB, msgManager *messaging.Manager) *SMSHandler {
+	return &SMSHandler{DB: db, MsgManager: msgManager}
 }
 
 // ListConversations returns message conversations for a tenant
@@ -74,7 +76,10 @@ func (h *SMSHandler) SendMessage(ctx iris.Context) {
 		return
 	}
 
-	// TODO: Queue for delivery via provider
+	// Queue for delivery via provider
+	if h.MsgManager != nil {
+		go h.MsgManager.SendMessage(tenantID, msg.From, msg.To, msg.Body, nil, 0)
+	}
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(msg)

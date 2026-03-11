@@ -20,29 +20,48 @@
 
     <template #actions="{ row }">
       <button class="btn-link" @click="$router.push(`/admin/call-broadcast/${row.id}`)">Edit</button>
-      <button class="btn-link text-bad">Delete</button>
+      <button class="btn-link text-bad" @click="deleteCampaign(row)">Delete</button>
     </template>
   </DataTable>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
+import { broadcastAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 const columns = [
   { key: 'name', label: 'Campaign Name' },
-  { key: 'type', label: 'Type' },
+  { key: 'status', label: 'Status' },
   { key: 'target_count', label: 'Targets' },
   { key: 'progress', label: 'Completion' },
-  { key: 'status', label: 'Status' }
 ]
 
-const campaigns = ref([
-  { name: 'Service Outage Alert', type: 'Voice', target_count: 540, progress: 100, status: 'Completed' },
-  { name: 'Promo Q4', type: 'SMS', target_count: 1200, progress: 45, status: 'Active' },
-  { name: 'Appointment Reminders', type: 'Voice', target_count: 12, progress: 0, status: 'Scheduled' },
-])
+const campaigns = ref([])
+
+onMounted(async () => {
+  try {
+    const res = await broadcastAPI.list()
+    campaigns.value = res.data || []
+  } catch (err) {
+    console.error('Failed to load campaigns:', err)
+    campaigns.value = []
+  }
+})
+
+const deleteCampaign = async (row) => {
+  if (!confirm(`Delete campaign "${row.name}"?`)) return
+  try {
+    await broadcastAPI.delete(row.id)
+    campaigns.value = campaigns.value.filter(c => c.id !== row.id)
+    toast?.success('Campaign deleted')
+  } catch (err) {
+    toast?.error(err.message, 'Failed to delete campaign')
+  }
+}
 </script>
 
 <style scoped>

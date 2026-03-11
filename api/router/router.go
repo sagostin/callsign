@@ -5,6 +5,8 @@ import (
 	"callsign/handlers"
 	"callsign/handlers/freeswitch"
 	"callsign/middleware"
+	"callsign/services/esl/modules/conference"
+	"callsign/services/fax"
 	"callsign/services/messaging"
 	"callsign/services/websocket"
 
@@ -42,6 +44,10 @@ func NewRouter(db *gorm.DB, cfg *config.Config) *Router {
 	msgManager := messaging.NewManager(db, cfg, wsHub)
 	msgManager.Start()
 
+	// Wire dependencies into handler
+	h.SetWSHub(wsHub)
+	h.SetMsgManager(msgManager)
+
 	return &Router{
 		App:               iris.New(),
 		DB:                db,
@@ -78,6 +84,16 @@ func (r *Router) internalKeyAuth() iris.Handler {
 
 		ctx.Next()
 	}
+}
+
+// SetFaxManager wires the fax manager into the FaxHandler after startup
+func (r *Router) SetFaxManager(fm *fax.Manager) {
+	r.FaxHandler.FaxManager = fm
+}
+
+// SetConferenceService wires the conference service into the ConferenceHandler after startup
+func (r *Router) SetConferenceService(svc *conference.Service) {
+	r.ConferenceHandler.Service = svc
 }
 
 // Init sets up all routes and middleware
@@ -153,6 +169,13 @@ func (r *Router) Init() {
 					tenant.Put("/messaging", r.Handler.UpdateTenantMessaging)
 					tenant.Get("/hospitality", r.Handler.GetTenantHospitality)
 					tenant.Put("/hospitality", r.Handler.UpdateTenantHospitality)
+
+					// E911 Locations
+					tenant.Get("/locations", r.Handler.ListLocations)
+					tenant.Post("/locations", r.Handler.CreateLocation)
+					tenant.Get("/locations/{id}", r.Handler.GetLocation)
+					tenant.Put("/locations/{id}", r.Handler.UpdateLocation)
+					tenant.Delete("/locations/{id}", r.Handler.DeleteLocation)
 				}
 
 				// Extensions
@@ -593,6 +616,33 @@ func (r *Router) Init() {
 					hospitality.Post("/rooms/{id}/checkout", r.Handler.CheckOutGuest)
 					hospitality.Post("/rooms/{id}/wakeup", r.Handler.ScheduleWakeupCall)
 				}
+
+				// Call Broadcast Campaigns
+				broadcast := tenantScoped.Party("/broadcast")
+				{
+					broadcast.Get("/", r.Handler.ListBroadcasts)
+					broadcast.Post("/", r.Handler.CreateBroadcast)
+					broadcast.Get("/{id}", r.Handler.GetBroadcast)
+					broadcast.Put("/{id}", r.Handler.UpdateBroadcast)
+					broadcast.Delete("/{id}", r.Handler.DeleteBroadcast)
+					broadcast.Post("/{id}/start", r.Handler.StartBroadcast)
+					broadcast.Post("/{id}/stop", r.Handler.StopBroadcast)
+					broadcast.Get("/{id}/stats", r.Handler.GetBroadcastStats)
+				}
+
+				// Operator Panel
+				tenantScoped.Get("/operator-panel", r.Handler.GetOperatorPanelData)
+
+				// Live Operations
+				live := tenantScoped.Party("/live")
+				{
+					live.Post("/recording/start", r.Handler.StartCallRecording)
+					live.Post("/recording/stop", r.Handler.StopCallRecording)
+					live.Get("/calls", r.Handler.GetActiveCallsData)
+					live.Get("/queue-stats", r.Handler.GetLiveQueueStats)
+					live.Post("/wakeup/schedule", r.Handler.ScheduleWakeupESL)
+					live.Get("/registrations", r.Handler.GetDeviceRegistrations)
+				}
 			}
 
 			// Tenant admin routes
@@ -825,6 +875,10 @@ func (r *Router) Init() {
 		fs.Get("/cache/flush", r.FSHandler.FlushCache)
 		fs.Get("/cache/stats", r.FSHandler.CacheStats)
 	}
+
+	// WebSocket endpoint for real-time events
+	wsHandler := websocket.NewHandler(r.WSHub)
+	r.App.Get("/api/ws", wsHandler.HandleConnection)
 
 	// Telnyx Webhooks (public — verified via webhook signature, no JWT)
 	webhooks := r.App.Party("/api/webhooks")

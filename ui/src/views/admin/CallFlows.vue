@@ -139,7 +139,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { 
   PhoneIncoming as PhoneIncomingIcon, 
   Phone as PhoneIcon, 
@@ -152,6 +152,7 @@ import {
   PhoneForwarded as ForwardIcon,
   User as UserIcon
 } from 'lucide-vue-next'
+import { routingAPI } from '../../services/api'
 
 const selectedNumber = ref('')
 const viewMode = ref('diagram')
@@ -166,101 +167,61 @@ const nodeTypes = [
   { key: 'voicemail', label: 'Voicemail' },
 ]
 
-// Sample data
-const numbers = ref([
-  { 
-    number: '+1 (555) 100-1000', 
-    name: 'Main Line', 
-    destination: 'Toggle: Day/Night',
-    destType: 'toggle',
-    steps: [
-      { type: 'toggle', label: 'Day/Night' },
-      { type: 'ivr', label: 'Main Menu' },
-      { type: 'queue', label: 'Sales' }
-    ],
-    finals: ['Sales Queue', 'Support Queue', 'Voicemail']
-  },
-  { 
-    number: '+1 (555) 100-1001', 
-    name: 'Sales Direct', 
-    destination: 'IVR: Sales Menu',
-    destType: 'ivr',
-    steps: [
-      { type: 'ivr', label: 'Sales Menu' },
-      { type: 'queue', label: 'Sales' }
-    ],
-    finals: ['Sales Queue', 'Voicemail']
-  },
-  { 
-    number: '+1 (555) 100-1002', 
-    name: 'Support Line', 
-    destination: 'Queue: Support',
-    destType: 'queue',
-    steps: [
-      { type: 'queue', label: 'Support' }
-    ],
-    finals: ['Support Queue', 'Voicemail']
-  },
-  { 
-    number: '+1 (555) 100-1003', 
-    name: 'Emergency Line', 
-    destination: 'Extension: 911',
-    destType: 'extension',
-    steps: [
-      { type: 'extension', label: 'Ext 911' }
-    ],
-    finals: ['Extension 911']
-  },
-])
+const numbers = ref([])
+const flowGroups = ref([])
 
-const flowGroups = ref([
-  {
-    number: '+1 (555) 100-1000',
-    name: 'Main Line',
-    nodes: [
-      { id: 't1', type: 'toggle', label: 'Day/Night', detail: 'Ext. 30', x: 220, y: 20, outputs: ['A', 'B'], active: true },
-      { id: 'ivr1', type: 'ivr', label: 'Main Menu', detail: 'Ext. 8000', x: 420, y: 0, outputs: ['1', '2', '0'] },
-      { id: 'ivr2', type: 'ivr', label: 'After Hours', detail: 'Ext. 8001', x: 420, y: 80 },
-      { id: 'q1', type: 'queue', label: 'Sales', detail: '5 agents', x: 620, y: 0 },
-      { id: 'q2', type: 'queue', label: 'Support', detail: '3 agents', x: 620, y: 50 },
-      { id: 'vm1', type: 'voicemail', label: 'General', detail: 'Box 100', x: 620, y: 100 },
-    ],
-    connections: [
-      { from: 'start', to: 't1', label: '' },
-      { from: 't1', to: 'ivr1', label: 'A' },
-      { from: 't1', to: 'ivr2', label: 'B' },
-      { from: 'ivr1', to: 'q1', label: '1' },
-      { from: 'ivr1', to: 'q2', label: '2' },
-      { from: 'ivr1', to: 'vm1', label: '0' },
-    ]
-  },
-  {
-    number: '+1 (555) 100-1001',
-    name: 'Sales Direct',
-    nodes: [
-      { id: 'ivr3', type: 'ivr', label: 'Sales Menu', detail: 'Ext. 8002', x: 220, y: 40 },
-      { id: 'q3', type: 'queue', label: 'Sales', detail: '5 agents', x: 420, y: 40 },
-    ],
-    connections: []
-  },
-  {
-    number: '+1 (555) 100-1002',
-    name: 'Support Line',
-    nodes: [
-      { id: 'q4', type: 'queue', label: 'Support', detail: '3 agents', x: 220, y: 40 },
-      { id: 'vm2', type: 'voicemail', label: 'Support', detail: 'Box 200', x: 420, y: 40 },
-    ],
-    connections: []
-  },
-  {
-    number: '+1 (555) 100-1003',
-    name: 'Emergency Line',
-    nodes: [
-      { id: 'e1', type: 'extension', label: 'Emergency', detail: 'Ext. 911', x: 220, y: 40 },
-    ],
-    connections: []
-  },
-])
+const inferDestType = (dest) => {
+  if (!dest) return 'extension'
+  const d = dest.toLowerCase()
+  if (d.includes('toggle') || d.includes('day') || d.includes('night')) return 'toggle'
+  if (d.includes('ivr') || d.includes('menu')) return 'ivr'
+  if (d.includes('queue')) return 'queue'
+  if (d.includes('voicemail') || d.includes('vm')) return 'voicemail'
+  return 'extension'
+}
+
+const buildFlowNode = (step, idx) => ({
+  id: `n${idx}`,
+  type: step.type || inferDestType(step.label || step.destination || ''),
+  label: step.label || step.name || step.destination || '',
+  detail: step.detail || step.extension ? `Ext. ${step.extension}` : '',
+  x: 220 + (idx * 200),
+  y: 40,
+  outputs: step.outputs || [],
+  active: step.active || false
+})
+
+const fetchFlows = async () => {
+  try {
+    const res = await routingAPI.listInbound()
+    const routes = res.data?.routes || res.data?.data || res.data || []
+    
+    numbers.value = routes.map(r => ({
+      number: r.did || r.number || r.pattern || '',
+      name: r.name || r.description || '',
+      destination: r.destination || r.action_data || '',
+      destType: inferDestType(r.destination || r.action || ''),
+      steps: (r.steps || []).map(s => ({
+        type: s.type || inferDestType(s.action || ''),
+        label: s.label || s.name || s.action_data || ''
+      })),
+      finals: r.finals || r.endpoints || []
+    }))
+
+    flowGroups.value = routes.map(r => ({
+      number: r.did || r.number || r.pattern || '',
+      name: r.name || r.description || '',
+      nodes: (r.steps || []).map((s, i) => buildFlowNode(s, i)),
+      connections: (r.connections || [])
+    }))
+  } catch (err) {
+    console.error('Failed to load call flows:', err)
+    numbers.value = []
+    flowGroups.value = []
+  }
+}
+
+onMounted(fetchFlows)
 
 const visibleGroups = computed(() => {
   if (!selectedNumber.value) return flowGroups.value

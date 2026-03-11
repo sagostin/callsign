@@ -379,15 +379,7 @@ async function fetchConferences() {
     }))
   } catch (error) {
     toast?.error(error.message, 'Failed to load conferences')
-    // Fallback to demo data
-    conferences.value = [
-      { id: 1, name: 'Weekly Sales', ext: '3001', profile: 'Default', participants: 0, status: 'Idle' },
-      { id: 2, name: 'Project Alpha', ext: '3005', profile: 'Wideband', participants: 4, status: 'Active' },
-    ]
-    profiles.value = [
-      { id: 1, name: 'Default', color: '#6366f1', codec: 'G.711', maxParticipants: 50, autoRecord: false, entryTone: true, roomCount: 2 },
-      { id: 2, name: 'Wideband', color: '#22c55e', codec: 'G.722', maxParticipants: 100, autoRecord: true, entryTone: true, roomCount: 1 },
-    ]
+    conferences.value = []
   } finally {
     isLoading.value = false
   }

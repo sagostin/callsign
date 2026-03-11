@@ -37,24 +37,30 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { tenantSettingsAPI } from '../../services/api'
 
-const locations = ref([
-  { 
-    name: 'HQ - San Francisco', 
-    mainNumber: '(415) 555-0100', 
-    cidName: 'CallSign HQ',
-    fallback: '(415) 555-9999',
-    address: '123 Market St, San Francisco, CA 94105'
-  },
-  { 
-    name: 'Warehouse - Nevada', 
-    mainNumber: '(775) 555-0200', 
-    cidName: 'CallSign WH',
-    fallback: '(775) 555-9988',
-    address: '456 Industrial Pkwy, Reno, NV 89502'
+const locations = ref([])
+
+const fetchLocations = async () => {
+  try {
+    const res = await tenantSettingsAPI.listLocations ? await tenantSettingsAPI.listLocations() : await tenantSettingsAPI.get()
+    const data = res.data?.locations || res.data || []
+    locations.value = (Array.isArray(data) ? data : []).map(loc => ({
+      id: loc.id,
+      name: loc.name,
+      mainNumber: loc.main_number || loc.did || '',
+      cidName: loc.caller_id_name || loc.cid_name || '',
+      fallback: loc.fallback_number || loc.failover_did || '',
+      address: loc.address || ''
+    }))
+  } catch (err) {
+    console.error('Failed to load locations:', err)
+    locations.value = []
   }
-])
+}
+
+onMounted(fetchLocations)
 </script>
 
 <style scoped>

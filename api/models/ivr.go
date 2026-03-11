@@ -48,8 +48,54 @@ type IVRMenu struct {
 	// Status
 	Enabled bool `json:"enabled" gorm:"default:true"`
 
+	// Visual Flow Editor Data (stored as JSONB)
+	FlowData IVRFlowData `json:"flow_data" gorm:"type:jsonb;default:'{}'"`
+
 	// Relations
 	Options []IVRMenuOption `json:"options,omitempty" gorm:"foreignKey:IVRMenuID"`
+}
+
+// IVRFlowData stores the visual editor graph (nodes + connections)
+type IVRFlowData struct {
+	Nodes       []IVRFlowNode       `json:"nodes"`
+	Connections []IVRFlowConnection `json:"connections"`
+}
+
+// IVRFlowNode represents a node on the visual editor canvas
+type IVRFlowNode struct {
+	ID     string                 `json:"id"`
+	Type   string                 `json:"type"` // gather, play_audio, play_tts, web_request, condition, extension, queue, ring_group, ivr_menu, voicemail, hangup, etc.
+	Label  string                 `json:"label"`
+	X      float64                `json:"x"`
+	Y      float64                `json:"y"`
+	Config map[string]interface{} `json:"config"` // Node-specific configuration
+}
+
+// IVRFlowConnection represents a connection between two nodes
+type IVRFlowConnection struct {
+	ID           string `json:"id"`
+	SourceID     string `json:"sourceId"`
+	TargetID     string `json:"targetId"`
+	SourceOutput string `json:"sourceOutput"` // Output port name (match, timeout, invalid, next, true, false, etc.)
+	Label        string `json:"label"`
+}
+
+// Value implements driver.Valuer for GORM JSONB storage
+func (f IVRFlowData) Value() (driver.Value, error) {
+	return json.Marshal(f)
+}
+
+// Scan implements sql.Scanner for GORM JSONB reading
+func (f *IVRFlowData) Scan(value interface{}) error {
+	if value == nil {
+		*f = IVRFlowData{}
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		return errors.New("type assertion to []byte failed for IVRFlowData")
+	}
+	return json.Unmarshal(b, f)
 }
 
 // BeforeCreate generates UUID

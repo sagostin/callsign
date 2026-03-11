@@ -353,11 +353,7 @@ async function fetchDevices() {
     }))
   } catch (error) {
     toast?.error(error.message, 'Failed to load devices')
-    // Fallback to demo data
-    devices.value = [
-      { mac: '00:15:65:12:34:56', model: 'Yealink T54W', template: 'Standard Yealink', ext: '101', userName: 'Alice Smith', profile: 1, location: 'HQ - SF', ip: '192.168.1.50', status: 'Registered', lastSeen: 'Now' },
-      { mac: '00:04:F2:AA:BB:CC', model: 'Poly VVX 450', template: 'Executive Poly', ext: '104', userName: 'Diana Lee', profile: 2, location: 'Warehouse', ip: '192.168.1.52', status: 'Offline', lastSeen: '2h ago' },
-    ]
+    devices.value = []
   } finally {
     isLoading.value = false
   }

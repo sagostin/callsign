@@ -1,464 +1,674 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CallSign by voip.rip - Modern Open-Source Cloud PBX</title>
-    <meta name="description"
-        content="CallSign is a modern, open-source multi-tenant cloud PBX platform. Feature-rich business phone system with extensions, voicemail, IVR, call routing, and more.">
+    <title>CALLSIGN // voip.rip — Disruptors in Voice</title>
+    <meta name="description" content="The underground phone system. Open-source cloud PBX for hackers, founders, and disruptors. Rest in peace, telecom dinosaurs.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="style.css?v=2">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=3">
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 </head>
-
 <body>
+    <!-- CRT Scanline Overlay -->
+    <div class="crt-overlay"></div>
+    
+    <!-- Grid Background -->
+    <div class="grid-bg"></div>
+    
+    <!-- Noise Texture -->
+    <div class="noise"></div>
+
     <!-- Navigation -->
     <nav class="navbar">
-        <div class="container">
+        <div class="nav-left">
             <a href="#" class="logo">
-                <div class="logo-icon">
-                    <i class="bi bi-telephone-fill"></i>
-                </div>
-                <span>CallSign</span>
-                <span class="by-badge">by voip.rip</span>
+                <span class="logo-skull">☠</span>
+                <span class="logo-text">CALLSIGN</span>
+                <span class="logo-rip">// voip.rip</span>
             </a>
-            <div class="nav-links">
-                <a href="#features">Features</a>
-                <a href="#pricing">Pricing</a>
-                <a href="#roadmap">Roadmap</a>
-                <a href="#get-started">Deploy</a>
-                <a href="https://github.com/yourorg/callsign" class="btn btn-outline" target="_blank">
-                    <i class="bi bi-github"></i> GitHub
-                </a>
-                <a href="/login" class="btn btn-primary">Sign In</a>
-            </div>
-            <button class="mobile-menu-btn" aria-label="Menu">
-                <i class="bi bi-list"></i>
-            </button>
         </div>
+        <div class="nav-center">
+            <span class="status-indicator">
+                <span class="status-dot"></span>
+                SYSTEM ONLINE
+            </span>
+        </div>
+        <div class="nav-right">
+            <a href="#features" class="nav-link">[FEATURES]</a>
+            <a href="#manifesto" class="nav-link">[MANIFESTO]</a>
+            <a href="#comparison" class="nav-link">[EXECUTE]</a>
+            <a href="https://github.com/yourorg/callsign" class="nav-link nav-cta" target="_blank">
+                <span class="glitch-text" data-text=">_ GIT_CLONE">>_ GIT_CLONE</span>
+            </a>
+        </div>
+        <button class="mobile-menu-btn" aria-label="Menu">
+            <span></span><span></span><span></span>
+        </button>
     </nav>
 
     <!-- Hero Section -->
     <header class="hero">
-        <div class="hero-glow"></div>
-        <div class="hero-glow-secondary"></div>
-        <div class="container">
-            <div class="hero-badge">
-                <i class="bi bi-unlock"></i>
-                100% Open Source • Self-Hosted • Forever Free
+        <div class="hero-grid-lines"></div>
+        
+        <div class="hero-content">
+            <div class="hero-tag">
+                <span class="tag-bracket">[</span>
+                <span class="tag-text">DISRUPTORS_IN_VOICE</span>
+                <span class="tag-bracket">]</span>
             </div>
-            <h1>Your Phone System,<br><span class="gradient-text">Your Way</span></h1>
+            
+            <h1 class="hero-title">
+                <span class="title-line">REST IN</span>
+                <span class="title-line title-peace">
+                    PEACE
+                    <span class="rip-strike"></span>
+                </span>
+                <span class="title-line title-sub">TELECOM DINOSAURS</span>
+            </h1>
+            
             <p class="hero-subtitle">
-                A friendly, modern PBX platform that grows with your business.<br>
-                Built by the community, for the community.
+                The underground phone system.<br>
+                Open-source cloud PBX for hackers, founders, and disruptors.<br>
+                <span class="highlight">No licenses. No gatekeepers. Just code.</span>
             </p>
+            
             <div class="hero-actions">
-                <a href="#get-started" class="btn btn-primary btn-lg">
-                    <i class="bi bi-rocket-takeoff"></i> Get Started Free
+                <a href="#deploy" class="btn btn-primary">
+                    <span class="btn-icon">></span>
+                    <span class="btn-text">BREAK_THE_SYSTEM</span>
+                    <span class="btn-cursor">_</span>
                 </a>
-                <a href="https://github.com/yourorg/callsign" class="btn btn-outline btn-lg" target="_blank">
-                    <i class="bi bi-github"></i> Star on GitHub
+                <a href="https://github.com/yourorg/callsign" class="btn btn-secondary" target="_blank">
+                    <span class="btn-icon">#</span>
+                    <span class="btn-text">VIEW_SOURCE</span>
                 </a>
             </div>
-            <div class="trust-indicators">
-                <div class="trust-item">
-                    <i class="bi bi-shield-check"></i>
-                    <span>Self-hosted & Secure</span>
+            
+            <div class="hero-stats">
+                <div class="stat-item">
+                    <span class="stat-num">0$</span>
+                    <span class="stat-label">LICENSE_COST</span>
                 </div>
-                <div class="trust-item">
-                    <i class="bi bi-people"></i>
-                    <span>Multi-tenant Ready</span>
+                <div class="stat-divider">//</div>
+                <div class="stat-item">
+                    <span class="stat-num">∞</span>
+                    <span class="stat-label">EXTENSIONS</span>
                 </div>
-                <div class="trust-item">
-                    <i class="bi bi-heart"></i>
-                    <span>Community Driven</span>
+                <div class="stat-divider">//</div>
+                <div class="stat-item">
+                    <span class="stat-num">100%</span>
+                    <span class="stat-label">YOURS</span>
                 </div>
             </div>
+        </div>
+        
+        <div class="hero-visual">
+            <div class="tombstone">
+                <div class="tombstone-body">
+                    <div class="tombstone-cross">†</div>
+                    <div class="tombstone-text">
+                        <div class="rip-text">R.I.P.</div>
+                        <div class="rip-sub">LEGACY PBX</div>
+                        <div class="rip-date">1980 — 2026</div>
+                    </div>
+                </div>
+                <div class="tombstone-base"></div>
+            </div>
+            <div class="glitch-overlay"></div>
+        </div>
+        
+        <div class="scroll-indicator">
+            <span class="scroll-text">SCROLL_TO_DISRUPT</span>
+            <div class="scroll-line"></div>
         </div>
     </header>
 
+    <!-- Ticker/Marquee -->
+    <div class="ticker">
+        <div class="ticker-track">
+            <span class="ticker-item">☠ NO PROPRIETARY BULLSHIT</span>
+            <span class="ticker-separator">//</span>
+            <span class="ticker-item">☠ SELF-HOSTED & FREE</span>
+            <span class="ticker-separator">//</span>
+            <span class="ticker-item">☠ MULTI-TENANT BY DEFAULT</span>
+            <span class="ticker-separator">//</span>
+            <span class="ticker-item">☠ BUILT BY HACKERS</span>
+            <span class="ticker-separator">//</span>
+            <span class="ticker-item">☠ NO PROPRIETARY BULLSHIT</span>
+            <span class="ticker-separator">//</span>
+            <span class="ticker-item">☠ SELF-HOSTED & FREE</span>
+            <span class="ticker-separator">//</span>
+            <span class="ticker-item">☠ MULTI-TENANT BY DEFAULT</span>
+            <span class="ticker-separator">//</span>
+            <span class="ticker-item">☠ BUILT BY HACKERS</span>
+            <span class="ticker-separator">//</span>
+        </div>
+    </div>
+
     <!-- Features Section -->
-    <section id="features" class="section">
-        <div class="container">
-            <h2 class="section-title">Everything You Need 📞</h2>
-            <p class="section-subtitle">Professional-grade features without the enterprise price tag</p>
-
-            <div class="features-grid">
-                <div class="feature-card">
-                    <div class="feature-icon emerald"><i class="bi bi-telephone-plus"></i></div>
-                    <h3>Extensions & DIDs</h3>
-                    <p>Full extension management with DID routing, caller ID, and voicemail integration.</p>
+    <section id="features" class="section section-dark">
+        <div class="section-header">
+            <span class="section-num">01</span>
+            <h2 class="section-title">WEAPONS</h2>
+            <span class="section-subtitle">// ARSENAL_FOR_DISRUPTION</span>
+        </div>
+        
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-id">EXT-01</div>
+                <div class="feature-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                    </svg>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon violet"><i class="bi bi-diagram-3"></i></div>
-                    <h3>Ring Groups</h3>
-                    <p>Simultaneous, sequential, and hunt group strategies with smart failover.</p>
+                <h3 class="feature-name">EXTENSIONS</h3>
+                <p class="feature-desc">Unlimited DIDs, internal routing, caller ID spoofing. Your numbers, your rules.</p>
+                <div class="feature-meta">
+                    <span class="meta-tag">∞ LIMIT</span>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon pink"><i class="bi bi-menu-button-wide"></i></div>
-                    <h3>IVR / Auto Attendant</h3>
-                    <p>Multi-level menus with DTMF routing, custom prompts, and time conditions.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-id">IVR-02</div>
+                <div class="feature-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <path d="M3 9h18M9 21V9"/>
+                    </svg>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon amber"><i class="bi bi-voicemail"></i></div>
-                    <h3>Visual Voicemail</h3>
-                    <p>Email notifications, transcription support, and web-based playback.</p>
+                <h3 class="feature-name">IVR_SYSTEM</h3>
+                <p class="feature-desc">Multi-level auto-attendant. DTMF routing that actually makes sense. No vendor lock-in.</p>
+                <div class="feature-meta">
+                    <span class="meta-tag">MULTI_LEVEL</span>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon cyan"><i class="bi bi-clock-history"></i></div>
-                    <h3>Time Conditions</h3>
-                    <p>Business hours routing, holiday schedules, and conditional call flows.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-id">VM-03</div>
+                <div class="feature-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 8v8M8 12h8"/>
+                    </svg>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon rose"><i class="bi bi-headset"></i></div>
-                    <h3>Call Queues</h3>
-                    <p>ACD queues with agent management, hold music, and callback options.</p>
+                <h3 class="feature-name">DEAD_DROP</h3>
+                <p class="feature-desc">Visual voicemail with email notifications. Transcription support. Keep what matters.</p>
+                <div class="feature-meta">
+                    <span class="meta-tag">ENCRYPTED</span>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon indigo"><i class="bi bi-people"></i></div>
-                    <h3>Conference Bridges</h3>
-                    <p>Audio conferencing with moderator controls, PIN access, and recording.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-id">Q-04</div>
+                <div class="feature-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon teal"><i class="bi bi-record-circle"></i></div>
-                    <h3>Call Recording</h3>
-                    <p>On-demand and automatic recording with secure storage and playback.</p>
+                <h3 class="feature-name">HUNT_GROUPS</h3>
+                <p class="feature-desc">Simultaneous, sequential, round-robin. ACD queues with real agent management.</p>
+                <div class="feature-meta">
+                    <span class="meta-tag">SMART_FAILOVER</span>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon orange"><i class="bi bi-phone"></i></div>
-                    <h3>Auto Provisioning</h3>
-                    <p>Zero-touch setup for Yealink, Polycom, Grandstream, and more.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-id">REC-05</div>
+                <div class="feature-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8" y1="23" x2="16" y2="23"/>
+                    </svg>
+                </div>
+                <h3 class="feature-name">EVIDENCE</h3>
+                <p class="feature-desc">Call recording on-demand or automatic. Secure storage, instant playback. CYA built-in.</p>
+                <div class="feature-meta">
+                    <span class="meta-tag">ON_DEMAND</span>
+                </div>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-id">CFG-06</div>
+                <div class="feature-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                        <line x1="8" y1="21" x2="16" y2="21"/>
+                        <line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                </div>
+                <h3 class="feature-name">ZERO_TOUCH</h3>
+                <p class="feature-desc">Auto-provisioning for Yealink, Polycom, Grandstream. Plug in. Power up. Done.</p>
+                <div class="feature-meta">
+                    <span class="meta-tag">P-ZERO</span>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Pricing Section -->
-    <section id="pricing" class="section section-dark">
-        <div class="container">
-            <h2 class="section-title">Simple, Transparent Pricing 💰</h2>
-            <p class="section-subtitle">Choose the option that works best for you</p>
-
-            <div class="pricing-grid">
-                <div class="pricing-card">
-                    <div class="pricing-header">
-                        <span class="pricing-label">Self-Hosted</span>
-                        <div class="pricing-amount">
-                            <span class="price">$0</span>
-                            <span class="period">forever</span>
-                        </div>
-                    </div>
-                    <p class="pricing-desc">Deploy on your own infrastructure, completely free</p>
-                    <ul class="pricing-features">
-                        <li><i class="bi bi-check-circle-fill"></i> Unlimited extensions</li>
-                        <li><i class="bi bi-check-circle-fill"></i> Unlimited tenants</li>
-                        <li><i class="bi bi-check-circle-fill"></i> All features included</li>
-                        <li><i class="bi bi-check-circle-fill"></i> Full API access</li>
-                        <li><i class="bi bi-check-circle-fill"></i> Community support</li>
-                        <li><i class="bi bi-check-circle-fill"></i> Open source (MIT)</li>
-                    </ul>
-                    <a href="#get-started" class="btn btn-outline btn-block">Get Started Free</a>
+    <!-- Manifesto Section -->
+    <section id="manifesto" class="section section-manifesto">
+        <div class="manifesto-grid">
+            <div class="manifesto-content">
+                <div class="section-header">
+                    <span class="section-num">02</span>
+                    <h2 class="section-title">THE_MANIFESTO</h2>
+                    <span class="section-subtitle">// WHY_WE_EXIST</span>
                 </div>
-
-                <div class="pricing-card featured">
-                    <div class="pricing-badge">Most Popular</div>
-                    <div class="pricing-header">
-                        <span class="pricing-label">Professional Support</span>
-                        <div class="pricing-amount">
-                            <span class="price">$100</span>
-                            <span class="period">per hour</span>
-                        </div>
-                    </div>
-                    <p class="pricing-desc">Expert help when you need it most</p>
-                    <ul class="pricing-features">
-                        <li><i class="bi bi-check-circle-fill"></i> Everything in Self-Hosted</li>
-                        <li><i class="bi bi-check-circle-fill"></i> Priority email support</li>
-                        <li><i class="bi bi-check-circle-fill"></i> Remote troubleshooting</li>
-                        <li><i class="bi bi-check-circle-fill"></i> Configuration assistance</li>
-                        <li><i class="bi bi-check-circle-fill"></i> Custom development</li>
-                        <li><i class="bi bi-check-circle-fill"></i> SLA available</li>
-                    </ul>
-                    <a href="mailto:support@callsign.io" class="btn btn-primary btn-block">Contact Us</a>
+                
+                <div class="manifesto-text">
+                    <p class="manifesto-line">
+                        <span class="line-num">001</span>
+                        Telecom has been gatekept by dinosaurs for too long.
+                    </p>
+                    <p class="manifesto-line">
+                        <span class="line-num">002</span>
+                        Proprietary systems that charge per seat, per feature, per breath.
+                    </p>
+                    <p class="manifesto-line">
+                        <span class="line-num">003</span>
+                        We say: <span class="text-glitch" data-text="ENOUGH">ENOUGH</span>.
+                    </p>
+                    <p class="manifesto-line">
+                        <span class="line-num">004</span>
+                        CallSign is the weapon you need. Open-source. Self-hosted.
+                    </p>
+                    <p class="manifesto-line">
+                        <span class="line-num">005</span>
+                        Built by hackers who were tired of paying protection money.
+                    </p>
+                    <p class="manifesto-line">
+                        <span class="line-num">006</span>
+                        <span class="highlight-terminal">Run it on a Pi. Run it on a server farm.</span>
+                    </p>
+                    <p class="manifesto-line">
+                        <span class="line-num">007</span>
+                        <span class="highlight-terminal">It's yours. Forever.</span>
+                    </p>
                 </div>
-
-                <div class="pricing-card">
-                    <div class="pricing-header">
-                        <span class="pricing-label">Hosted</span>
-                        <div class="pricing-amount">
-                            <span class="price">Custom</span>
-                            <span class="period">BYO SIP</span>
-                        </div>
+            </div>
+            
+            <div class="manifesto-terminal">
+                <div class="terminal-header">
+                    <div class="terminal-dots">
+                        <span></span><span></span><span></span>
                     </div>
-                    <p class="pricing-desc">We manage CallSign, you bring your SIP trunks</p>
-                    <ul class="pricing-features">
-                        <li><i class="bi bi-check-circle-fill"></i> Fully managed hosting</li>
-                        <li><i class="bi bi-check-circle-fill"></i> Bring your own SIP provider</li>
-                        <li><i class="bi bi-check-circle-fill"></i> Daily backups</li>
-                        <li><i class="bi bi-check-circle-fill"></i> Automatic updates</li>
-                        <li><i class="bi bi-check-circle-fill"></i> Priority support included</li>
-                        <li><i class="bi bi-check-circle-fill"></i> 99.9% uptime SLA</li>
-                    </ul>
-                    <a href="mailto:sales@callsign.io" class="btn btn-outline btn-block">Get a Quote</a>
+                    <span class="terminal-title">root@callsign:~</span>
+                </div>
+                <div class="terminal-body">
+                    <div class="terminal-line">
+                        <span class="prompt">$</span>
+                        <span class="command">git clone https://github.com/voip.rip/callsign.git</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="prompt">$</span>
+                        <span class="command">cd callsign && docker compose up -d</span>
+                    </div>
+                    <div class="terminal-line output">
+                        <span class="output-text">[+] Pulling fs layer... done</span>
+                    </div>
+                    <div class="terminal-line output">
+                        <span class="output-text">[+] Starting freeswitch... done</span>
+                    </div>
+                    <div class="terminal-line output">
+                        <span class="output-text">[+] Starting api... done</span>
+                    </div>
+                    <div class="terminal-line output">
+                        <span class="output-text">[+] Starting ui... done</span>
+                    </div>
+                    <div class="terminal-line output success">
+                        <span class="output-text">✓ CallSign online at http://localhost</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="prompt">$</span>
+                        <span class="cursor">_</span>
+                    </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Tech Stack -->
-    <section class="section">
-        <div class="container">
-            <h2 class="section-title">Built With Modern Tech 🛠️</h2>
-            <p class="section-subtitle">Proven technologies for reliability and performance</p>
-
-            <div class="arch-diagram">
-                <div class="arch-layer">
-                    <div class="arch-label">Frontend</div>
-                    <div class="arch-items">
-                        <div class="arch-item">
-                            <i class="bi bi-filetype-vue"></i>
-                            <span>Vue 3</span>
-                        </div>
-                        <div class="arch-item">
-                            <i class="bi bi-lightning-charge"></i>
-                            <span>Vite 5</span>
-                        </div>
-                        <div class="arch-item">
-                            <i class="bi bi-signpost-split"></i>
-                            <span>Vue Router</span>
-                        </div>
-                    </div>
+    <!-- Comparison Section -->
+    <section id="comparison" class="section section-comparison">
+        <div class="section-header">
+            <span class="section-num">03</span>
+            <h2 class="section-title">EXECUTE_THEM</h2>
+            <span class="section-subtitle">// CALLSIGN_VS_DINOSAURS</span>
+        </div>
+        
+        <div class="comparison-table">
+            <div class="comparison-header-row">
+                <div class="comparison-cell comparison-feature">FEATURE</div>
+                <div class="comparison-cell comparison-callsign">
+                    <span class="calls-tag">[CALLSIGN]</span>
                 </div>
-                <div class="arch-connector">
-                    <i class="bi bi-arrow-down-short"></i>
+                <div class="comparison-cell comparison-them">
+                    <span class="them-tag">RingCentral</span>
                 </div>
-                <div class="arch-layer">
-                    <div class="arch-label">Backend</div>
-                    <div class="arch-items">
-                        <div class="arch-item highlight">
-                            <i class="bi bi-box"></i>
-                            <span>Go / Iris</span>
-                        </div>
-                        <div class="arch-item">
-                            <i class="bi bi-shield-lock"></i>
-                            <span>JWT + RBAC</span>
-                        </div>
-                        <div class="arch-item">
-                            <i class="bi bi-database"></i>
-                            <span>PostgreSQL</span>
-                        </div>
-                    </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="them-tag">8x8</span>
                 </div>
-                <div class="arch-connector">
-                    <i class="bi bi-arrow-down-short"></i>
-                </div>
-                <div class="arch-layer">
-                    <div class="arch-label">Telephony</div>
-                    <div class="arch-items">
-                        <div class="arch-item highlight">
-                            <i class="bi bi-telephone"></i>
-                            <span>FreeSWITCH</span>
-                        </div>
-                        <div class="arch-item">
-                            <i class="bi bi-plug"></i>
-                            <span>ESL Events</span>
-                        </div>
-                        <div class="arch-item">
-                            <i class="bi bi-file-code"></i>
-                            <span>XML CURL</span>
-                        </div>
-                    </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="them-tag">Vonage</span>
                 </div>
             </div>
-
-            <div class="tech-badges">
-                <span class="tech-badge">Docker Ready</span>
-                <span class="tech-badge">REST API</span>
-                <span class="tech-badge">Real-time Events</span>
-                <span class="tech-badge">Audit Logging</span>
-                <span class="tech-badge">Multi-tenant</span>
+            
+            <div class="comparison-row">
+                <div class="comparison-cell comparison-feature">Base Price</div>
+                <div class="comparison-cell comparison-callsign">
+                    <span class="check check-good">$0</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">$30/user/mo</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">$24/user/mo</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">$19/user/mo</span>
+                </div>
+            </div>
+            
+            <div class="comparison-row">
+                <div class="comparison-cell comparison-feature">Extensions</div>
+                <div class="comparison-cell comparison-callsign">
+                    <span class="check check-good">Unlimited</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">Pay per seat</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">Pay per seat</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">Pay per seat</span>
+                </div>
+            </div>
+            
+            <div class="comparison-row">
+                <div class="comparison-cell comparison-feature">Call Recording</div>
+                <div class="comparison-cell comparison-callsign">
+                    <span class="check check-good">Included</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">+$15/mo</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">+$10/mo</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">+$5/mo</span>
+                </div>
+            </div>
+            
+            <div class="comparison-row">
+                <div class="comparison-cell comparison-feature">API Access</div>
+                <div class="comparison-cell comparison-callsign">
+                    <span class="check check-good">Full REST</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-warn">Limited</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-warn">Limited</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-warn">$500+/mo</span>
+                </div>
+            </div>
+            
+            <div class="comparison-row">
+                <div class="comparison-cell comparison-feature">Data Ownership</div>
+                <div class="comparison-cell comparison-callsign">
+                    <span class="check check-good">100% Yours</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">Theirs</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">Theirs</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">Theirs</span>
+                </div>
+            </div>
+            
+            <div class="comparison-row">
+                <div class="comparison-cell comparison-feature">Source Code</div>
+                <div class="comparison-cell comparison-callsign">
+                    <span class="check check-good">Open</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">Locked</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">Locked</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">Locked</span>
+                </div>
+            </div>
+            
+            <div class="comparison-row">
+                <div class="comparison-cell comparison-feature">Customization</div>
+                <div class="comparison-cell comparison-callsign">
+                    <span class="check check-good">Unlimited</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">None</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">None</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">None</span>
+                </div>
+            </div>
+            
+            <div class="comparison-row">
+                <div class="comparison-cell comparison-feature">Vendor Lock-in</div>
+                <div class="comparison-cell comparison-callsign">
+                    <span class="check check-good">None</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">Maximum</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">Maximum</span>
+                </div>
+                <div class="comparison-cell comparison-them">
+                    <span class="check check-bad">Maximum</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="comparison-total">
+            <div class="total-row">
+                <span class="total-label">Annual Cost (50 users)</span>
+                <span class="total-callsign">$0</span>
+                <span class="total-them">~$18,000 - $30,000</span>
             </div>
         </div>
     </section>
 
-    <!-- Roadmap Section -->
-    <section id="roadmap" class="section section-dark">
-        <div class="container">
-            <h2 class="section-title">What's Coming 🚀</h2>
-            <p class="section-subtitle">We're actively building and improving CallSign</p>
-
-            <div class="roadmap-timeline">
-                <div class="roadmap-phase">
-                    <div class="phase-status done">
-                        <i class="bi bi-check-lg"></i>
+    <!-- Specs Section (Tech Stack) -->
+    <section class="section section-specs">
+        <div class="section-header">
+            <span class="section-num">04</span>
+            <h2 class="section-title">SYSTEM_SPECS</h2>
+            <span class="section-subtitle">// BUILT_TO_LAST</span>
+        </div>
+        
+        <div class="specs-container">
+            <div class="spec-column">
+                <h3 class="spec-heading">[FRONTEND]</h3>
+                <div class="spec-list">
+                    <div class="spec-item">
+                        <span class="spec-name">Vue.js_3</span>
+                        <span class="spec-val">Composition_API</span>
                     </div>
-                    <div class="phase-content">
-                        <h3>Core Features <span class="phase-tag done">Done</span></h3>
-                        <ul>
-                            <li>Extensions, DIDs, Ring Groups</li>
-                            <li>IVR / Auto Attendant</li>
-                            <li>Voicemail with email notifications</li>
-                            <li>Call recording & CDR</li>
-                            <li>Device auto-provisioning</li>
-                        </ul>
+                    <div class="spec-item">
+                        <span class="spec-name">Vite</span>
+                        <span class="spec-val">v5.x</span>
                     </div>
-                </div>
-                <div class="roadmap-phase">
-                    <div class="phase-status current">
-                        <i class="bi bi-arrow-right"></i>
-                    </div>
-                    <div class="phase-content">
-                        <h3>In Progress <span class="phase-tag current">Q1 2026</span></h3>
-                        <ul>
-                            <li>WebRTC softphone in browser</li>
-                            <li>SMS / MMS integration</li>
-                            <li>Webhook notifications</li>
-                            <li>Improved call analytics</li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="roadmap-phase">
-                    <div class="phase-status upcoming">
-                        <i class="bi bi-clock"></i>
-                    </div>
-                    <div class="phase-content">
-                        <h3>Coming Soon <span class="phase-tag upcoming">Q2-Q3</span></h3>
-                        <ul>
-                            <li>AI-powered call insights</li>
-                            <li>CRM integrations</li>
-                            <li>Mobile apps (iOS/Android)</li>
-                            <li>Video conferencing</li>
-                        </ul>
+                    <div class="spec-item">
+                        <span class="spec-name">Build_Time</span>
+                        <span class="spec-val">&lt;2s</span>
                     </div>
                 </div>
             </div>
+            
+            <div class="spec-column">
+                <h3 class="spec-heading">[BACKEND]</h3>
+                <div class="spec-list">
+                    <div class="spec-item">
+                        <span class="spec-name">Go</span>
+                        <span class="spec-val">Iris_Framework</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-name">Database</span>
+                        <span class="spec-val">PostgreSQL</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-name">Auth</span>
+                        <span class="spec-val">JWT+RBAC</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="spec-column">
+                <h3 class="spec-heading">[TELEPHONY]</h3>
+                <div class="spec-list">
+                    <div class="spec-item">
+                        <span class="spec-name">Core</span>
+                        <span class="spec-val">FreeSWITCH</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-name">Events</span>
+                        <span class="spec-val">ESL_Socket</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-name">Dialplan</span>
+                        <span class="spec-val">XML_CURL</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="specs-binary">
+            <span>01000011 01100001 01101100 01101100 01010011 01101001 01100111 01101110</span>
+        </div>
+    </section>
 
-            <div class="roadmap-cta">
-                <p>Have ideas? We'd love to hear from you!</p>
-                <a href="https://github.com/yourorg/callsign/issues" class="btn btn-outline" target="_blank">
-                    <i class="bi bi-lightbulb"></i> Suggest a Feature
+    <!-- Deploy Section -->
+    <section id="deploy" class="section section-deploy">
+        <div class="section-header">
+            <span class="section-num">05</span>
+            <h2 class="section-title">GET_ROOT</h2>
+            <span class="section-subtitle">// DEPLOY_IN_60_SECONDS</span>
+        </div>
+        
+        <div class="deploy-container">
+            <div class="deploy-code">
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-file">deploy.sh</span>
+                        <button class="copy-btn" onclick="copyCode()">
+                            <span>[COPY]</span>
+                        </button>
+                    </div>
+                    <pre><code><span class="code-comment"># Clone the underground</span>
+<span class="code-cmd">git clone</span> https://github.com/voip.rip/callsign.git
+<span class="code-cmd">cd</span> callsign
+
+<span class="code-comment"># Configure your environment</span>
+<span class="code-cmd">cp</span> .env.example .env
+<span class="code-cmd">$EDITOR</span> .env
+
+<span class="code-comment"># Wake the beast</span>
+<span class="code-cmd">docker compose up -d</span>
+
+<span class="code-comment"># Done. It's yours.</span>
+<span class="code-cmd">curl</span> http://localhost/health</code></pre>
+                </div>
+            </div>
+            
+            <div class="deploy-links">
+                <a href="https://github.com/yourorg/callsign" class="deploy-link" target="_blank">
+                    <span class="link-icon">⌘</span>
+                    <span class="link-text">GITHUB_REPO</span>
+                    <span class="link-arrow">→</span>
                 </a>
-            </div>
-        </div>
-    </section>
-
-    <!-- Get Started Section -->
-    <section id="get-started" class="section">
-        <div class="container">
-            <h2 class="section-title">Ready to Get Started? 🎉</h2>
-            <p class="section-subtitle">Deploy CallSign in minutes with Docker</p>
-
-            <div class="code-block">
-                <div class="code-header">
-                    <span><i class="bi bi-terminal"></i> Terminal</span>
-                    <button class="copy-btn" onclick="copyCode()">
-                        <i class="bi bi-clipboard"></i> Copy
-                    </button>
-                </div>
-                <pre><code><span class="comment"># Clone the repository</span>
-git clone https://github.com/yourorg/callsign.git
-cd callsign
-
-<span class="comment"># Configure your environment</span>
-cp .env.example .env
-<span class="comment"># Edit .env with your settings</span>
-
-<span class="comment"># Start everything with Docker</span>
-docker compose up -d
-
-<span class="comment"># 🎉 That's it! Access the panel at http://localhost</span></code></pre>
-            </div>
-
-            <div class="get-started-links">
-                <a href="https://github.com/yourorg/callsign" class="btn btn-primary btn-lg" target="_blank">
-                    <i class="bi bi-github"></i> View on GitHub
+                <a href="/docs" class="deploy-link">
+                    <span class="link-icon">📄</span>
+                    <span class="link-text">DOCUMENTATION</span>
+                    <span class="link-arrow">→</span>
                 </a>
-                <a href="/docs" class="btn btn-outline btn-lg">
-                    <i class="bi bi-book"></i> Read the Docs
+                <a href="/login" class="deploy-link deploy-link-primary">
+                    <span class="link-icon">⚡</span>
+                    <span class="link-text">ACCESS_PORTAL</span>
+                    <span class="link-arrow">→</span>
                 </a>
-                <a href="/login" class="btn btn-outline btn-lg">
-                    <i class="bi bi-box-arrow-in-right"></i> Access Portal
-                </a>
-            </div>
-        </div>
-    </section>
-
-    <!-- Community Section -->
-    <section class="section section-dark">
-        <div class="container">
-            <div class="community-block">
-                <div class="community-content">
-                    <h2>Join the Community 💬</h2>
-                    <p>Get help, share ideas, and connect with other CallSign users and contributors.</p>
-                </div>
-                <div class="community-links">
-                    <a href="https://github.com/yourorg/callsign/discussions" class="community-link" target="_blank">
-                        <i class="bi bi-chat-dots"></i>
-                        <span>Discussions</span>
-                    </a>
-                    <a href="https://github.com/yourorg/callsign/issues" class="community-link" target="_blank">
-                        <i class="bi bi-bug"></i>
-                        <span>Report Issues</span>
-                    </a>
-                    <a href="https://github.com/yourorg/callsign/blob/main/CONTRIBUTING.md" class="community-link"
-                        target="_blank">
-                        <i class="bi bi-code-slash"></i>
-                        <span>Contribute</span>
-                    </a>
-                </div>
             </div>
         </div>
     </section>
 
     <!-- Footer -->
     <footer class="footer">
-        <div class="container">
-            <div class="footer-content">
-                <div class="footer-brand">
-                    <a href="#" class="logo">
-                        <div class="logo-icon">
-                            <i class="bi bi-telephone-fill"></i>
-                        </div>
-                        <span>CallSign</span>
-                        <span class="by-badge">by voip.rip</span>
-                    </a>
-                    <p>Modern, open-source PBX for everyone.<br>Built with ❤️ by the community.</p>
+        <div class="footer-grid">
+            <div class="footer-brand">
+                <div class="footer-logo">
+                    <span class="logo-skull">☠</span>
+                    <span>CALLSIGN</span>
                 </div>
-                <div class="footer-links">
-                    <div class="footer-column">
-                        <h4>Product</h4>
-                        <a href="#features">Features</a>
-                        <a href="#why-callsign">Why CallSign</a>
-                        <a href="#roadmap">Roadmap</a>
-                    </div>
-                    <div class="footer-column">
-                        <h4>Resources</h4>
-                        <a href="/docs">Documentation</a>
-                        <a href="/docs/api">API Reference</a>
-                        <a href="https://github.com/yourorg/callsign" target="_blank">GitHub</a>
-                    </div>
-                    <div class="footer-column">
-                        <h4>Community</h4>
-                        <a href="https://github.com/yourorg/callsign/discussions" target="_blank">Discussions</a>
-                        <a href="https://github.com/yourorg/callsign/blob/main/CONTRIBUTING.md"
-                            target="_blank">Contributing</a>
-                        <a href="https://github.com/yourorg/callsign/blob/main/LICENSE" target="_blank">License
-                            (MIT)</a>
-                    </div>
+                <p class="footer-tagline">
+                    Disruptors in voice.<br>
+                    Built by the underground, for the underground.
+                </p>
+                <div class="footer-license">
+                    <span class="license-badge">MIT_LICENSE</span>
+                    <span class="license-text">Forever free. No strings.</span>
                 </div>
             </div>
-            <div class="footer-bottom">
-                <p>&copy; 2026 CallSign • Open Source under MIT License</p>
+            
+            <div class="footer-links">
+                <div class="footer-col">
+                    <h4>[SYSTEM]</h4>
+                    <a href="#features">Features</a>
+                    <a href="#comparison">Comparison</a>
+                    <a href="#manifesto">Manifesto</a>
+                    <a href="#deploy">Deploy</a>
+                </div>
+                <div class="footer-col">
+                    <h4>[CONNECT]</h4>
+                    <a href="https://github.com/yourorg/callsign" target="_blank">GitHub</a>
+                    <a href="https://github.com/yourorg/callsign/discussions" target="_blank">Discussions</a>
+                    <a href="https://github.com/yourorg/callsign/issues" target="_blank">Issues</a>
+                </div>
+                <div class="footer-col">
+                    <h4>[LEGAL]</h4>
+                    <a href="/license">License</a>
+                    <a href="/privacy">Privacy</a>
+                </div>
             </div>
+        </div>
+        
+        <div class="footer-bottom">
+            <div class="footer-line"></div>
+            <p class="footer-copy">
+                <span>© 2026 voip.rip</span>
+                <span class="footer-divider">//</span>
+                <span>REST_IN_PEACE_TELECOM</span>
+            </p>
         </div>
     </footer>
 
     <script src="script.js"></script>
 </body>
-
 </html>

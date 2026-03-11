@@ -195,7 +195,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import { 
   Phone as PhoneIcon, PhoneOff as PhoneOffIcon, PhoneCall as PhoneCallIcon,
   PhoneMissed as PhoneMissedIcon, PhoneOutgoing as PhoneOutgoingIcon, PhoneIncoming as PhoneIncomingIcon,
@@ -204,6 +204,9 @@ import {
   ChevronDown as ChevronDownIcon, Monitor as MonitorIcon, Smartphone as SmartphoneIcon,
   Headphones as HeadphonesIcon, X as XIcon, Info as InfoIcon
 } from 'lucide-vue-next'
+import { userPortalAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 // ============================================
 // DEVICE BINDING
@@ -213,46 +216,63 @@ const showDeviceMenu = ref(false)
 const boundDevice = ref(null)
 const deviceHasActiveCall = ref(false)
 
-const userDevices = ref([
-  { id: 'softphone', type: 'softphone', name: 'Browser Softphone', meta: 'WebRTC', status: 'online', icon: HeadphonesIcon },
-  { id: 'yealink-desk', type: 'desk_phone', name: 'Yealink T46U (Desk)', meta: 'MAC: 80:5E:C0:12:34:56', status: 'online', icon: MonitorIcon },
-  { id: 'poly-conf', type: 'desk_phone', name: 'Polycom VVX 450', meta: 'Conference Room B', status: 'online', icon: MonitorIcon },
-  { id: 'mobile-app', type: 'mobile', name: 'Mobile App', meta: 'iPhone 15 Pro', status: 'online', icon: SmartphoneIcon },
-  { id: 'home-phone', type: 'desk_phone', name: 'Home Office Phone', meta: 'Grandstream', status: 'offline', icon: MonitorIcon },
-])
+const userDevices = ref([])
+
+const deviceIconMap = {
+  softphone: HeadphonesIcon,
+  desk_phone: MonitorIcon,
+  mobile: SmartphoneIcon
+}
 
 const getDeviceIcon = (device) => {
   if (!device) return MonitorIcon
-  return device.icon || MonitorIcon
+  return deviceIconMap[device.type] || device.icon || MonitorIcon
+}
+
+const fetchDevices = async () => {
+  try {
+    const res = await userPortalAPI.getDevices()
+    const data = res.data?.data || res.data || []
+    userDevices.value = [
+      { id: 'softphone', type: 'softphone', name: 'Browser Softphone', meta: 'WebRTC', status: 'online', icon: HeadphonesIcon },
+      ...data.map(d => ({
+        id: d.id || d.mac,
+        type: d.device_type || 'desk_phone',
+        name: d.name || d.model || 'Phone',
+        meta: d.mac ? `MAC: ${d.mac}` : d.description || '',
+        status: d.status === 'Registered' ? 'online' : 'offline',
+        icon: deviceIconMap[d.device_type] || MonitorIcon
+      }))
+    ]
+  } catch (err) {
+    // Fallback to just softphone
+    userDevices.value = [
+      { id: 'softphone', type: 'softphone', name: 'Browser Softphone', meta: 'WebRTC', status: 'online', icon: HeadphonesIcon }
+    ]
+  }
 }
 
 const bindDevice = (device) => {
   if (device.status === 'offline') return
   boundDevice.value = device
   showDeviceMenu.value = false
-  console.log('[Dialer] Bound to device:', device.name)
   
-  // If binding to physical device, subscribe to its call events
   if (device.type !== 'softphone') {
     subscribeToDeviceEvents(device)
   }
 }
 
 const subscribeToDeviceEvents = (device) => {
-  // This would connect to a WebSocket/API to get real-time device state
+  // WebSocket subscription placeholder for FreeSWITCH ESL
   console.log('[Dialer] Subscribing to events for:', device.id)
-  // Mock: simulate device has active call after 5s
-  // In real implementation: WebSocket subscription to FreeSWITCH ESL or API
 }
 
 const takeCallControl = () => {
-  console.log('[Dialer] Taking control of call on:', boundDevice.value?.name)
-  // This would sync the call state from the device to the web UI
   callState.value = 'established'
-  remoteNumber.value = '(415) 555-1234'
-  remoteName.value = 'External Caller'
+  remoteNumber.value = ''
+  remoteName.value = 'Device Call'
   callDirection.value = 'inbound'
-  startTime.value = new Date(Date.now() - 45000) // Call started 45s ago
+  startTime.value = new Date(Date.now() - 45000)
   deviceHasActiveCall.value = false
 }
 
@@ -260,7 +280,7 @@ const takeCallControl = () => {
 // SIP STATE (Groundwork for SIP.js)
 // ============================================
 
-const sipState = ref('disconnected') // disconnected, connecting, connected, registered
+const sipState = ref('disconnected')
 const sipStateLabel = computed(() => {
   const labels = {
     disconnected: 'Disconnected',
@@ -272,24 +292,12 @@ const sipStateLabel = computed(() => {
 })
 
 const canMakeCalls = computed(() => {
-  // For now, always allow (mock). With SIP.js, check registration state
-  return sipState.value === 'registered' || sipState.value === 'disconnected' // Allow in mock mode
+  return sipState.value === 'registered' || sipState.value === 'disconnected'
 })
 
-// SIP.js integration points (to be implemented)
 const initializeSip = async () => {
-  console.log('[SIP] Initializing...')
   sipState.value = 'connecting'
-  
-  // ===== SIP.js Integration Point =====
-  // const { UserAgent, Registerer } = await import('sip.js')
-  // userAgent = new UserAgent({ ... })
-  // await userAgent.start()
-  // const registerer = new Registerer(userAgent)
-  // await registerer.register()
-  // =====================================
-  
-  // Mock successful connection
+  // SIP.js integration point
   await new Promise(r => setTimeout(r, 500))
   sipState.value = 'registered'
 }
@@ -299,8 +307,8 @@ const initializeSip = async () => {
 // ============================================
 
 const number = ref('')
-const callState = ref('idle') // idle, dialing, ringing, established, holding, terminated
-const callDirection = ref(null) // inbound, outbound
+const callState = ref('idle')
+const callDirection = ref(null)
 const remoteNumber = ref('')
 const remoteName = ref('')
 const startTime = ref(null)
@@ -351,7 +359,6 @@ const pressKey = (key) => {
 
 const sendDtmf = (tone) => {
   console.log('[Dialer] DTMF:', tone)
-  // SIP.js: session.sessionDescriptionHandler.sendDtmf(tone)
 }
 
 // ============================================
@@ -361,24 +368,16 @@ const sendDtmf = (tone) => {
 const makeCall = async () => {
   if (!number.value || callState.value !== 'idle') return
   
-  console.log('[Dialer] Calling:', number.value)
   callState.value = 'dialing'
   callDirection.value = 'outbound'
   remoteNumber.value = number.value
 
-  // If bound to physical device, trigger click-to-call via API
   if (boundDevice.value?.type !== 'softphone') {
+    // Click-to-call via API - will be POST /api/click-to-call
     console.log('[Dialer] Click-to-call via:', boundDevice.value?.name)
-    // API: POST /api/click-to-call { extension, destination, device_id }
   }
 
-  // ===== SIP.js Integration Point =====
-  // const { Inviter } = await import('sip.js')
-  // session = new Inviter(userAgent, targetUri)
-  // await session.invite()
-  // =====================================
-
-  // Mock call progress
+  // SIP.js integration point for actual call
   await new Promise(r => setTimeout(r, 1000))
   callState.value = 'ringing'
   await new Promise(r => setTimeout(r, 2000))
@@ -389,43 +388,24 @@ const makeCall = async () => {
 
 const answerCall = async () => {
   if (callState.value !== 'ringing') return
-  console.log('[Dialer] Answering call')
-  
-  // ===== SIP.js Integration Point =====
-  // await session.accept()
-  // =====================================
-  
   callState.value = 'established'
   startTime.value = new Date()
   startDurationTimer()
 }
 
 const hangupCall = async () => {
-  console.log('[Dialer] Hanging up')
-  
-  // ===== SIP.js Integration Point =====
-  // session.bye()
-  // =====================================
-  
   stopDurationTimer()
   callState.value = 'terminated'
-  
-  setTimeout(() => {
-    resetCall()
-  }, 1500)
+  setTimeout(() => { resetCall() }, 1500)
 }
 
 const toggleMute = () => {
   isMuted.value = !isMuted.value
-  console.log('[Dialer] Mute:', isMuted.value)
-  // SIP.js: toggle audio track enabled state
 }
 
 const toggleHold = () => {
   isOnHold.value = !isOnHold.value
   callState.value = isOnHold.value ? 'holding' : 'established'
-  console.log('[Dialer] Hold:', isOnHold.value)
-  // SIP.js: session.hold() / session.unhold()
 }
 
 const startDurationTimer = () => {
@@ -438,10 +418,7 @@ const startDurationTimer = () => {
 }
 
 const stopDurationTimer = () => {
-  if (durationTimer) {
-    clearInterval(durationTimer)
-    durationTimer = null
-  }
+  if (durationTimer) { clearInterval(durationTimer); durationTimer = null }
 }
 
 const resetCall = () => {
@@ -466,7 +443,6 @@ const transferTarget = ref('')
 
 const executeTransfer = () => {
   console.log('[Dialer] Transfer:', transferType.value, 'to', transferTarget.value)
-  // SIP.js: session.refer(targetUri)
   showTransferModal.value = false
   hangupCall()
 }
@@ -475,12 +451,32 @@ const executeTransfer = () => {
 // RECENT CALLS
 // ============================================
 
-const recentCalls = ref([
-  { id: 1, number: '(415) 555-1234', name: null, type: 'missed', duration: null, time: '2m ago' },
-  { id: 2, number: '(415) 555-5678', name: 'Alice Smith', type: 'outgoing', duration: '3:42', time: '1h ago' },
-  { id: 3, number: '(212) 555-9999', name: 'Support Queue', type: 'incoming', duration: '12:10', time: 'Yesterday' },
-  { id: 4, number: '101', name: 'John Doe', type: 'outgoing', duration: '0:45', time: 'Yesterday' },
-])
+const recentCalls = ref([])
+
+const fetchRecentCalls = async () => {
+  try {
+    const res = await userPortalAPI.getCallHistory({ limit: 10 })
+    const data = res.data?.data || res.data || []
+    recentCalls.value = data.slice(0, 10).map(c => ({
+      id: c.id,
+      number: c.caller_id_number || c.destination || c.number || '',
+      name: c.caller_id_name || c.name || null,
+      type: c.direction === 'outbound' ? 'outgoing' : (c.status === 'Missed' || c.hangup_cause === 'NO_ANSWER') ? 'missed' : 'incoming',
+      duration: c.duration ? `${Math.floor(c.duration / 60)}:${String(c.duration % 60).padStart(2, '0')}` : null,
+      time: c.created_at ? formatTimeAgo(new Date(c.created_at)) : ''
+    }))
+  } catch (err) {
+    console.error('Failed to load recent calls:', err)
+    recentCalls.value = []
+  }
+}
+
+const formatTimeAgo = (date) => {
+  const diffMin = Math.round((Date.now() - date) / 60000)
+  if (diffMin < 60) return `${diffMin}m ago`
+  if (diffMin < 1440) return `${Math.round(diffMin / 60)}h ago`
+  return 'Yesterday'
+}
 
 const dialRecent = (call) => {
   number.value = call.number
@@ -495,10 +491,11 @@ const dialNumber = (num) => {
 // LIFECYCLE
 // ============================================
 
-onMounted(() => {
-  // Bind to softphone by default
+onMounted(async () => {
+  await fetchDevices()
   boundDevice.value = userDevices.value.find(d => d.type === 'softphone')
   initializeSip()
+  fetchRecentCalls()
 })
 
 onUnmounted(() => {

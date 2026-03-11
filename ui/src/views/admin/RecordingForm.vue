@@ -36,20 +36,46 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
 import { useRouter } from 'vue-router'
+import { recordingsAPI } from '../../services/api'
 
+const toast = inject('toast')
 const router = useRouter()
+const isUploading = ref(false)
 
 const form = ref({
   name: '',
-  description: ''
+  description: '',
+  file: null
 })
 
-const save = () => {
-  // Mock upload logic
-  console.log('Uploading...', form.value)
-  router.back()
+const onFileSelect = (e) => {
+  form.value.file = e.target?.files?.[0] || null
+  if (form.value.file && !form.value.name) {
+    form.value.name = form.value.file.name.replace(/\.[^.]+$/, '')
+  }
+}
+
+const save = async () => {
+  if (!form.value.file) {
+    toast?.error('Please select a file to upload')
+    return
+  }
+  isUploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', form.value.file)
+    formData.append('name', form.value.name)
+    if (form.value.description) formData.append('description', form.value.description)
+    await recordingsAPI.upload(formData)
+    toast?.success('Recording uploaded')
+    router.back()
+  } catch (err) {
+    toast?.error(err.message, 'Failed to upload recording')
+  } finally {
+    isUploading.value = false
+  }
 }
 </script>
 

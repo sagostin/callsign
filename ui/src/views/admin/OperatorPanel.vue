@@ -25,15 +25,40 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { operatorPanelAPI } from '../../services/api'
 
-const extensions = ref([
-  { id: 1, number: '101', name: 'Alice Smith', status: 'Available', currentCmd: '' },
-  { id: 2, number: '102', name: 'Bob Jones', status: 'Busy', currentCmd: 'Talking 03:42' },
-  { id: 3, number: '103', name: 'Charlie Day', status: 'Ringing', currentCmd: 'Incoming...' },
-  { id: 4, number: '104', name: 'Dana White', status: 'Offline', currentCmd: '' },
-  { id: 5, number: '105', name: 'Evan Gold', status: 'Available', currentCmd: '' },
-])
+const extensions = ref([])
+const activeCalls = ref([])
+const queues = ref([])
+let refreshTimer = null
+
+const fetchData = async () => {
+  try {
+    const res = await operatorPanelAPI.getData()
+    const data = res.data || {}
+    extensions.value = (data.extensions || []).map(e => ({
+      id: e.id,
+      number: e.extension,
+      name: e.name || `Ext ${e.extension}`,
+      status: e.presence || 'offline',
+      currentCmd: e.active_call || ''
+    }))
+    activeCalls.value = data.active_calls || []
+    queues.value = data.queues || []
+  } catch (err) {
+    console.error('Failed to load operator panel data:', err)
+  }
+}
+
+onMounted(() => {
+  fetchData()
+  refreshTimer = setInterval(fetchData, 5000) // 5 second refresh for real-time feel
+})
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+})
 </script>
 
 <style scoped>

@@ -44,24 +44,57 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { broadcastAPI } from '../../services/api'
 
 const route = useRoute()
 const router = useRouter()
+const toast = inject('toast')
 const isNew = computed(() => !route.params.id)
 
 const form = ref({
   name: '',
   recording_id: '',
+  caller_id: '',
   concurrent_limit: 10,
   timeout: 30,
   recipients: ''
 })
 
-const save = () => {
-  console.log('Saving broadcast:', form.value)
-  router.back()
+onMounted(async () => {
+  if (!isNew.value) {
+    try {
+      const res = await broadcastAPI.get(route.params.id)
+      const data = res.data?.campaign || res.data
+      form.value = {
+        ...data,
+        recipients: Array.isArray(data.recipients) ? data.recipients.join('\n') : data.recipients || ''
+      }
+    } catch (err) {
+      toast?.error('Failed to load campaign')
+      router.back()
+    }
+  }
+})
+
+const save = async () => {
+  try {
+    const payload = {
+      ...form.value,
+      recipients: form.value.recipients.split('\n').map(s => s.trim()).filter(Boolean)
+    }
+    if (isNew.value) {
+      await broadcastAPI.create(payload)
+      toast?.success('Campaign created')
+    } else {
+      await broadcastAPI.update(route.params.id, payload)
+      toast?.success('Campaign updated')
+    }
+    router.push('/admin/call-broadcast')
+  } catch (err) {
+    toast?.error(err.message, 'Failed to save campaign')
+  }
 }
 </script>
 

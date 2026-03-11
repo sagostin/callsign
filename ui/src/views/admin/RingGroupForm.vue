@@ -65,9 +65,11 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ringGroupsAPI } from '../../services/api'
 
+const toast = inject('toast')
 const route = useRoute()
 const router = useRouter()
 const isNew = computed(() => !route.params.id)
@@ -77,33 +79,53 @@ const form = ref({
    extension: '',
    strategy: 'ring-all',
    timeout: 30,
-   members: [
-      { type: 'user', target: '1001' },
-      { type: 'user', target: '1002' }
-   ]
+   members: []
 })
 
-if (!isNew.value) {
-   // Mock load
-   form.value = {
-      name: 'Sales Team',
-      extension: '500',
-      strategy: 'enterprise',
-      timeout: 30,
-      members: [
-          { type: 'user', target: '101' },
-          { type: 'user', target: '102' },
-          { type: 'external', target: '555-0011' }
-      ]
-   }
-}
+onMounted(async () => {
+  if (!isNew.value) {
+    try {
+      const res = await ringGroupsAPI.get(route.params.id)
+      const d = res.data
+      form.value = {
+        name: d.name || '',
+        extension: d.extension || '',
+        strategy: d.strategy || 'ring-all',
+        timeout: d.timeout || 30,
+        members: (d.members || []).map(m => ({
+          type: m.type || 'user',
+          target: m.extension || m.target || ''
+        }))
+      }
+    } catch (err) {
+      toast?.error(err.message, 'Failed to load ring group')
+    }
+  }
+})
 
 const addMember = () => form.value.members.push({ type: 'user', target: '' })
 const removeMember = (idx) => form.value.members.splice(idx, 1)
 
-const save = () => {
-   alert('Ring Group Saved')
-   router.push('/admin/queues')
+const save = async () => {
+  try {
+    const payload = {
+      name: form.value.name,
+      extension: form.value.extension,
+      strategy: form.value.strategy,
+      timeout: form.value.timeout,
+      members: form.value.members.filter(m => m.target)
+    }
+    if (isNew.value) {
+      await ringGroupsAPI.create(payload)
+      toast?.success('Ring group created')
+    } else {
+      await ringGroupsAPI.update(route.params.id, payload)
+      toast?.success('Ring group updated')
+    }
+    router.push('/admin/queues')
+  } catch (err) {
+    toast?.error(err.message, 'Failed to save ring group')
+  }
 }
 </script>
 

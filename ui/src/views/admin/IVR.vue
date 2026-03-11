@@ -267,34 +267,20 @@ onMounted(async () => {
 async function fetchMenus() {
   isLoading.value = true
   try {
-    const response = await ivrAPI.list()
-    menus.value = (response.data || []).map(m => ({
+    const response = await ivrAPI.listMenus()
+    menus.value = (response.data?.data || []).map(m => ({
       id: m.id,
       name: m.name,
       extension: m.extension,
       status: m.enabled ? 'Active' : 'Idle',
-      greeting: m.greeting_file || 'default.wav',
+      greeting: m.greet_long || 'default.wav',
       options: m.options || {},
       timeout: m.timeout || 10,
-      timeoutAction: m.timeout_action || 'Replay'
+      timeoutAction: 'Replay'
     }))
   } catch (error) {
     toast?.error(error.message, 'Failed to load IVR menus')
-    // Fallback to demo data
-    menus.value = [
-      {
-        id: 1, name: 'Main Menu', extension: '8000', status: 'Active',
-        greeting: 'main_greeting.wav',
-        options: { '1': 'Ext 101 (Sales)', '2': 'Ring Group: Support', '3': 'Company Directory', '0': 'Operator' },
-        timeout: 10, timeoutAction: 'Voicemail'
-      },
-      {
-        id: 2, name: 'After Hours', extension: '8001', status: 'Active',
-        greeting: 'after_hours.wav',
-        options: { '1': 'Emergency Line', '0': 'Leave Message' },
-        timeout: 15, timeoutAction: 'Voicemail'
-      },
-    ]
+    menus.value = []
   } finally {
     isLoading.value = false
   }
@@ -331,7 +317,19 @@ const deleteMenu = async (menu) => {
 
 const saveMenu = async () => {
   try {
-    // TODO: Map form to API format and save
+    const payload = {
+      name: menuForm.value.name,
+      extension: menuForm.value.extension,
+      enabled: true,
+      timeout: menuForm.value.timeout || 10,
+      max_failures: menuForm.value.maxRetries || 3,
+      max_timeouts: menuForm.value.maxRetries || 3
+    }
+    if (editingMenu.value && menuForm.value.id) {
+      await ivrAPI.updateMenu(menuForm.value.id, payload)
+    } else {
+      await ivrAPI.createMenu(payload)
+    }
     toast?.success('IVR menu saved')
     showMenuModal.value = false
     editingMenu.value = false

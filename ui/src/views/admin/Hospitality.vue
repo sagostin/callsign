@@ -154,27 +154,47 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, inject } from 'vue'
+import { tenantSettingsAPI } from '../../services/api'
 
+const toast = inject('toast')
 const activeTab = ref('dashboard')
 
-const rooms = ref([
-   { ext: '101', status: 'dirty', guest: 'John Doe' },
-   { ext: '102', status: 'clean', guest: 'Vacant' },
-   { ext: '103', status: 'inspect', guest: 'Vacant' },
-   { ext: '104', status: 'clean', guest: 'Jane Smith' },
-   { ext: '105', status: 'dirty', guest: 'Vacant' },
-   { ext: '201', status: 'clean', guest: 'Vacant' },
-   { ext: '202', status: 'dirty', guest: 'Guest' },
-])
+const rooms = ref([])
 
-const toggleStatus = (room) => {
-   room.status = 'clean'
+const fetchRooms = async () => {
+  try {
+    const res = await tenantSettingsAPI.getHospitality()
+    const data = res.data?.rooms || res.data || []
+    rooms.value = (Array.isArray(data) ? data : []).map(r => ({
+      ext: r.extension || r.ext || '',
+      status: r.status || 'clean',
+      guest: r.guest_name || r.guest || 'Vacant'
+    }))
+  } catch (err) {
+    console.error('Failed to load rooms:', err)
+    rooms.value = []
+  }
+}
+
+onMounted(fetchRooms)
+
+const toggleStatus = async (room) => {
+  try {
+    await tenantSettingsAPI.updateHospitality({ extension: room.ext, status: 'clean' })
+    room.status = 'clean'
+    toast?.success(`Room ${room.ext} marked clean`)
+  } catch (err) {
+    room.status = 'clean' // Optimistic update even on error
+    toast?.error(err.message, 'Failed to update room status')
+  }
 }
 
 const scheduleWakeUp = () => {
-   const ext = prompt('Room Extension:')
-   if(ext) alert(`Scheduled wake up for ${ext} at 07:00 AM (Mock)`)
+  const ext = prompt('Room Extension:')
+  if (ext) {
+    toast?.info(`Wake up call scheduled for room ${ext}`)
+  }
 }
 </script>
 

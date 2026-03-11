@@ -152,7 +152,8 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { 
   Phone as PhoneIcon, PhoneIncoming as PhoneIncomingIcon, 
   PhoneOutgoing as PhoneOutgoingIcon, PhoneMissed as PhoneMissedIcon,
@@ -160,22 +161,62 @@ import {
   MessageSquare as MessageSquareIcon, UserPlus as UserPlusIcon,
   X as XIcon, Play as PlayIcon
 } from 'lucide-vue-next'
+import { userPortalAPI, contactsAPI } from '../../services/api'
 
+const router = useRouter()
 const searchQuery = ref('')
 const activeFilter = ref('all')
 const dateFilter = ref('')
 const selectedCall = ref(null)
+const loading = ref(false)
 
-const callHistory = ref([
-  { id: 1, type: 'missed', name: null, number: '(415) 555-9999', time: '10:45 AM', duration: null, date: 'today', fullDate: 'Dec 9, 2024 10:45 AM', recording: false },
-  { id: 2, type: 'inbound', name: 'Alice Smith', number: '(415) 555-1234', time: '9:30 AM', duration: '5m 12s', date: 'today', fullDate: 'Dec 9, 2024 9:30 AM', recording: true },
-  { id: 3, type: 'outbound', name: 'Bob Jones', number: 'Ext 102', time: '9:00 AM', duration: '2m 45s', date: 'today', fullDate: 'Dec 9, 2024 9:00 AM', recording: false },
-  { id: 4, type: 'inbound', name: null, number: '(212) 555-8888', time: '4:15 PM', duration: '8m 33s', date: 'yesterday', fullDate: 'Dec 8, 2024 4:15 PM', recording: true },
-  { id: 5, type: 'outbound', name: 'Support Team', number: '(800) 555-0100', time: '2:00 PM', duration: '15m 22s', date: 'yesterday', fullDate: 'Dec 8, 2024 2:00 PM', recording: false },
-  { id: 6, type: 'missed', name: 'Jane Doe', number: '(310) 555-4567', time: '11:30 AM', duration: null, date: 'yesterday', fullDate: 'Dec 8, 2024 11:30 AM', recording: false },
-  { id: 7, type: 'inbound', name: 'Client ABC', number: '(555) 123-4567', time: '3:45 PM', duration: '12m 10s', date: 'week', fullDate: 'Dec 5, 2024 3:45 PM', recording: true },
-  { id: 8, type: 'outbound', name: null, number: '(555) 987-6543', time: '10:00 AM', duration: '1m 30s', date: 'week', fullDate: 'Dec 4, 2024 10:00 AM', recording: false },
-])
+const callHistory = ref([])
+
+const formatCallRecord = (record) => {
+  const dt = new Date(record.start_time || record.created_at)
+  const now = new Date()
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const weekAgo = new Date(now)
+  weekAgo.setDate(weekAgo.getDate() - 7)
+
+  let dateGroup = 'month'
+  if (dt.toDateString() === now.toDateString()) dateGroup = 'today'
+  else if (dt.toDateString() === yesterday.toDateString()) dateGroup = 'yesterday'
+  else if (dt > weekAgo) dateGroup = 'week'
+
+  const durationSec = record.duration || record.billsec || 0
+  const mins = Math.floor(durationSec / 60)
+  const secs = durationSec % 60
+  const durationStr = durationSec > 0 ? `${mins}m ${secs}s` : null
+
+  return {
+    id: record.id || record.uuid,
+    type: record.direction || (record.missed ? 'missed' : 'inbound'),
+    name: record.caller_id_name || record.contact_name || null,
+    number: record.caller_id_number || record.src || record.dst,
+    time: dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+    duration: durationStr,
+    date: dateGroup,
+    fullDate: dt.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+    recording: !!record.recording_id || !!record.has_recording,
+  }
+}
+
+const fetchHistory = async () => {
+  loading.value = true
+  try {
+    const res = await userPortalAPI.getCallHistory({ limit: 100 })
+    callHistory.value = (res.data?.records || res.data || []).map(formatCallRecord)
+  } catch (err) {
+    console.error('Failed to load call history:', err)
+    callHistory.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(fetchHistory)
 
 const filteredCalls = computed(() => {
   return callHistory.value.filter(call => {
@@ -209,9 +250,18 @@ const groupedCalls = computed(() => {
 })
 
 const selectCall = (call) => { selectedCall.value = call }
-const makeCall = (number) => alert(`Calling ${number}...`)
-const sendMessage = (number) => alert(`Messaging ${number}...`)
-const addToContacts = (call) => alert(`Add ${call.number} to contacts`)
+const makeCall = (number) => router.push({ path: '/dialer', query: { dial: number } })
+const sendMessage = (number) => router.push({ path: '/messages', query: { to: number } })
+const addToContacts = async (call) => {
+  const name = prompt(`Name for ${call.number}:`)
+  if (!name) return
+  try {
+    await contactsAPI.create({ name, phone: call.number })
+    call.name = name
+  } catch (err) {
+    console.error('Failed to add contact:', err)
+  }
+}
 </script>
 
 <style scoped>

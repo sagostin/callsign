@@ -61,9 +61,11 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { extensionsAPI } from '../../services/api'
 
+const toast = inject('toast')
 const route = useRoute()
 const router = useRouter()
 const isNew = computed(() => !route.params.id)
@@ -76,27 +78,54 @@ const form = ref({
   description: ''
 })
 
-if (!isNew.value) {
-    // Mock Load
-    form.value = {
-        name: 'Conf Bridge A',
-        extension: '7001',
-        type: 'conference',
-        target: 'default',
-        description: 'Main sales bridge.'
+onMounted(async () => {
+  if (!isNew.value) {
+    try {
+      const res = await extensionsAPI.get(route.params.id)
+      const d = res.data
+      form.value = {
+        name: d.description || d.effective_caller_id_name || '',
+        extension: d.extension || '',
+        type: d.bridge_type || d.type || 'conference',
+        target: d.bridge_target || d.destination || '',
+        description: d.description || ''
+      }
+    } catch (err) {
+      toast?.error(err.message, 'Failed to load bridge')
     }
+  }
+})
+
+const save = async () => {
+  try {
+    const payload = {
+      extension: form.value.extension,
+      description: form.value.name,
+      bridge_type: form.value.type,
+      bridge_target: form.value.target,
+    }
+    if (isNew.value) {
+      await extensionsAPI.create(payload)
+      toast?.success('Bridge created')
+    } else {
+      await extensionsAPI.update(route.params.id, payload)
+      toast?.success('Bridge updated')
+    }
+    router.back()
+  } catch (err) {
+    toast?.error(err.message, 'Failed to save bridge')
+  }
 }
 
-const save = () => {
-  alert('Bridge saved successfully.')
-  router.back()
-}
-
-const deleteBridge = () => {
-   if(confirm('Are you sure you want to delete this bridge?')) {
-      alert('Bridge deleted.')
-      router.back()
-   }
+const deleteBridge = async () => {
+  if (!confirm('Are you sure you want to delete this bridge?')) return
+  try {
+    await extensionsAPI.delete(route.params.id)
+    toast?.success('Bridge deleted')
+    router.back()
+  } catch (err) {
+    toast?.error(err.message, 'Failed to delete bridge')
+  }
 }
 </script>
 

@@ -4,14 +4,14 @@
       <div class="flex items-center gap-3">
          <div class="status-indicator live"></div>
          <div>
-            <h1 class="text-xl font-bold text-white">Weekly Sales <span class="text-slate-400 font-normal">#3001</span></h1>
-            <p class="text-xs text-slate-400">00:12:43 Elapsed • 4 Participants</p>
+            <h1 class="text-xl font-bold text-white">{{ confTitle }} <span class="text-slate-400 font-normal">#{{ confNumber }}</span></h1>
+            <p class="text-xs text-slate-400">{{ elapsed }} Elapsed • {{ participants.length }} Participants</p>
          </div>
       </div>
       <div class="flex gap-2">
-         <button class="btn-console red"><SquareIcon class="w-4 h-4 mr-2" /> Stop Rec</button>
-         <button class="btn-console"><LockIcon class="w-4 h-4 mr-2" /> Lock Room</button>
-         <button class="btn-console"><MicOffIcon class="w-4 h-4 mr-2" /> Mute All</button>
+         <button class="btn-console" :class="{ red: isRecording }" @click="toggleRecording"><SquareIcon class="w-4 h-4 mr-2" /> {{ isRecording ? 'Stop Rec' : 'Record' }}</button>
+         <button class="btn-console" @click="toggleLock"><LockIcon class="w-4 h-4 mr-2" /> {{ isLocked ? 'Unlock' : 'Lock Room' }}</button>
+         <button class="btn-console" @click="muteAll"><MicOffIcon class="w-4 h-4 mr-2" /> Mute All</button>
       </div>
     </div>
 
@@ -29,8 +29,8 @@
              <MicOffIcon v-if="p.muted" class="w-4 h-4 text-red-500" />
           </div>
           <div class="p-actions">
-             <button class="action-btn" :class="{ active: p.muted }" @click="p.muted = !p.muted"><MicOffIcon class="w-4 h-4" /></button>
-             <button class="action-btn text-red-500"><UserMinusIcon class="w-4 h-4" /></button>
+             <button class="action-btn" :class="{ active: p.muted }" @click="toggleMute(p)"><MicOffIcon class="w-4 h-4" /></button>
+             <button class="action-btn text-red-500" @click="kickMember(p)"><UserMinusIcon class="w-4 h-4" /></button>
           </div>
        </div>
     </div>
@@ -38,15 +38,113 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted, inject } from 'vue'
+import { useRoute } from 'vue-router'
 import { MicIcon, MicOffIcon, LockIcon, SquareIcon, UserMinusIcon } from 'lucide-vue-next'
+import { conferencesAPI } from '../../services/api'
 
-const participants = ref([
-   { id: 1, name: 'Alice Smith', number: '101', talking: true, muted: false },
-   { id: 2, name: 'Bob Jones', number: '102', talking: false, muted: false },
-   { id: 3, name: 'External Caller', number: '+15550009999', talking: false, muted: true },
-   { id: 4, name: 'Dave Wilson', number: '104', talking: false, muted: false },
-])
+const toast = inject('toast')
+const route = useRoute()
+const confName = ref(route.params.id || route.params.name || '')
+const confTitle = ref('Conference')
+const confNumber = ref('')
+const elapsed = ref('00:00:00')
+const participants = ref([])
+const isRecording = ref(false)
+const isLocked = ref(false)
+let refreshInterval = null
+
+const fetchLiveData = async () => {
+  if (!confName.value) return
+  try {
+    const res = await conferencesAPI.getLive(confName.value)
+    const data = res.data || {}
+    confTitle.value = data.name || data.conference_name || confName.value
+    confNumber.value = data.number || data.extension || ''
+    elapsed.value = data.elapsed || data.run_time || '00:00:00'
+    isRecording.value = data.recording || false
+    isLocked.value = data.locked || false
+    const members = data.members || data.participants || data || []
+    participants.value = (Array.isArray(members) ? members : []).map(m => ({
+      id: m.id || m.member_id,
+      name: m.caller_id_name || m.name || 'Unknown',
+      number: m.caller_id_number || m.number || '',
+      talking: m.talking || false,
+      muted: m.muted || false
+    }))
+  } catch (err) {
+    console.error('Failed to load conference:', err)
+    participants.value = []
+  }
+}
+
+onMounted(() => {
+  fetchLiveData()
+  refreshInterval = setInterval(fetchLiveData, 3000) // Refresh every 3s
+})
+onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
+
+const toggleMute = async (p) => {
+  try {
+    if (p.muted) {
+      await conferencesAPI.unmuteMember(confName.value, p.id)
+    } else {
+      await conferencesAPI.muteMember(confName.value, p.id)
+    }
+    p.muted = !p.muted
+  } catch (err) {
+    toast?.error(err.message, 'Failed to toggle mute')
+  }
+}
+
+const kickMember = async (p) => {
+  if (!confirm(`Kick ${p.name} from conference?`)) return
+  try {
+    await conferencesAPI.kickMember(confName.value, p.id)
+    participants.value = participants.value.filter(m => m.id !== p.id)
+    toast?.success(`${p.name} kicked`)
+  } catch (err) {
+    toast?.error(err.message, 'Failed to kick member')
+  }
+}
+
+const toggleRecording = async () => {
+  try {
+    if (isRecording.value) {
+      await conferencesAPI.stopRecording(confName.value)
+      toast?.success('Recording stopped')
+    } else {
+      await conferencesAPI.startRecording(confName.value)
+      toast?.success('Recording started')
+    }
+    isRecording.value = !isRecording.value
+  } catch (err) {
+    toast?.error(err.message, 'Failed to toggle recording')
+  }
+}
+
+const toggleLock = async () => {
+  try {
+    if (isLocked.value) {
+      await conferencesAPI.unlockConference(confName.value)
+    } else {
+      await conferencesAPI.lockConference(confName.value)
+    }
+    isLocked.value = !isLocked.value
+  } catch (err) {
+    toast?.error(err.message, 'Failed to toggle lock')
+  }
+}
+
+const muteAll = async () => {
+  try {
+    await conferencesAPI.muteAll(confName.value)
+    participants.value.forEach(p => p.muted = true)
+    toast?.success('All participants muted')
+  } catch (err) {
+    toast?.error(err.message, 'Failed to mute all')
+  }
+}
 </script>
 
 <style scoped>

@@ -435,16 +435,7 @@ async function fetchVoicemailBoxes() {
     }))
   } catch (error) {
     toast?.error(error.message, 'Failed to load voicemail boxes')
-    // Fallback to demo data
-    boxes.value = [
-      { ext: '101', type: 'Standard', owner: 'Alice Smith', email: 'alice@acme.com', count: 12, usage: 15, status: 'active' },
-      { ext: '102', type: 'Standard', owner: 'Bob Jones', email: 'bob@acme.com', count: 0, usage: 0, status: 'active' },
-      { ext: '8000', type: 'Shared', owner: 'Sales Queue (Shared)', email: 'sales@acme.com', count: 5, usage: 8, status: 'active' },
-    ]
-    deliveryAttempts.value = [
-      { id: 1, mailbox: '101', type: 'Email', destination: 'alice@acme.com', status: 'delivered', time: '10:32 AM', error: null },
-      { id: 2, mailbox: '105', type: 'Email', destination: 'david@acme.com', status: 'failed', time: '10:15 AM', error: 'SMTP timeout' },
-    ]
+    boxes.value = []
   } finally {
     isLoading.value = false
   }

@@ -128,6 +128,20 @@ func (h *Handler) GetExtensionUsageReport(ctx iris.Context) {
 	startDate := ctx.URLParamDefault("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
 	endDate := ctx.URLParamDefault("end", time.Now().Format("2006-01-02"))
 
+	// Try ClickHouse first for better performance on large datasets
+	if h.CHClient != nil && h.CHClient.IsEnabled() {
+		from, _ := time.Parse("2006-01-02", startDate)
+		to, _ := time.Parse("2006-01-02", endDate)
+		to = to.Add(24*time.Hour - time.Second) // End of day
+
+		stats, err := h.CHClient.QueryExtensionStats(tenantID, from, to)
+		if err == nil {
+			ctx.JSON(iris.Map{"data": stats, "source": "clickhouse", "start": startDate, "end": endDate})
+			return
+		}
+		// Fallback to PostgreSQL
+	}
+
 	type ExtUsage struct {
 		Extension     string  `json:"extension"`
 		InboundCalls  int64   `json:"inbound_calls"`
@@ -148,7 +162,7 @@ func (h *Handler) GetExtensionUsageReport(ctx iris.Context) {
 		Order("total_minutes DESC").
 		Find(&usage)
 
-	ctx.JSON(iris.Map{"data": usage, "start": startDate, "end": endDate})
+	ctx.JSON(iris.Map{"data": usage, "source": "postgresql", "start": startDate, "end": endDate})
 }
 
 // GetKPIReport returns key performance indicators
@@ -156,6 +170,20 @@ func (h *Handler) GetKPIReport(ctx iris.Context) {
 	tenantID := middleware.GetTenantID(ctx)
 	startDate := ctx.URLParamDefault("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
 	endDate := ctx.URLParamDefault("end", time.Now().Format("2006-01-02"))
+
+	// Try ClickHouse first for better performance on large datasets
+	if h.CHClient != nil && h.CHClient.IsEnabled() {
+		from, _ := time.Parse("2006-01-02", startDate)
+		to, _ := time.Parse("2006-01-02", endDate)
+		to = to.Add(24*time.Hour - time.Second)
+
+		kpi, err := h.CHClient.QueryKPI(tenantID, from, to)
+		if err == nil {
+			ctx.JSON(iris.Map{"data": kpi, "source": "clickhouse", "start": startDate, "end": endDate})
+			return
+		}
+		// Fallback to PostgreSQL
+	}
 
 	type KPIs struct {
 		TotalCalls     int64   `json:"total_calls"`
@@ -186,7 +214,7 @@ func (h *Handler) GetKPIReport(ctx iris.Context) {
 		kpis.AvgCallsPerDay = float64(kpis.TotalCalls) / days
 	}
 
-	ctx.JSON(iris.Map{"data": kpis, "start": startDate, "end": endDate})
+	ctx.JSON(iris.Map{"data": kpis, "source": "postgresql", "start": startDate, "end": endDate})
 }
 
 // GetNumberUsageReport returns phone number/DID utilization statistics

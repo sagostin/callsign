@@ -155,7 +155,7 @@
             <span>{{ showingTranscript.date }} at {{ showingTranscript.time }}</span>
           </div>
           <div class="transcript-content">
-            <div class="transcript-line" v-for="(line, i) in sampleTranscript" :key="i">
+            <div class="transcript-line" v-for="(line, i) in transcriptLines" :key="i">
               <span class="speaker" :class="line.speaker">{{ line.speaker === 'caller' ? 'Caller' : 'Agent' }}</span>
               <span class="timestamp">{{ line.time }}</span>
               <p class="text">{{ line.text }}</p>
@@ -172,7 +172,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { 
   Mic as MicIcon, MicOff as MicOffIcon, User as UserIcon, Users as UsersIcon,
   HardDrive as HardDriveIcon, Search as SearchIcon, 
@@ -182,6 +182,7 @@ import {
   SkipBack as SkipBackIcon, SkipForward as SkipForwardIcon,
   Download as DownloadIcon, FileText as FileTextIcon, Trash2 as TrashIcon, X as XIcon
 } from 'lucide-vue-next'
+import { recordingsAPI } from '../../services/api'
 
 const searchQuery = ref('')
 const filterType = ref('')
@@ -190,21 +191,48 @@ const currentlyPlaying = ref(null)
 const isPlaying = ref(false)
 const playbackTime = ref('00:00')
 const showingTranscript = ref(null)
+const transcriptLines = ref([])
+const loading = ref(false)
+const audioEl = ref(null)
 
-const recordings = ref([
-  { id: 1, date: 'Dec 9, 2024', time: '2:30 PM', from: '(415) 555-0199', to: 'Ext 101', duration: '04:12', direction: 'inbound', group: null, hasTranscript: true, size: '2.1 MB' },
-  { id: 2, date: 'Dec 9, 2024', time: '11:15 AM', from: '(415) 555-0200', to: 'Sales Queue', duration: '12:05', direction: 'inbound', group: 'Sales', hasTranscript: true, size: '5.8 MB' },
-  { id: 3, date: 'Dec 8, 2024', time: '4:45 PM', from: 'Ext 101', to: '(415) 555-0300', duration: '08:33', direction: 'outbound', group: null, hasTranscript: false, size: '4.2 MB' },
-  { id: 4, date: 'Dec 8, 2024', time: '10:30 AM', from: '(212) 555-9876', to: 'Support', duration: '15:22', direction: 'inbound', group: 'Support', hasTranscript: true, size: '7.3 MB' },
-  { id: 5, date: 'Dec 7, 2024', time: '3:00 PM', from: 'Ext 101', to: '(310) 555-4567', duration: '02:45', direction: 'outbound', group: null, hasTranscript: false, size: '1.4 MB' },
-])
+const recordings = ref([])
 
-const sampleTranscript = [
-  { speaker: 'caller', time: '00:00', text: 'Hi, I was calling about my recent order.' },
-  { speaker: 'agent', time: '00:05', text: 'Of course! I\'d be happy to help. Can I get your order number?' },
-  { speaker: 'caller', time: '00:12', text: 'Sure, it\'s 12345-ABC.' },
-  { speaker: 'agent', time: '00:18', text: 'Thank you. I can see your order here. What seems to be the issue?' },
-]
+const formatRecording = (r) => {
+  const dt = new Date(r.created_at || r.start_time)
+  const durationSec = r.duration || r.billsec || 0
+  const mins = Math.floor(durationSec / 60)
+  const secs = String(durationSec % 60).padStart(2, '0')
+  const sizeKB = r.file_size || 0
+  const sizeMB = (sizeKB / (1024 * 1024)).toFixed(1)
+
+  return {
+    id: r.id,
+    date: dt.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
+    time: dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+    from: r.caller_id_number || r.src || 'Unknown',
+    to: r.destination_number || r.dst || 'Unknown',
+    duration: `${mins}:${secs}`,
+    direction: r.direction || 'inbound',
+    group: r.queue_name || r.group || null,
+    hasTranscript: !!r.has_transcription,
+    size: `${sizeMB} MB`,
+  }
+}
+
+const fetchRecordings = async () => {
+  loading.value = true
+  try {
+    const res = await recordingsAPI.list({ limit: 100 })
+    recordings.value = (res.data?.recordings || res.data || []).map(formatRecording)
+  } catch (err) {
+    console.error('Failed to load recordings:', err)
+    recordings.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(fetchRecordings)
 
 const totalStorage = computed(() => {
   const total = recordings.value.reduce((sum, r) => sum + parseFloat(r.size), 0)
@@ -231,28 +259,78 @@ const isPlayingThis = (rec) => currentlyPlaying.value?.id === rec.id && isPlayin
 const playRecording = (rec) => {
   if (currentlyPlaying.value?.id === rec.id) {
     isPlaying.value = !isPlaying.value
+    if (audioEl.value) {
+      isPlaying.value ? audioEl.value.play() : audioEl.value.pause()
+    }
   } else {
     currentlyPlaying.value = rec
     isPlaying.value = true
     playbackTime.value = '00:00'
+    // Create audio element for real playback
+    if (audioEl.value) audioEl.value.pause()
+    audioEl.value = new Audio(recordingsAPI.streamUrl(rec.id))
+    audioEl.value.addEventListener('timeupdate', () => {
+      const m = Math.floor(audioEl.value.currentTime / 60)
+      const s = String(Math.floor(audioEl.value.currentTime % 60)).padStart(2, '0')
+      playbackTime.value = `${m}:${s}`
+    })
+    audioEl.value.addEventListener('ended', () => { isPlaying.value = false })
+    audioEl.value.play().catch(() => {})
   }
 }
 
-const togglePlayback = () => { isPlaying.value = !isPlaying.value }
-const stopPlayback = () => { currentlyPlaying.value = null; isPlaying.value = false }
-const seekBackward = () => console.log('Seek -10s')
-const seekForward = () => console.log('Seek +10s')
+const togglePlayback = () => {
+  isPlaying.value = !isPlaying.value
+  if (audioEl.value) {
+    isPlaying.value ? audioEl.value.play() : audioEl.value.pause()
+  }
+}
+const stopPlayback = () => {
+  if (audioEl.value) { audioEl.value.pause(); audioEl.value = null }
+  currentlyPlaying.value = null
+  isPlaying.value = false
+}
+const seekBackward = () => { if (audioEl.value) audioEl.value.currentTime = Math.max(0, audioEl.value.currentTime - 10) }
+const seekForward = () => { if (audioEl.value) audioEl.value.currentTime += 10 }
 
-const downloadRecording = (rec) => alert(`Downloading ${rec.from} - ${rec.to}`)
-const deleteRecording = (rec) => {
-  if (confirm('Delete this recording?')) {
+const downloadRecording = (rec) => {
+  window.open(recordingsAPI.downloadUrl(rec.id), '_blank')
+}
+
+const deleteRecording = async (rec) => {
+  if (!confirm('Delete this recording?')) return
+  try {
+    await recordingsAPI.delete(rec.id)
     recordings.value = recordings.value.filter(r => r.id !== rec.id)
+    if (currentlyPlaying.value?.id === rec.id) stopPlayback()
+  } catch (err) {
+    console.error('Failed to delete recording:', err)
   }
 }
 
-const showTranscript = (rec) => { showingTranscript.value = rec }
-const copyTranscript = () => alert('Transcript copied!')
-const downloadTranscript = () => alert('Downloading transcript...')
+const showTranscript = async (rec) => {
+  showingTranscript.value = rec
+  try {
+    const res = await recordingsAPI.getTranscription(rec.id)
+    transcriptLines.value = res.data?.lines || res.data || []
+  } catch (err) {
+    console.error('Failed to load transcript:', err)
+    transcriptLines.value = [{ speaker: 'system', time: '', text: 'Transcript not available.' }]
+  }
+}
+
+const copyTranscript = () => {
+  const text = transcriptLines.value.map(l => `${l.speaker}: ${l.text}`).join('\n')
+  navigator.clipboard.writeText(text).catch(() => {})
+}
+const downloadTranscript = () => {
+  const text = transcriptLines.value.map(l => `[${l.time}] ${l.speaker}: ${l.text}`).join('\n')
+  const blob = new Blob([text], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = `transcript_${showingTranscript.value?.id}.txt`; a.click()
+  URL.revokeObjectURL(url)
+}
 </script>
 
 <style scoped>

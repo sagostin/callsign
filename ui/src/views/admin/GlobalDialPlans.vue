@@ -309,9 +309,15 @@ const onDrop = async (e, idx) => {
   if (dragIndex.value === null || dragIndex.value === idx) return
   const item = rules.value.splice(dragIndex.value, 1)[0]
   rules.value.splice(idx, 0, item)
-  // TODO: Update order in backend
   dragIndex.value = null
   dragOverIndex.value = null
+  // Persist new order to backend
+  try {
+    const reordered = rules.value.map((r, i) => ({ id: r.id, dialplan_order: (i + 1) * 10 }))
+    await systemAPI.reorderDialplans ? systemAPI.reorderDialplans(reordered) : null
+  } catch (e) {
+    console.error('Failed to save order:', e)
+  }
 }
 const onDragEnd = () => { dragIndex.value = null; dragOverIndex.value = null }
 </script>

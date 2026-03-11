@@ -222,8 +222,13 @@ const regenerateSecret = async () => {
   }
   regenerating.value = true
   try {
-    // TODO: Call API to generate tenant secret
-    await new Promise(r => setTimeout(r, 1000))
+    const res = await tenantSettingsAPI.update({
+      generate_provisioning_secret: true
+    })
+    const newSecret = res.data?.provisioning_secret || res.data?.secret || ''
+    if (newSecret) {
+      tenantInfo.value.secret = newSecret
+    }
     toast?.success('Secret generated. Configure your devices with the new URL.')
   } catch (e) {
     toast?.error('Failed to generate secret')
@@ -236,8 +241,12 @@ const regenerateSecret = async () => {
 const saveSyslogSettings = async () => {
   savingSyslog.value = true
   try {
-    // TODO: Call API to save syslog settings
-    await new Promise(r => setTimeout(r, 500))
+    await tenantSettingsAPI.update({
+      syslog_server: syslogSettings.value.server,
+      syslog_port: syslogSettings.value.port,
+      syslog_protocol: syslogSettings.value.protocol,
+      syslog_level: syslogSettings.value.level
+    })
     toast?.success('Syslog settings saved')
   } catch (e) {
     toast?.error('Failed to save syslog settings')

@@ -214,12 +214,15 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Play as PlayIcon, Settings as SettingsIcon } from 'lucide-vue-next'
+import { ivrAPI, recordingsAPI, queuesAPI, extensionsAPI } from '../../services/api.js'
 import NodePalette from '../../components/flow/NodePalette.vue'
 import FlowCanvas from '../../components/flow/FlowCanvas.vue'
 
 const route = useRoute()
 const router = useRouter()
 const isNew = computed(() => route.params.id === 'new')
+const loading = ref(false)
+const saving = ref(false)
 
 const zoom = ref(1)
 const showSettings = ref(false)
@@ -245,6 +248,7 @@ const form = ref({
   ringBack: 'default',
   cidPrefix: '',
   pin: '',
+  pinProtected: false,
   confirmKey: '#',
   ttsEngine: 'flite',
   ttsVoice: 'default'
@@ -257,12 +261,11 @@ const flowData = ref({
   connections: []
 })
 
-const recordings = ref([
-  { id: 1, name: 'main_greeting.wav', file: 'main_greeting.wav' },
-  { id: 2, name: 'after_hours.wav', file: 'after_hours.wav' },
-  { id: 3, name: 'invalid_option.wav', file: 'invalid_option.wav' },
-  { id: 4, name: 'goodbye.wav', file: 'goodbye.wav' }
-])
+// Dynamic data for dropdowns (loaded from API)
+const recordings = ref([])
+const queuesList = ref([])
+const extensionsList = ref([])
+const ivrMenusList = ref([])
 
 const zoomIn = () => { zoom.value = Math.min(2, zoom.value + 0.1) }
 const zoomOut = () => { zoom.value = Math.max(0.5, zoom.value - 0.1) }
@@ -274,19 +277,133 @@ const clearCanvas = () => {
 }
 
 const testIVR = () => {
-  alert('Testing IVR: ' + (form.value.name || 'Untitled'))
+  alert('Testing IVR: ' + (form.value.name || 'Untitled') + '\nFlow has ' + flowData.value.nodes.length + ' nodes and ' + flowData.value.connections.length + ' connections.')
 }
 
-const saveMenu = () => {
-  console.log('Saving menu:', { form: form.value, flow: flowData.value })
-  alert('Menu saved!')
-  router.push('/admin/ivr')
+// Build the API payload from form + flow data
+const buildPayload = () => ({
+  name: form.value.name,
+  extension: form.value.extension,
+  enabled: form.value.enabled,
+  greet_long: form.value.greetLong,
+  greet_short: form.value.greetShort,
+  invalid_sound: form.value.invalidSound,
+  exit_sound: form.value.exitSound,
+  transfer_sound: '',
+  timeout: Math.floor(form.value.timeout / 1000) || 10,
+  max_failures: form.value.maxFailures,
+  max_timeouts: form.value.maxTimeouts,
+  digit_len: form.value.digitLength,
+  inter_digit_time: form.value.interDigitTimeout,
+  direct_dial: form.value.directDial,
+  ringback: form.value.ringBack,
+  caller_id_prefix: form.value.cidPrefix,
+  flow_data: flowData.value
+})
+
+// Save menu to backend
+const saveMenu = async () => {
+  if (!form.value.name) {
+    alert('Please enter a menu name.')
+    return
+  }
+  saving.value = true
+  try {
+    const payload = buildPayload()
+    if (isNew.value) {
+      await ivrAPI.createMenu(payload)
+    } else {
+      await ivrAPI.updateMenu(route.params.id, payload)
+    }
+    router.push('/admin/ivr')
+  } catch (err) {
+    console.error('Failed to save IVR menu:', err)
+    alert('Failed to save IVR menu: ' + (err.response?.data?.error || err.message))
+  } finally {
+    saving.value = false
+  }
 }
 
-const confirmDelete = () => {
+// Load existing menu for editing
+const loadMenu = async () => {
+  if (isNew.value) return
+  loading.value = true
+  try {
+    const { data } = await ivrAPI.getMenu(route.params.id)
+    const menu = data.data
+    form.value.name = menu.name || ''
+    form.value.extension = menu.extension || ''
+    form.value.enabled = menu.enabled !== false
+    form.value.greetLong = menu.greet_long || ''
+    form.value.greetShort = menu.greet_short || ''
+    form.value.invalidSound = menu.invalid_sound || ''
+    form.value.exitSound = menu.exit_sound || ''
+    form.value.timeout = (menu.timeout || 10) * 1000
+    form.value.maxFailures = menu.max_failures || 3
+    form.value.maxTimeouts = menu.max_timeouts || 3
+    form.value.digitLength = menu.digit_len || 4
+    form.value.interDigitTimeout = menu.inter_digit_time || 2000
+    form.value.directDial = menu.direct_dial || false
+    form.value.ringBack = menu.ringback || 'default'
+    form.value.cidPrefix = menu.caller_id_prefix || ''
+
+    // Load flow data if present
+    if (menu.flow_data && menu.flow_data.nodes && menu.flow_data.nodes.length > 0) {
+      flowData.value = menu.flow_data
+    }
+  } catch (err) {
+    console.error('Failed to load IVR menu:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+// Load dynamic data for dropdowns
+const loadDropdownData = async () => {
+  try {
+    const [recRes, queueRes, extRes, ivrRes] = await Promise.allSettled([
+      recordingsAPI.list(),
+      queuesAPI.list(),
+      extensionsAPI.list(),
+      ivrAPI.listMenus()
+    ])
+    if (recRes.status === 'fulfilled') {
+      recordings.value = (recRes.value.data.data || []).map(r => ({
+        id: r.id, name: r.name || r.file_name, file: r.file_path || r.file_name
+      }))
+    }
+    if (queueRes.status === 'fulfilled') {
+      queuesList.value = queueRes.value.data.data || []
+    }
+    if (extRes.status === 'fulfilled') {
+      extensionsList.value = extRes.value.data.data || []
+    }
+    if (ivrRes.status === 'fulfilled') {
+      ivrMenusList.value = (ivrRes.value.data.data || []).filter(m => String(m.id) !== route.params.id)
+    }
+  } catch (err) {
+    console.error('Failed to load dropdown data:', err)
+  }
+}
+
+const confirmDelete = async () => {
+  try {
+    if (!isNew.value) {
+      await ivrAPI.deleteMenu(route.params.id)
+    }
+  } catch (err) {
+    console.error('Delete failed:', err)
+  }
   showDeleteModal.value = false
   router.push('/admin/ivr')
 }
+
+onMounted(() => {
+  loadMenu()
+  loadDropdownData()
+})
+
+// Expose dropdown data for FlowNode components to consume via provide/inject later
 </script>
 
 <style scoped>

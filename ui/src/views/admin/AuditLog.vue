@@ -168,13 +168,6 @@ const limit = 50
 
 const logs = ref([])
 
-// Demo fallback data
-const demoLogs = [
-  { id: 1, action: 'User Login', user: 'admin@company.com', category: 'security', severity: 'info', created_at: new Date().toISOString(), ip_address: '192.168.1.100', description: 'Successful login from admin portal' },
-  { id: 2, action: 'Extension Modified', user: 'admin@company.com', category: 'configuration', severity: 'info', created_at: new Date().toISOString(), resource: 'Extension 101', changes: { 'Forward to': { old: 'Disabled', new: '(415) 555-1234' } } },
-  { id: 3, action: 'Failed Login Attempt', user: 'unknown@test.com', category: 'security', severity: 'warning', created_at: new Date().toISOString(), ip_address: '203.0.113.50', description: 'Invalid credentials' },
-]
-
 // Load audit logs from API
 const loadAuditLogs = async () => {
   loading.value = true
@@ -186,42 +179,25 @@ const loadAuditLogs = async () => {
     const response = await auditLogAPI.list(params)
     const data = response.data
     
-    if (data?.data?.length) {
-      logs.value = data.data.map(log => ({
-        id: log.id,
-        action: log.action || 'Unknown Action',
-        user: log.user_email || log.user_name || `User #${log.user_id}`,
-        category: log.category || 'system',
-        severity: log.severity || 'info',
-        time: formatTime(log.created_at),
-        date: getDateCategory(log.created_at),
-        ip: log.ip_address || '',
-        resource: log.resource_type ? `${log.resource_type} ${log.resource_id || ''}` : '',
-        description: log.description || '',
-        changes: log.changes ? JSON.parse(log.changes) : null,
-        expanded: false
-      }))
-      total.value = data.total || logs.value.length
-    } else {
-      // Use demo data if no logs found
-      logs.value = demoLogs.map(log => ({
-        ...log,
-        time: formatTime(log.created_at),
-        date: 'today',
-        ip: log.ip_address,
-        expanded: false
-      }))
-    }
-  } catch (e) {
-    console.error('Failed to load audit logs:', e)
-    // Use demo data on error
-    logs.value = demoLogs.map(log => ({
-      ...log,
+    const items = data?.data || data || []
+    logs.value = items.map(log => ({
+      id: log.id,
+      action: log.action || 'Unknown Action',
+      user: log.user_email || log.user_name || `User #${log.user_id}`,
+      category: log.category || 'system',
+      severity: log.severity || 'info',
       time: formatTime(log.created_at),
-      date: 'today',
-      ip: log.ip_address,
+      date: getDateCategory(log.created_at),
+      ip: log.ip_address || '',
+      resource: log.resource_type ? `${log.resource_type} ${log.resource_id || ''}` : '',
+      description: log.description || '',
+      changes: log.changes ? (typeof log.changes === 'string' ? JSON.parse(log.changes) : log.changes) : null,
       expanded: false
     }))
+    total.value = data.total || logs.value.length
+  } catch (e) {
+    console.error('Failed to load audit logs:', e)
+    logs.value = []
   } finally {
     loading.value = false
   }

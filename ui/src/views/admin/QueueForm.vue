@@ -138,9 +138,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { queuesAPI } from '../../services/api'
 
+const toast = inject('toast')
 const router = useRouter()
 const route = useRoute()
 const isNew = computed(() => route.params.id === 'new' || !route.params.id)
@@ -149,7 +151,6 @@ const form = ref({
   name: '',
   extension: '',
   strategy: 'ring-all',
-  agents: [],
   agents: [],
   maxWait: 60,
   maxSize: 0,
@@ -186,27 +187,55 @@ const removeAgent = (index) => {
   form.value.agents.splice(index, 1)
 }
 
-const saveQueue = () => {
-  alert(`Saved Queue "${form.value.name}" with Ext ${form.value.extension}`)
-  router.push('/queues')
+const saveQueue = async () => {
+  try {
+    const payload = {
+      name: form.value.name,
+      extension: form.value.extension,
+      strategy: form.value.strategy,
+      agents: form.value.agents,
+      max_wait: form.value.maxWait,
+      max_size: form.value.maxSize,
+      moh_sound: form.value.moh,
+      cid_prefix: form.value.cidPrefix,
+      escalation_time: form.value.escalationTime || null,
+      failover_type: form.value.failoverType,
+      failover_target: form.value.failoverTarget,
+    }
+    if (isNew.value) {
+      await queuesAPI.create(payload)
+      toast?.success(`Queue "${form.value.name}" created`)
+    } else {
+      await queuesAPI.update(route.params.id, payload)
+      toast?.success(`Queue "${form.value.name}" updated`)
+    }
+    router.push('/admin/queues')
+  } catch (err) {
+    toast?.error(err.message, 'Failed to save queue')
+  }
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (!isNew.value && route.params.id) {
-     // Mock hydration
-     form.value = {
-        name: 'Sales Main',
-        extension: '8000',
-        strategy: 'ring-all',
-        agents: ['101', '102'],
-        maxWait: 60,
-        maxSize: 0,
-        moh: 'jazz',
-        cidPrefix: 'Sales: ',
-        escalationTime: 60,
-        failoverType: 'voicemail',
-        failoverTarget: 'vm_gen'
-     }
+    try {
+      const res = await queuesAPI.get(route.params.id)
+      const d = res.data
+      form.value = {
+        name: d.name || '',
+        extension: d.extension || '',
+        strategy: d.strategy || 'ring-all',
+        agents: d.agents?.map(a => a.extension || a) || [],
+        maxWait: d.max_wait || 60,
+        maxSize: d.max_size || 0,
+        moh: d.moh_sound || 'default',
+        cidPrefix: d.cid_prefix || '',
+        escalationTime: d.escalation_time || '',
+        failoverType: d.failover_type || 'voicemail',
+        failoverTarget: d.failover_target || 'vm_gen'
+      }
+    } catch (err) {
+      toast?.error(err.message, 'Failed to load queue')
+    }
   }
 })
 </script>

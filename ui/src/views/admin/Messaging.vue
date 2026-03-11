@@ -8,85 +8,152 @@
       </div>
       <div class="search-box">
         <Search class="icon-xs muted" />
-        <input type="text" placeholder="Search..." class="search-input">
+        <input type="text" placeholder="Search..." class="search-input" v-model="searchQuery">
       </div>
       
       <div class="conv-list">
-        <div class="conv-item active">
-          <div class="avatar-sm">JS</div>
+        <div v-if="filteredConversations.length === 0" class="empty-text" style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px">No conversations</div>
+        <div 
+          v-for="conv in filteredConversations" :key="conv.id"
+          class="conv-item" 
+          :class="{ active: selectedConv?.id === conv.id, unread: conv.unread }"
+          @click="selectConversation(conv)"
+        >
+          <div class="avatar-sm">{{ conv.initials }}</div>
           <div class="conv-info">
             <div class="conv-top">
-              <span class="name">John Smith</span>
-              <span class="time">2m</span>
+              <span class="name">{{ conv.name }}</span>
+              <span class="time">{{ conv.lastTime }}</span>
             </div>
-            <div class="conv-preview">Can we reschedule the demo?</div>
+            <div class="conv-preview">{{ conv.preview }}</div>
           </div>
-        </div>
-        
-        <div class="conv-item">
-          <div class="avatar-sm">Sales</div>
-          <div class="conv-info">
-            <div class="conv-top">
-              <span class="name">(555) 123-4567</span>
-              <span class="time">1h</span>
-            </div>
-            <div class="conv-preview">Thanks for calling!</div>
-          </div>
-        </div>
-
-        <div class="conv-item unread">
-          <div class="avatar-sm">Support</div>
-          <div class="conv-info">
-            <div class="conv-top">
-              <span class="name">Support Ticket #99</span>
-              <span class="time">Yesterday</span>
-            </div>
-            <div class="conv-preview">Your issue has been resolved.</div>
-          </div>
-          <div class="unread-dot"></div>
+          <div class="unread-dot" v-if="conv.unread"></div>
         </div>
       </div>
     </div>
 
     <!-- Active Conversation -->
     <div class="conv-main">
-      <div class="msg-header">
-        <div class="user-details">
-          <h3>John Smith</h3>
-          <span class="status-indicator online">Online</span>
+      <template v-if="selectedConv">
+        <div class="msg-header">
+          <div class="user-details">
+            <h3>{{ selectedConv.name }}</h3>
+            <span class="status-indicator online">{{ selectedConv.status || 'Online' }}</span>
+          </div>
+          <div class="header-actions">
+             <button class="btn-icon"><Phone class="icon-sm" /></button>
+             <button class="btn-icon"><MoreVertical class="icon-sm" /></button>
+          </div>
         </div>
-        <div class="header-actions">
-           <button class="btn-icon"><Phone class="icon-sm" /></button>
-           <button class="btn-icon"><MoreVertical class="icon-sm" /></button>
-        </div>
-      </div>
 
-      <div class="msg-body">
-        <div class="message incoming">
-          <div class="bubble">Hi, are you available for a quick call?</div>
-          <div class="timestamp">10:45 AM</div>
+        <div class="msg-body">
+          <div v-for="msg in messages" :key="msg.id" class="message" :class="msg.direction">
+            <div class="bubble">{{ msg.body }}</div>
+            <div class="timestamp">{{ msg.time }}</div>
+          </div>
+          <div v-if="messages.length === 0" class="empty-text" style="text-align:center;color:var(--text-muted);padding:40px">No messages yet</div>
         </div>
-        <div class="message outgoing">
-          <div class="bubble">Yes, I have a few minutes now.</div>
-          <div class="timestamp">10:46 AM</div>
-        </div>
-        <div class="message incoming">
-          <div class="bubble">Great, can we reschedule the demo? Something came up.</div>
-          <div class="timestamp">10:48 AM</div>
-        </div>
-      </div>
 
-      <div class="msg-footer">
-        <button class="btn-icon"><Paperclip class="icon-sm" /></button>
-        <input type="text" class="msg-input" placeholder="Type a message...">
-        <button class="btn-primary send-btn"><Send class="icon-sm" /></button>
+        <div class="msg-footer">
+          <button class="btn-icon"><Paperclip class="icon-sm" /></button>
+          <input type="text" class="msg-input" placeholder="Type a message..." v-model="newMessage" @keydown.enter="sendMessage">
+          <button class="btn-primary send-btn" @click="sendMessage"><Send class="icon-sm" /></button>
+        </div>
+      </template>
+      <div v-else class="msg-body" style="display:flex;align-items:center;justify-content:center;color:var(--text-muted)">
+        <p>Select a conversation to start messaging</p>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import { ref, computed, onMounted, inject } from 'vue'
 import { MessageSquarePlus, Search, Phone, MoreVertical, Paperclip, Send } from 'lucide-vue-next'
+import { messagingAPI } from '../../services/api'
+
+const toast = inject('toast')
+const conversations = ref([])
+const selectedConv = ref(null)
+const messages = ref([])
+const newMessage = ref('')
+const searchQuery = ref('')
+
+const filteredConversations = computed(() => {
+  if (!searchQuery.value) return conversations.value
+  const q = searchQuery.value.toLowerCase()
+  return conversations.value.filter(c => c.name.toLowerCase().includes(q) || c.preview.toLowerCase().includes(q))
+})
+
+const formatTime = (ts) => {
+  if (!ts) return ''
+  const dt = new Date(ts)
+  const diffMin = Math.round((Date.now() - dt) / 60000)
+  if (diffMin < 60) return `${diffMin}m`
+  if (diffMin < 1440) return `${Math.round(diffMin / 60)}h`
+  return 'Yesterday'
+}
+
+const fetchConversations = async () => {
+  try {
+    const res = await messagingAPI.listConversations()
+    const data = res.data?.conversations || res.data?.data || res.data || []
+    conversations.value = data.map(c => ({
+      id: c.id,
+      name: c.contact_name || c.number || c.name || 'Unknown',
+      initials: (c.contact_name || c.number || '?').slice(0, 2).toUpperCase(),
+      preview: c.last_message || '',
+      lastTime: formatTime(c.updated_at || c.last_message_at),
+      unread: c.unread_count > 0,
+      status: c.status || 'Online'
+    }))
+  } catch (err) {
+    console.error('Failed to load conversations:', err)
+    conversations.value = []
+  }
+}
+
+const selectConversation = async (conv) => {
+  selectedConv.value = conv
+  try {
+    const res = await messagingAPI.getConversation(conv.id)
+    const data = res.data?.messages || res.data?.data || res.data || []
+    messages.value = data.map(m => ({
+      id: m.id,
+      body: m.body || m.text || m.content || '',
+      direction: m.direction === 'outbound' || m.is_outgoing ? 'outgoing' : 'incoming',
+      time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }))
+  } catch (err) {
+    console.error('Failed to load messages:', err)
+    messages.value = []
+  }
+}
+
+const sendMessage = async () => {
+  if (!newMessage.value.trim() || !selectedConv.value) return
+  const body = newMessage.value.trim()
+  newMessage.value = ''
+  
+  // Optimistic add
+  messages.value.push({
+    id: Date.now(),
+    body,
+    direction: 'outgoing',
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  })
+
+  try {
+    await messagingAPI.sendMessage({
+      conversation_id: selectedConv.value.id,
+      body
+    })
+  } catch (err) {
+    toast?.error(err.message, 'Failed to send message')
+  }
+}
+
+onMounted(fetchConversations)
 </script>
 
 <style scoped>

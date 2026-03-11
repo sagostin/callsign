@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"callsign/models"
+	"callsign/services/messaging"
+	"callsign/services/websocket"
 	"net/http"
 
 	"github.com/kataras/iris/v12"
@@ -10,12 +12,14 @@ import (
 
 // ChatHandler handles chat-related API requests
 type ChatHandler struct {
-	DB *gorm.DB
+	DB         *gorm.DB
+	WSHub      *websocket.Hub
+	MsgManager *messaging.Manager
 }
 
 // NewChatHandler creates a new chat handler
-func NewChatHandler(db *gorm.DB) *ChatHandler {
-	return &ChatHandler{DB: db}
+func NewChatHandler(db *gorm.DB, wsHub *websocket.Hub, msgManager *messaging.Manager) *ChatHandler {
+	return &ChatHandler{DB: db, WSHub: wsHub, MsgManager: msgManager}
 }
 
 // ==================== Chat Threads ====================
@@ -118,8 +122,21 @@ func (h *ChatHandler) SendMessage(ctx iris.Context) {
 	// Update thread's last message time
 	h.DB.Model(&thread).Update("last_message_at", msg.CreatedAt)
 
-	// TODO: Broadcast via WebSocket
-	// TODO: For SMS/MMS, queue for delivery
+	// Broadcast via WebSocket
+	if h.WSHub != nil {
+		h.WSHub.NotifyChatMessage(tenantID, threadID, map[string]interface{}{
+			"id":          msg.ID,
+			"sender_id":   msg.SenderID,
+			"sender_type": msg.SenderType,
+			"body":        msg.Body,
+			"channel":     thread.Channel,
+		})
+	}
+
+	// For SMS/MMS threads, queue outbound messages for delivery via provider
+	if h.MsgManager != nil && (thread.Channel == "sms" || thread.Channel == "mms") && msg.SenderType == "extension" {
+		go h.MsgManager.SendMessage(tenantID, thread.LocalNumber, thread.RemoteNumber, msg.Body, nil, 0)
+	}
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(msg)

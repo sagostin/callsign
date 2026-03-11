@@ -220,11 +220,7 @@ async function fetchQueues() {
     }))
   } catch (error) {
     toast?.error(error.message, 'Failed to load queues')
-    // Fallback to demo data
-    queues.value = [
-      { id: 1, name: 'Sales Main', extension: '8000', agents: 5, waiting: 2, avgWait: '0:45', strategy: 'Longest Idle', status: 'Active' },
-      { id: 2, name: 'Support Tier 1', extension: '8001', agents: 12, waiting: 0, avgWait: '1:20', strategy: 'Ring All', status: 'Idle' },
-    ]
+    queues.value = []
   } finally {
     isLoading.value = false
   }
@@ -244,11 +240,7 @@ async function fetchRingGroups() {
     }))
   } catch (error) {
     toast?.error(error.message, 'Failed to load ring groups')
-    // Fallback to demo data
-    groups.value = [
-      { id: 1, name: 'Sales Team', extension: '500', strategy: 'Simultaneous', members: 5, enabled: true },
-      { id: 2, name: 'Support Team', extension: '501', strategy: 'Sequential', members: 8, enabled: true },
-    ]
+    groups.value = []
   }
 }
 

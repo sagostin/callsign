@@ -359,6 +359,36 @@ export const messagingAPI = {
 }
 
 // =====================
+// Fax API
+// =====================
+export const faxAPI = {
+    listJobs: (params) => api.get('/fax/jobs', { params }),
+    listInbox: (params) => api.get('/fax/jobs', { params: { direction: 'inbound', ...params } }),
+    listSent: (params) => api.get('/fax/jobs', { params: { direction: 'outbound', ...params } }),
+    listPending: () => api.get('/fax/active'),
+    get: (id) => api.get(`/fax/jobs/${id}`),
+    send: (formData) => api.post('/fax/send', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    cancel: (id) => api.post(`/fax/jobs/${id}/cancel`),
+    resend: (id) => api.post(`/fax/jobs/${id}/retry`),
+    delete: (id) => api.delete(`/fax/jobs/${id}`),
+    download: (id) => api.get(`/fax/jobs/${id}/download`, { responseType: 'blob' }),
+    getStats: () => api.get('/fax/stats'),
+    // Fax boxes
+    listBoxes: () => api.get('/fax/boxes'),
+    createBox: (data) => api.post('/fax/boxes', data),
+    getBox: (id) => api.get(`/fax/boxes/${id}`),
+    updateBox: (id, data) => api.put(`/fax/boxes/${id}`, data),
+    deleteBox: (id) => api.delete(`/fax/boxes/${id}`),
+    // Endpoints
+    listEndpoints: () => api.get('/fax/endpoints'),
+    createEndpoint: (data) => api.post('/fax/endpoints', data),
+    updateEndpoint: (id, data) => api.put(`/fax/endpoints/${id}`, data),
+    deleteEndpoint: (id) => api.delete(`/fax/endpoints/${id}`),
+}
+
+// =====================
 // Contacts API
 // =====================
 export const contactsAPI = {
@@ -703,3 +733,74 @@ export const userPortalAPI = {
     getContacts: () => api.get('/user/contacts'),
     createContact: (data) => api.post('/user/contacts', data),
 }
+
+// =====================
+// Reports & Analytics API
+// =====================
+export const reportsAPI = {
+    callVolume: (params) => api.get('/reports/call-volume', { params }),
+    agentPerformance: (params) => api.get('/reports/agent-performance', { params }),
+    queueStats: () => api.get('/reports/queue-stats'),
+    extensionUsage: (params) => api.get('/reports/extension-usage', { params }),
+    kpi: (params) => api.get('/reports/kpi', { params }),
+    numberUsage: (params) => api.get('/reports/number-usage', { params }),
+    export: (params) => api.get('/reports/export', { params, responseType: 'blob' }),
+}
+
+// =====================
+// Hospitality API
+// =====================
+export const hospitalityAPI = {
+    listRooms: (params) => api.get('/hospitality/rooms', { params }),
+    createRoom: (data) => api.post('/hospitality/rooms', data),
+    getRoom: (id) => api.get(`/hospitality/rooms/${id}`),
+    updateRoom: (id, data) => api.put(`/hospitality/rooms/${id}`, data),
+    deleteRoom: (id) => api.delete(`/hospitality/rooms/${id}`),
+    checkIn: (id, data) => api.post(`/hospitality/rooms/${id}/checkin`, data),
+    checkOut: (id) => api.post(`/hospitality/rooms/${id}/checkout`),
+    setWakeup: (id, data) => api.post(`/hospitality/rooms/${id}/wakeup`, data),
+}
+
+// =====================
+// Call Broadcast API
+// =====================
+export const broadcastAPI = {
+    list: (params) => api.get('/broadcast', { params }),
+    get: (id) => api.get(`/broadcast/${id}`),
+    create: (data) => api.post('/broadcast', data),
+    update: (id, data) => api.put(`/broadcast/${id}`, data),
+    delete: (id) => api.delete(`/broadcast/${id}`),
+    start: (id) => api.post(`/broadcast/${id}/start`),
+    stop: (id) => api.post(`/broadcast/${id}/stop`),
+    getStats: (id) => api.get(`/broadcast/${id}/stats`),
+}
+
+// =====================
+// Operator Panel API
+// =====================
+export const operatorPanelAPI = {
+    getData: () => api.get('/operator-panel'),
+}
+
+// =====================
+// Live Operations API
+// =====================
+export const liveAPI = {
+    startRecording: (uuid) => api.post('/live/recording/start', { uuid }),
+    stopRecording: (uuid) => api.post('/live/recording/stop', { uuid }),
+    getActiveCalls: () => api.get('/live/calls'),
+    getQueueStats: () => api.get('/live/queue-stats'),
+    scheduleWakeup: (data) => api.post('/live/wakeup/schedule', data),
+}
+
+// =====================
+// E911 Location API
+// =====================
+export const locationAPI = {
+    list: () => api.get('/tenant/locations'),
+    get: (id) => api.get(`/tenant/locations/${id}`),
+    create: (data) => api.post('/tenant/locations', data),
+    update: (id, data) => api.put(`/tenant/locations/${id}`, data),
+    delete: (id) => api.delete(`/tenant/locations/${id}`),
+}
+

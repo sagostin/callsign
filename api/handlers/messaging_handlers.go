@@ -61,7 +61,10 @@ func (h *Handler) SendMessage(ctx iris.Context) {
 		return
 	}
 
-	// TODO: Queue for delivery via messaging provider
+	// Queue for delivery via messaging provider
+	if h.MsgManager != nil {
+		go h.MsgManager.SendMessage(tenantID, msg.From, msg.To, msg.Body, nil, msg.ProviderID)
+	}
 
 	ctx.StatusCode(http.StatusCreated)
 	ctx.JSON(msg)

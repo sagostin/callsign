@@ -4,8 +4,11 @@ import (
 	"callsign/config"
 	"callsign/middleware"
 	"callsign/models"
+	"callsign/services/cdr"
 	"callsign/services/esl"
 	"callsign/services/logging"
+	"callsign/services/messaging"
+	"callsign/services/websocket"
 	"net/http"
 	"time"
 
@@ -22,6 +25,9 @@ type Handler struct {
 	ConsoleManager      *ConsoleManager
 	NotificationManager *NotificationManager
 	LogManager          *logging.LogManager
+	WSHub               *websocket.Hub
+	MsgManager          *messaging.Manager
+	CHClient            *cdr.ClickHouseClient
 }
 
 // NewHandler creates a new Handler instance
@@ -36,6 +42,21 @@ func NewHandler(db *gorm.DB, cfg *config.Config) *Handler {
 // SetESLManager sets the ESL manager reference
 func (h *Handler) SetESLManager(m *esl.Manager) {
 	h.ESLManager = m
+}
+
+// SetWSHub sets the WebSocket hub reference
+func (h *Handler) SetWSHub(hub *websocket.Hub) {
+	h.WSHub = hub
+}
+
+// SetMsgManager sets the messaging manager reference
+func (h *Handler) SetMsgManager(mgr *messaging.Manager) {
+	h.MsgManager = mgr
+}
+
+// SetClickHouse sets the ClickHouse CDR client reference
+func (h *Handler) SetClickHouse(ch *cdr.ClickHouseClient) {
+	h.CHClient = ch
 }
 
 // reloadXML triggers a FreeSWITCH XML reload in the background.
