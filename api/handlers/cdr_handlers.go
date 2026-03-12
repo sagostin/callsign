@@ -122,7 +122,12 @@ func (h *Handler) ListAuditLogs(c *fiber.Ctx) error {
 	limit, _ := strconv.Atoi(c.Query("limit", "50"))
 	offset := (page - 1) * limit
 
-	query := h.DB.Where("tenant_id = ?", tenantID)
+	query := h.DB.Model(&models.AuditLog{})
+
+	// System admins with no tenant see all logs; tenant admins see only their tenant
+	if tenantID > 0 {
+		query = query.Where("tenant_id = ?", tenantID)
+	}
 
 	// Filters
 	if action := c.Query("action"); action != "" {
@@ -131,9 +136,33 @@ func (h *Handler) ListAuditLogs(c *fiber.Ctx) error {
 	if userID := c.Query("user_id"); userID != "" {
 		query = query.Where("user_id = ?", userID)
 	}
+	if category := c.Query("category"); category != "" {
+		// Map UI categories to action types
+		switch category {
+		case "security":
+			query = query.Where("action IN ?", []string{"login", "logout"})
+		case "configuration":
+			query = query.Where("action IN ?", []string{"create", "update", "delete", "config", "import", "export"})
+		case "user":
+			query = query.Where("resource IN ?", []string{"user", "extension"})
+		case "telephony":
+			query = query.Where("resource IN ?", []string{"call", "gateway", "trunk", "route", "ivr", "queue"})
+		}
+	}
+	if severity := c.Query("severity"); severity != "" {
+		// Map severity to success/action
+		switch severity {
+		case "critical":
+			query = query.Where("success = false")
+		case "warning":
+			query = query.Where("action IN ?", []string{"delete", "config"})
+		case "info":
+			query = query.Where("success = true")
+		}
+	}
 
 	var total int64
-	query.Model(&models.AuditLog{}).Count(&total)
+	query.Count(&total)
 
 	var logs []models.AuditLog
 	query.Order("created_at DESC").Offset(offset).Limit(limit).Find(&logs)

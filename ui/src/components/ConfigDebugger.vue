@@ -184,7 +184,12 @@ async function runDebug() {
     }
 
     const res = await api.get(url, { params })
-    result.value = formatXml(res.data.xml || '<no-result/>')
+    const xml = res.data?.xml || res.data || ''
+    if (!xml || xml === '<no-result/>' || xml.includes('<no-result')) {
+      result.value = '<!-- No configuration data found for the given parameters.\n\n     This typically means:\n     - FreeSWITCH is not running or ESL is not connected\n     - No matching data exists in the database for these inputs\n     - The tenant/domain does not have the requested configuration\n\n     Try selecting a different tenant, context, or module. -->'
+    } else {
+      result.value = formatXml(xml)
+    }
     
   } catch (e) {
     toast.error(e.response?.data?.error || 'Failed to debug config')

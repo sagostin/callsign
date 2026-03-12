@@ -658,7 +658,7 @@ const loadSounds = async () => {
   try {
     const apiCall = isTenant.value ? tenantMediaAPI.listSounds : systemAPI.listSounds
     const response = await apiCall()
-    rawData.value = response.data.data
+    rawData.value = response.data || []
   } catch (e) {
     console.error('Failed to load sounds', e)
   } finally {

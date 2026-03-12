@@ -63,10 +63,15 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { systemAPI } from '../../services/api'
 
 const router = useRouter()
+const route = useRoute()
+
+const isEditing = computed(() => !!route.params.id)
+const saving = ref(false)
 
 const form = ref({
   name: '',
@@ -82,9 +87,54 @@ const isValid = computed(() => {
   return form.value.name && form.value.proxy
 })
 
-const saveGateway = () => {
-  alert(`Configured Gateway "${form.value.name}"`)
-  router.push('/admin') // Should ideally go back to Admin > Trunks tab
+// Load existing gateway when editing
+onMounted(async () => {
+  if (route.params.id && route.params.id !== 'new') {
+    try {
+      const response = await systemAPI.listGateways()
+      const gateways = response.data || []
+      const gw = gateways.find(g => g.id == route.params.id)
+      if (gw) {
+        form.value = {
+          name: gw.gateway_name || gw.name || '',
+          proxy: gw.proxy || gw.hostname || '',
+          protocol: gw.transport || gw.protocol || 'udp',
+          register: gw.register || false,
+          username: gw.username || '',
+          password: '',
+          realm: gw.realm || ''
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load gateway:', e)
+    }
+  }
+})
+
+const saveGateway = async () => {
+  saving.value = true
+  try {
+    const data = {
+      gateway_name: form.value.name,
+      proxy: form.value.proxy,
+      transport: form.value.protocol,
+      register: form.value.register,
+      username: form.value.username,
+      password: form.value.password,
+      realm: form.value.realm,
+      enabled: true
+    }
+    if (isEditing.value) {
+      await systemAPI.updateGateway(route.params.id, data)
+    } else {
+      await systemAPI.createGateway(data)
+    }
+    router.push('/admin/trunks')
+  } catch (e) {
+    alert('Failed to save gateway: ' + (e.message || 'Unknown error'))
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 

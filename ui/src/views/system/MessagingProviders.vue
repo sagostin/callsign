@@ -259,6 +259,80 @@
         </div>
       </div>
     </div>
+
+    <!-- ADD/EDIT NUMBER MODAL -->
+    <div v-if="showNumberModal" class="modal-overlay" @click.self="showNumberModal = false">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>{{ editingNumber ? 'Edit Number' : 'Add Messaging Number' }}</h3>
+          <button class="btn-icon" @click="showNumberModal = false; editingNumber = null"><XIcon class="icon-sm" /></button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Phone Number *</label>
+            <input v-model="numberForm.phone_number" class="input-field" placeholder="+15551234567" />
+          </div>
+          <div class="form-group">
+            <label>Provider *</label>
+            <select v-model="numberForm.provider_id" class="input-field">
+              <option :value="null" disabled>Select a provider</option>
+              <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Friendly Name</label>
+            <input v-model="numberForm.friendly_name" class="input-field" placeholder="Main Office Line" />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="checkbox-row">
+                <input type="checkbox" v-model="numberForm.sms_enabled" />
+                <span>SMS Enabled</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label class="checkbox-row">
+                <input type="checkbox" v-model="numberForm.mms_enabled" />
+                <span>MMS Enabled</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="showNumberModal = false; editingNumber = null">Cancel</button>
+          <button class="btn-primary" @click="saveNumber" :disabled="!numberForm.phone_number || !numberForm.provider_id">{{ editingNumber ? 'Save' : 'Add Number' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADD/EDIT TRANSFORM MODAL -->
+    <div v-if="showTransformModal" class="modal-overlay" @click.self="showTransformModal = false">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>{{ editingTransform ? 'Edit Transformation' : 'Add Transformation' }}</h3>
+          <button class="btn-icon" @click="showTransformModal = false"><XIcon class="icon-sm" /></button>
+        </div>
+        <div class="modal-body">
+          <p class="help-text" style="margin-bottom: 16px;">Transformations use E.164 format by default. Define regex match and replace patterns per carrier.</p>
+          <div class="form-group">
+            <label>Match Pattern (Regex)</label>
+            <input v-model="transformForm.match" class="input-field" placeholder="^\+?1?(\d{10})$" />
+          </div>
+          <div class="form-group">
+            <label>Replace With</label>
+            <input v-model="transformForm.replace" class="input-field" placeholder="+1$1" />
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <input v-model="transformForm.description" class="input-field" placeholder="Normalize to E.164" />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="showTransformModal = false">Cancel</button>
+          <button class="btn-primary" @click="saveTransform">{{ editingTransform ? 'Save' : 'Add Transform' }}</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -388,9 +462,46 @@ const copyWebhook = () => {
 
 const editRule = (rule) => alert(`Edit rule: ${rule.pattern}`)
 const deleteRule = (rule) => { routingRules.value = routingRules.value.filter(r => r.id !== rule.id) }
-const editTransform = (t) => alert(`Edit transform: ${t.match}`)
-const deleteTransform = (t) => alert('Transform deleted')
-const addTransform = (type) => alert(`Add ${type} transform`)
+
+// Transform modal state
+const showTransformModal = ref(false)
+const editingTransform = ref(null)
+const transformDirection = ref('outbound')
+const transformForm = ref({ match: '', replace: '', description: '' })
+
+const editTransform = (t) => {
+  editingTransform.value = t
+  transformForm.value = { match: t.match, replace: t.replace, description: t.description }
+  showTransformModal.value = true
+}
+
+const deleteTransform = (t) => {
+  outboundTransforms.value = outboundTransforms.value.filter(x => x.id !== t.id)
+  inboundTransforms.value = inboundTransforms.value.filter(x => x.id !== t.id)
+}
+
+const addTransform = (type) => {
+  editingTransform.value = null
+  transformDirection.value = type
+  transformForm.value = { match: '', replace: '', description: '' }
+  showTransformModal.value = true
+}
+
+const saveTransform = () => {
+  const entry = {
+    id: editingTransform.value?.id || Date.now(),
+    ...transformForm.value
+  }
+  const list = transformDirection.value === 'outbound' ? outboundTransforms : inboundTransforms
+  if (editingTransform.value) {
+    const idx = list.value.findIndex(x => x.id === editingTransform.value.id)
+    if (idx >= 0) list.value.splice(idx, 1, entry)
+  } else {
+    list.value.push(entry)
+  }
+  showTransformModal.value = false
+  editingTransform.value = null
+}
 
 // =====================
 // Messaging Numbers

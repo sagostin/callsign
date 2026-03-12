@@ -118,7 +118,7 @@
            <span class="icon">+</span>
            Create Tenant
         </button>
-        <button class="action-btn" @click="$router.push('/admin/gateways/new')">
+        <button class="action-btn" @click="$router.push('/system/trunks')">
            <span class="icon">+</span>
            Add Gateway
         </button>

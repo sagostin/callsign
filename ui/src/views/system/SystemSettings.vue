@@ -160,81 +160,54 @@
           </div>
         </div>
 
-        <!-- MESSAGING PROVIDER -->
-        <div v-else-if="activeSection === 'messaging'" class="panel">
-          <div class="panel-header">
-            <h3>Global SMS/MMS Provider</h3>
-          </div>
-          <p class="panel-desc">Default messaging provider for tenants without their own configuration.</p>
 
-          <div class="form-grid">
-            <div class="form-group">
-              <label>Primary Provider</label>
-              <select v-model="messaging.provider" class="input-field">
-                <option value="twilio">Twilio</option>
-                <option value="bandwidth">Bandwidth</option>
-                <option value="telnyx">Telnyx</option>
-                <option value="plivo">Plivo</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Account SID / API Key</label>
-              <input v-model="messaging.accountSid" class="input-field">
-            </div>
-            <div class="form-group full-span">
-              <label>Auth Token</label>
-              <input v-model="messaging.authToken" type="password" class="input-field">
-            </div>
-          </div>
-        </div>
 
         <!-- DATABASE -->
         <div v-else-if="activeSection === 'database'" class="panel">
           <div class="panel-header">
             <h3>Database Configuration</h3>
-            <span class="status-badge online">Connected</span>
+            <span class="status-badge" :class="database.connected ? 'online' : 'offline'">{{ database.connected ? 'Connected' : 'Disconnected' }}</span>
           </div>
 
-          <div class="connection-info">
+          <div class="connection-info" v-if="database.loaded">
             <div class="info-row">
               <span class="label">Type</span>
-              <span class="value">PostgreSQL 15.4</span>
+              <span class="value">{{ database.type || 'PostgreSQL' }}</span>
             </div>
             <div class="info-row">
               <span class="label">Host</span>
-              <span class="value mono">db.cluster.local:5432</span>
+              <span class="value mono">{{ database.host || '—' }}</span>
             </div>
             <div class="info-row">
               <span class="label">Database</span>
-              <span class="value mono">callsign_prod</span>
+              <span class="value mono">{{ database.dbName || '—' }}</span>
             </div>
             <div class="info-row">
-              <span class="label">Connections</span>
-              <span class="value">12 / 100 active</span>
+              <span class="label">Open Connections</span>
+              <span class="value">{{ database.openConns }} / {{ database.maxConns }}</span>
+            </div>
+            <div class="info-row">
+              <span class="label">In Use</span>
+              <span class="value">{{ database.inUse }}</span>
+            </div>
+            <div class="info-row">
+              <span class="label">Idle</span>
+              <span class="value">{{ database.idle }}</span>
             </div>
           </div>
+          <div v-else class="panel-desc" style="text-align:center; padding: 40px;">Loading database info...</div>
         </div>
 
         <!-- CLUSTER -->
         <div v-else-if="activeSection === 'cluster'" class="panel">
           <div class="panel-header">
             <h3>Cluster Nodes</h3>
+            <span class="coming-soon-badge">Coming Soon</span>
           </div>
-          <p class="panel-desc">Active nodes in the FreeSWITCH cluster.</p>
-
-          <div class="node-list">
-            <div class="node-card" v-for="node in cluster.nodes" :key="node.id">
-              <div class="node-header">
-                <span class="node-name">{{ node.name }}</span>
-                <span class="status-dot" :class="node.status"></span>
-              </div>
-              <div class="node-details">
-                <div class="node-stat"><span>IP:</span> {{ node.ip }}</div>
-                <div class="node-stat"><span>Sessions:</span> {{ node.sessions }}</div>
-                <div class="node-stat"><span>CPU:</span> {{ node.cpu }}%</div>
-                <div class="node-stat"><span>Memory:</span> {{ node.memory }}%</div>
-              </div>
-            </div>
+          <div class="coming-soon-overlay">
+            <ClusterIcon style="width: 48px; height: 48px; opacity: 0.2; margin-bottom: 12px;" />
+            <p class="panel-desc">Cluster management is coming in a future update.</p>
+            <p class="panel-desc">This will allow you to manage multi-node FreeSWITCH clusters, view node health, and configure failover.</p>
           </div>
         </div>
       </div>
@@ -245,7 +218,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import {
-  Mail as MailIcon, Server as ServerIcon, MessageSquare as MessageIcon,
+  Mail as MailIcon, Server as ServerIcon,
   Database as DatabaseIcon, Layers as ClusterIcon, Save as SaveIcon,
   Send as SendIcon, GripVertical as GripVerticalIcon
 } from 'lucide-vue-next'
@@ -258,7 +231,6 @@ const saving = ref(false)
 const sections = [
   { id: 'smtp', label: 'SMTP Settings', icon: MailIcon },
   { id: 'freeswitch', label: 'FreeSWITCH', icon: ServerIcon },
-  { id: 'messaging', label: 'Messaging Provider', icon: MessageIcon },
   { id: 'database', label: 'Database', icon: DatabaseIcon },
   { id: 'cluster', label: 'Cluster', icon: ClusterIcon },
 ]
@@ -293,11 +265,6 @@ const freeswitch = ref({
   ]
 })
 
-const messaging = ref({
-  provider: 'twilio',
-  accountSid: '',
-  authToken: ''
-})
 
 const cluster = ref({
   nodes: []
@@ -305,7 +272,14 @@ const cluster = ref({
 
 const database = ref({
   host: '',
-  dbName: ''
+  dbName: '',
+  type: 'PostgreSQL',
+  connected: false,
+  openConns: 0,
+  maxConns: 0,
+  inUse: 0,
+  idle: 0,
+  loaded: false
 })
 
 const loadSettings = async () => {
@@ -313,7 +287,6 @@ const loadSettings = async () => {
   try {
     const response = await systemAPI.getSettings()
     const data = response.data || {}
-    database.value.host = data.db_host || ''
     // FreeSWITCH settings from API
     if (data.freeswitch_host) {
       freeswitch.value.host = data.freeswitch_host
@@ -322,6 +295,27 @@ const loadSettings = async () => {
     console.error('Failed to load settings:', e)
   } finally {
     loading.value = false
+  }
+  // Load live database info
+  try {
+    const statusResp = await systemAPI.getStatus()
+    const status = statusResp.data || {}
+    if (status.database) {
+      database.value.host = status.database.host || ''
+      database.value.dbName = status.database.name || ''
+      database.value.type = status.database.type || 'PostgreSQL'
+      database.value.connected = status.database.connected !== false
+      database.value.openConns = status.database.open_connections || 0
+      database.value.maxConns = status.database.max_connections || 0
+      database.value.inUse = status.database.in_use || 0
+      database.value.idle = status.database.idle || 0
+    } else {
+      database.value.connected = true
+    }
+    database.value.loaded = true
+  } catch (e) {
+    console.log('Could not load live database status:', e)
+    database.value.loaded = true
   }
 }
 
@@ -332,8 +326,7 @@ const save = async () => {
   try {
     await systemAPI.updateSettings({
       smtp: smtp.value,
-      freeswitch: freeswitch.value,
-      messaging: messaging.value
+      freeswitch: freeswitch.value
     })
     alert('Settings saved successfully!')
   } catch (e) {
@@ -425,6 +418,11 @@ const testSmtp = () => alert('Test email sent to admin@callsign.io')
 .btn-icon { width: 16px; height: 16px; }
 
 .help-text { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+
+.status-badge.offline { background: #fef2f2; color: #dc2626; }
+
+.coming-soon-badge { font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 4px; background: #fef3c7; color: #b45309; text-transform: uppercase; }
+.coming-soon-overlay { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 60px 40px; }
 
 @media (max-width: 768px) {
   .settings-layout { flex-direction: column; }

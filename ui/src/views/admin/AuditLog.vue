@@ -101,6 +101,9 @@
               <span class="log-ip" v-if="log.ip">
                 <GlobeIcon class="detail-icon" /> {{ log.ip }}
               </span>
+              <span class="log-ua" v-if="log.userAgent">
+                <MonitorIcon class="detail-icon" /> {{ log.userAgent }}
+              </span>
             </div>
             <div class="log-description" v-if="log.description">
               {{ log.description }}
@@ -151,6 +154,7 @@ import {
   Activity as ActivityIcon, Clock as ClockIcon, Shield as ShieldIcon, 
   Settings as SettingsIcon, Search as SearchIcon, Download as DownloadIcon,
   User as UserIcon, Phone as PhoneIcon, Folder as FolderIcon, Globe as GlobeIcon,
+  Monitor as MonitorIcon,
   ChevronDown as ChevronDownIcon, ChevronLeft as ChevronLeftIcon, 
   ChevronRight as ChevronRightIcon, ArrowRight as ArrowRightIcon
 } from 'lucide-vue-next'
@@ -180,20 +184,32 @@ const loadAuditLogs = async () => {
     const data = response.data
     
     const items = data?.data || data || []
-    logs.value = items.map(log => ({
-      id: log.id,
-      action: log.action || 'Unknown Action',
-      user: log.user_email || log.user_name || `User #${log.user_id}`,
-      category: log.category || 'system',
-      severity: log.severity || 'info',
-      time: formatTime(log.created_at),
-      date: getDateCategory(log.created_at),
-      ip: log.ip_address || '',
-      resource: log.resource_type ? `${log.resource_type} ${log.resource_id || ''}` : '',
-      description: log.description || '',
-      changes: log.changes ? (typeof log.changes === 'string' ? JSON.parse(log.changes) : log.changes) : null,
-      expanded: false
-    }))
+    logs.value = items.map(log => {
+      // Map action to UI category
+      const category = mapCategory(log.action, log.resource)
+      // Map severity
+      const severity = log.success === false ? 'critical' : (['delete', 'config'].includes(log.action) ? 'warning' : 'info')
+      // Build verbose description from action + resource
+      const description = buildDescription(log)
+      // Parse old/new values into changes map
+      const changes = buildChanges(log.old_value, log.new_value)
+
+      return {
+        id: log.id,
+        action: formatAction(log.action, log.resource),
+        user: log.username || `User #${log.user_id}`,
+        category,
+        severity,
+        time: formatTime(log.created_at),
+        date: getDateCategory(log.created_at),
+        ip: log.ip_address || '',
+        userAgent: log.user_agent || '',
+        resource: log.resource ? `${log.resource}${log.resource_id ? ' #' + log.resource_id : ''}` : '',
+        description,
+        changes,
+        expanded: false
+      }
+    })
     total.value = data.total || logs.value.length
   } catch (e) {
     console.error('Failed to load audit logs:', e)
@@ -206,7 +222,10 @@ const loadAuditLogs = async () => {
 const formatTime = (dateStr) => {
   if (!dateStr) return ''
   const date = new Date(dateStr)
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  return date.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true
+  })
 }
 
 const getDateCategory = (dateStr) => {
@@ -246,6 +265,58 @@ const filteredLogs = computed(() => {
 
 const exportLogs = () => {
   toast?.info('Export functionality coming soon')
+}
+
+// --- Helper functions for verbose audit data ---
+
+function mapCategory(action, resource) {
+  if (['login', 'logout'].includes(action)) return 'security'
+  if (['call'].includes(action) || ['gateway', 'trunk', 'route', 'ivr', 'queue'].includes(resource)) return 'telephony'
+  if (['user', 'extension'].includes(resource)) return 'user'
+  return 'configuration'
+}
+
+function formatAction(action, resource) {
+  const actionLabels = {
+    create: 'Created', update: 'Updated', delete: 'Deleted',
+    login: 'Logged In', logout: 'Logged Out',
+    export: 'Exported', import: 'Imported',
+    config: 'Configuration Changed', call: 'Call Event'
+  }
+  const label = actionLabels[action] || action
+  const resourceLabel = resource ? resource.charAt(0).toUpperCase() + resource.slice(1).replace(/_/g, ' ') : ''
+  return resourceLabel ? `${label} ${resourceLabel}` : label
+}
+
+function buildDescription(log) {
+  const parts = []
+  if (log.username) parts.push(`By ${log.username}`)
+  if (log.user_role) parts.push(`(${log.user_role})`)
+  if (log.resource && log.resource_id) parts.push(`— ${log.resource} #${log.resource_id}`)
+  if (log.error) parts.push(`Error: ${log.error}`)
+  return parts.join(' ')
+}
+
+function buildChanges(oldVal, newVal) {
+  if (!oldVal && !newVal) return null
+  try {
+    const oldObj = oldVal ? (typeof oldVal === 'string' ? JSON.parse(oldVal) : oldVal) : {}
+    const newObj = newVal ? (typeof newVal === 'string' ? JSON.parse(newVal) : newVal) : {}
+    const changes = {}
+    const allKeys = new Set([...Object.keys(oldObj), ...Object.keys(newObj)])
+    for (const key of allKeys) {
+      // Skip internal/meta fields
+      if (['id', 'created_at', 'updated_at', 'deleted_at', 'uuid'].includes(key)) continue
+      const o = oldObj[key]
+      const n = newObj[key]
+      if (JSON.stringify(o) !== JSON.stringify(n)) {
+        changes[key] = { old: o ?? '(empty)', new: n ?? '(empty)' }
+      }
+    }
+    return Object.keys(changes).length > 0 ? changes : null
+  } catch {
+    return null
+  }
 }
 </script>
 
