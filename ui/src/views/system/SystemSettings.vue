@@ -424,9 +424,221 @@ const testSmtp = () => alert('Test email sent to admin@callsign.io')
 .coming-soon-badge { font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 4px; background: #fef3c7; color: #b45309; text-transform: uppercase; }
 .coming-soon-overlay { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 60px 40px; }
 
+/* ============================================
+   RESPONSIVE STYLES - System Settings
+   ============================================ */
+
+/* Tablet (max-width: 1024px) */
+@media (max-width: 1024px) {
+  .settings-layout {
+    gap: 16px;
+  }
+  
+  .settings-nav {
+    width: 180px;
+  }
+}
+
+/* Mobile (max-width: 768px) */
 @media (max-width: 768px) {
-  .settings-layout { flex-direction: column; }
-  .settings-nav { width: 100%; flex-direction: row; overflow-x: auto; }
-  .form-grid { grid-template-columns: 1fr; }
+  .view-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .view-header .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .settings-layout {
+    flex-direction: column;
+  }
+  
+  .settings-nav {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 4px;
+    padding: 4px;
+    background: var(--bg-app);
+    border-radius: var(--radius-md);
+  }
+  
+  .nav-btn {
+    white-space: nowrap;
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+  
+  .settings-content {
+    padding: 16px;
+  }
+  
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .panel-header h3 {
+    font-size: 16px;
+  }
+  
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .setting-card {
+    padding: 12px;
+  }
+  
+  .setting-card h4 {
+    font-size: 13px;
+  }
+  
+  .setting-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .codec-item {
+    padding: 8px 10px;
+  }
+  
+  .codec-name {
+    font-size: 12px;
+  }
+  
+  .codec-type {
+    display: none;
+  }
+  
+  .connection-info {
+    padding: 12px;
+  }
+  
+  .info-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 10px 0;
+  }
+  
+  .info-row .label {
+    font-size: 11px;
+  }
+  
+  .info-row .value {
+    font-size: 13px;
+  }
+  
+  .test-section {
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  
+  .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Small Mobile (max-width: 480px) */
+@media (max-width: 480px) {
+  .view-header h2 {
+    font-size: 18px;
+  }
+  
+  .header-content p {
+    font-size: 12px;
+  }
+  
+  .settings-nav {
+    padding: 4px;
+  }
+  
+  .nav-btn {
+    padding: 8px 10px;
+    font-size: 11px;
+    gap: 6px;
+  }
+  
+  .nav-icon {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .settings-content {
+    padding: 12px;
+    border-radius: var(--radius-sm);
+  }
+  
+  .panel-desc {
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+  
+  .precedence-badge,
+  .status-badge,
+  .coming-soon-badge {
+    font-size: 9px;
+    padding: 3px 8px;
+  }
+  
+  .setting-card {
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+  
+  .form-group label {
+    font-size: 10px;
+  }
+  
+  .input-field {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  
+  .codec-list {
+    gap: 4px;
+  }
+  
+  .codec-item {
+    padding: 8px;
+    gap: 8px;
+  }
+  
+  .grip {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .switch.sm {
+    width: 32px;
+    height: 18px;
+  }
+  
+  .switch.sm .slider:before {
+    width: 12px;
+    height: 12px;
+    left: 3px;
+    bottom: 3px;
+  }
+  
+  .switch.sm input:checked + .slider:before {
+    transform: translateX(14px);
+  }
+  
+  .coming-soon-overlay {
+    padding: 40px 20px;
+  }
+  
+  .coming-soon-overlay p {
+    font-size: 12px;
+  }
 }
 </style>

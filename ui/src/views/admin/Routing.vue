@@ -5,7 +5,6 @@
       <p class="text-muted text-sm">Manage inbound/outbound routing and dialplan logic (FreeSWITCH-compatible).</p>
     </div>
     <div class="header-actions">
-      <button class="btn-primary" v-if="activeTab === 'numbers'" @click="showAddNumberModal = true">+ Add Number</button>
       <button class="btn-primary" v-if="activeTab === 'inbound'" @click="showInboundModal = true">+ Inbound Route</button>
       <button class="btn-primary" v-if="activeTab === 'outbound'" @click="showOutboundModal = true">+ Outbound Route</button>
     </div>
@@ -20,6 +19,11 @@
 
   <!-- NUMBERS TAB -->
   <div class="tab-content" v-if="activeTab === 'numbers'">
+    <div class="info-banner">
+      <InfoIcon class="info-icon" />
+      <span>Numbers are managed by your system administrator. You can assign locations and configure routing for assigned numbers.</span>
+    </div>
+
     <div class="filter-bar">
       <div class="search-box">
         <SearchIcon class="search-icon" />
@@ -960,4 +964,17 @@ input:checked + .slider:before { transform: translateX(16px); }
   font-size: 11px;
   color: var(--text-muted);
 }
+.info-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  color: #1e40af;
+  font-size: 13px;
+}
+.info-banner .info-icon { width: 16px; height: 16px; flex-shrink: 0; }
 </style>

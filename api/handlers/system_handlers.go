@@ -1921,3 +1921,426 @@ func (h *Handler) UploadFirmware(c *fiber.Ctx) error {
 		"size":      written,
 	})
 }
+
+// =====================
+// System Numbers (centralized pool)
+// =====================
+
+func (h *Handler) ListSystemNumbers(c *fiber.Ctx) error {
+	var numbers []models.SystemNumber
+
+	query := h.DB.Preload("Tenant").Preload("NumberGroup").Order("phone_number ASC")
+
+	// Optional filters
+	if status := c.Query("status"); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if tenantID := c.Query("tenant_id"); tenantID != "" {
+		query = query.Where("tenant_id = ?", tenantID)
+	}
+	if groupID := c.Query("group_id"); groupID != "" {
+		query = query.Where("number_group_id = ?", groupID)
+	}
+
+	if err := query.Find(&numbers).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve system numbers"})
+	}
+
+	return c.JSON(fiber.Map{"data": numbers})
+}
+
+func (h *Handler) CreateSystemNumber(c *fiber.Ctx) error {
+	var number models.SystemNumber
+	if err := c.BodyParser(&number); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	// Normalize to E.164
+	number.PhoneNumber = normalizeToE164(number.PhoneNumber)
+
+	// Check for duplicates
+	var existing models.SystemNumber
+	if err := h.DB.Where("phone_number = ?", number.PhoneNumber).First(&existing).Error; err == nil {
+		return c.Status(http.StatusConflict).JSON(fiber.Map{"error": "This number already exists in the system"})
+	}
+
+	// Set initial status
+	if number.TenantID != nil {
+		number.Status = models.NumberStatusAssigned
+	} else {
+		number.Status = models.NumberStatusAvailable
+	}
+
+	if err := h.DB.Create(&number).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create system number"})
+	}
+
+	// If assigned to a tenant on creation, auto-create Destination
+	if number.TenantID != nil {
+		dest := models.Destination{
+			TenantID:          *number.TenantID,
+			DestinationNumber: number.PhoneNumber,
+			Description:       number.Description,
+			Enabled:           true,
+			Context:           "public",
+		}
+		if err := h.DB.Create(&dest).Error; err == nil {
+			h.DB.Model(&number).Update("destination_id", dest.ID)
+		}
+	}
+
+	// Reload with associations
+	h.DB.Preload("Tenant").Preload("NumberGroup").First(&number, number.ID)
+
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": number})
+}
+
+func (h *Handler) GetSystemNumber(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid number ID"})
+	}
+
+	var number models.SystemNumber
+	if err := h.DB.Preload("Tenant").Preload("NumberGroup").Preload("Destination").First(&number, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "System number not found"})
+	}
+
+	return c.JSON(fiber.Map{"data": number})
+}
+
+func (h *Handler) UpdateSystemNumber(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid number ID"})
+	}
+
+	var number models.SystemNumber
+	if err := h.DB.First(&number, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "System number not found"})
+	}
+
+	if err := c.BodyParser(&number); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	number.ID = uint(id)
+	if err := h.DB.Save(&number).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update system number"})
+	}
+
+	h.DB.Preload("Tenant").Preload("NumberGroup").First(&number, id)
+	return c.JSON(fiber.Map{"data": number})
+}
+
+func (h *Handler) DeleteSystemNumber(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid number ID"})
+	}
+
+	var number models.SystemNumber
+	if err := h.DB.First(&number, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "System number not found"})
+	}
+
+	// Clean up associated Destination if exists
+	if number.DestinationID != nil {
+		h.DB.Delete(&models.Destination{}, *number.DestinationID)
+	}
+
+	// Clean up location references
+	h.DB.Model(&models.Location{}).Where("system_number_id = ?", number.ID).Update("system_number_id", nil)
+
+	h.DB.Delete(&number)
+	return c.JSON(fiber.Map{"message": "System number deleted"})
+}
+
+// AssignNumberToTenant assigns a system number to a tenant and creates a Destination
+func (h *Handler) AssignNumberToTenant(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid number ID"})
+	}
+
+	var input struct {
+		TenantID uint `json:"tenant_id"`
+	}
+	if err := c.BodyParser(&input); err != nil || input.TenantID == 0 {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "tenant_id is required"})
+	}
+
+	var number models.SystemNumber
+	if err := h.DB.First(&number, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "System number not found"})
+	}
+
+	// Verify tenant exists
+	var tenant models.Tenant
+	if err := h.DB.First(&tenant, input.TenantID).Error; err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant not found"})
+	}
+
+	// If already assigned to a different tenant, clean up old Destination
+	if number.TenantID != nil && *number.TenantID != input.TenantID && number.DestinationID != nil {
+		h.DB.Delete(&models.Destination{}, *number.DestinationID)
+	}
+
+	// Create Destination for the tenant
+	dest := models.Destination{
+		TenantID:          input.TenantID,
+		DestinationNumber: number.PhoneNumber,
+		Description:       number.Description,
+		Enabled:           true,
+		Context:           "public",
+	}
+	if err := h.DB.Create(&dest).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create destination"})
+	}
+
+	// Update the system number
+	h.DB.Model(&number).Updates(map[string]interface{}{
+		"tenant_id":      input.TenantID,
+		"destination_id": dest.ID,
+		"status":         models.NumberStatusAssigned,
+	})
+
+	h.reloadXML()
+
+	h.DB.Preload("Tenant").Preload("NumberGroup").Preload("Destination").First(&number, id)
+	return c.JSON(fiber.Map{"data": number, "message": "Number assigned to tenant"})
+}
+
+// UnassignNumber removes a system number from a tenant
+func (h *Handler) UnassignNumber(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid number ID"})
+	}
+
+	var number models.SystemNumber
+	if err := h.DB.First(&number, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "System number not found"})
+	}
+
+	if number.TenantID == nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Number is not assigned to any tenant"})
+	}
+
+	// Remove location references for this number
+	h.DB.Model(&models.Location{}).Where("system_number_id = ?", number.ID).Update("system_number_id", nil)
+
+	// Delete the Destination
+	if number.DestinationID != nil {
+		h.DB.Delete(&models.Destination{}, *number.DestinationID)
+	}
+
+	// Clear assignment
+	h.DB.Model(&number).Updates(map[string]interface{}{
+		"tenant_id":      nil,
+		"destination_id": nil,
+		"status":         models.NumberStatusAvailable,
+	})
+
+	h.reloadXML()
+
+	return c.JSON(fiber.Map{"message": "Number unassigned from tenant"})
+}
+
+// =====================
+// Number Groups
+// =====================
+
+func (h *Handler) ListNumberGroups(c *fiber.Ctx) error {
+	var groups []models.NumberGroup
+	if err := h.DB.Preload("DefaultGateway").Order("name ASC").Find(&groups).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve number groups"})
+	}
+
+	// Add number count for each group
+	type GroupWithCount struct {
+		models.NumberGroup
+		NumberCount int64 `json:"number_count"`
+	}
+	var result []GroupWithCount
+	for _, g := range groups {
+		var count int64
+		h.DB.Model(&models.SystemNumber{}).Where("number_group_id = ?", g.ID).Count(&count)
+		result = append(result, GroupWithCount{NumberGroup: g, NumberCount: count})
+	}
+
+	return c.JSON(fiber.Map{"data": result})
+}
+
+func (h *Handler) CreateNumberGroup(c *fiber.Ctx) error {
+	var group models.NumberGroup
+	if err := c.BodyParser(&group); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	if err := h.DB.Create(&group).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create number group"})
+	}
+
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": group})
+}
+
+func (h *Handler) GetNumberGroup(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid group ID"})
+	}
+
+	var group models.NumberGroup
+	if err := h.DB.Preload("DefaultGateway").First(&group, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number group not found"})
+	}
+
+	return c.JSON(fiber.Map{"data": group})
+}
+
+func (h *Handler) UpdateNumberGroup(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid group ID"})
+	}
+
+	var group models.NumberGroup
+	if err := h.DB.First(&group, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number group not found"})
+	}
+
+	if err := c.BodyParser(&group); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	group.ID = uint(id)
+	if err := h.DB.Save(&group).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update number group"})
+	}
+
+	return c.JSON(fiber.Map{"data": group})
+}
+
+func (h *Handler) DeleteNumberGroup(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid group ID"})
+	}
+
+	// Unlink numbers from this group first
+	h.DB.Model(&models.SystemNumber{}).Where("number_group_id = ?", id).Update("number_group_id", nil)
+
+	if err := h.DB.Delete(&models.NumberGroup{}, id).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete number group"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Number group deleted"})
+}
+
+// ReorderGroupGateways updates the gateway priority list for a number group
+func (h *Handler) ReorderGroupGateways(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid group ID"})
+	}
+
+	var group models.NumberGroup
+	if err := h.DB.First(&group, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number group not found"})
+	}
+
+	var input struct {
+		GatewayPriorities models.GatewayPriorityList `json:"gateway_priorities"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	h.DB.Model(&group).Update("gateway_priorities", input.GatewayPriorities)
+
+	return c.JSON(fiber.Map{"data": group, "message": "Gateway priorities updated"})
+}
+
+// ReorderGateways bulk-updates gateway priority/weight for trunk ordering
+func (h *Handler) ReorderGateways(c *fiber.Ctx) error {
+	var items []struct {
+		ID       uint `json:"id"`
+		Priority int  `json:"priority"`
+		Weight   int  `json:"weight"`
+	}
+	if err := c.BodyParser(&items); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	tx := h.DB.Begin()
+	for _, item := range items {
+		if err := tx.Model(&models.Gateway{}).Where("id = ?", item.ID).Updates(map[string]interface{}{
+			"priority": item.Priority,
+			"weight":   item.Weight,
+		}).Error; err != nil {
+			tx.Rollback()
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to reorder gateways"})
+		}
+	}
+	tx.Commit()
+
+	return c.JSON(fiber.Map{"message": "Gateway order updated"})
+}
+
+// AssignNumberToLocation links a tenant's assigned system number to a location for E911
+func (h *Handler) AssignNumberToLocation(c *fiber.Ctx) error {
+	numID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid number ID"})
+	}
+
+	tenantID := middleware.GetTenantID(c)
+
+	var input struct {
+		LocationID uint `json:"location_id"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	// Verify the system number is assigned to this tenant
+	var number models.SystemNumber
+	if err := h.DB.Where("id = ? AND tenant_id = ?", numID, tenantID).First(&number).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number not found or not assigned to your tenant"})
+	}
+
+	// Verify the location belongs to this tenant
+	var location models.Location
+	if err := h.DB.Where("id = ? AND tenant_id = ?", input.LocationID, tenantID).First(&location).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Location not found"})
+	}
+
+	// Link the number to the location
+	h.DB.Model(&location).Update("system_number_id", number.ID)
+
+	return c.JSON(fiber.Map{"message": "Number assigned to location", "data": location})
+}
+
+// UnassignNumberFromLocation removes the number-location link
+func (h *Handler) UnassignNumberFromLocation(c *fiber.Ctx) error {
+	numID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid number ID"})
+	}
+
+	tenantID := middleware.GetTenantID(c)
+
+	// Verify the system number is assigned to this tenant
+	var number models.SystemNumber
+	if err := h.DB.Where("id = ? AND tenant_id = ?", numID, tenantID).First(&number).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number not found or not assigned to your tenant"})
+	}
+
+	// Remove from any locations in this tenant
+	h.DB.Model(&models.Location{}).
+		Where("system_number_id = ? AND tenant_id = ?", number.ID, tenantID).
+		Update("system_number_id", nil)
+
+	return c.JSON(fiber.Map{"message": "Number unassigned from location"})
+}

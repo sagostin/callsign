@@ -330,6 +330,9 @@ func (r *Router) Init() {
 	numbers.Get("/:id", r.Handler.GetNumber)
 	numbers.Put("/:id", r.Handler.UpdateNumber)
 	numbers.Delete("/:id", r.Handler.DeleteNumber)
+	// Tenant-level: assign/unassign number to location (E911)
+	numbers.Post("/:id/location", r.Handler.AssignNumberToLocation)
+	numbers.Delete("/:id/location", r.Handler.UnassignNumberFromLocation)
 
 	// Routing
 	routing := tenantScoped.Group("/routing")
@@ -595,8 +598,24 @@ func (r *Router) Init() {
 	tenants.Put("/:id", r.Handler.UpdateTenant)
 	tenants.Delete("/:id", r.Handler.DeleteTenant)
 
-	// System Numbers (All Tenants)
-	system.Get("/numbers", r.Handler.ListAllNumbers)
+	// System Numbers (centralized pool)
+	sysNumbers := system.Group("/numbers")
+	sysNumbers.Get("/", r.Handler.ListSystemNumbers)
+	sysNumbers.Post("/", r.Handler.CreateSystemNumber)
+	sysNumbers.Get("/:id", r.Handler.GetSystemNumber)
+	sysNumbers.Put("/:id", r.Handler.UpdateSystemNumber)
+	sysNumbers.Delete("/:id", r.Handler.DeleteSystemNumber)
+	sysNumbers.Post("/:id/assign", r.Handler.AssignNumberToTenant)
+	sysNumbers.Post("/:id/unassign", r.Handler.UnassignNumber)
+
+	// Number Groups (outbound routing groups)
+	numberGroups := system.Group("/number-groups")
+	numberGroups.Get("/", r.Handler.ListNumberGroups)
+	numberGroups.Post("/", r.Handler.CreateNumberGroup)
+	numberGroups.Get("/:id", r.Handler.GetNumberGroup)
+	numberGroups.Put("/:id", r.Handler.UpdateNumberGroup)
+	numberGroups.Delete("/:id", r.Handler.DeleteNumberGroup)
+	numberGroups.Post("/:id/reorder-gateways", r.Handler.ReorderGroupGateways)
 
 	// Tenant Profiles
 	profiles := system.Group("/tenant-profiles")
@@ -614,6 +633,7 @@ func (r *Router) Init() {
 	gateways.Put("/:id", r.Handler.UpdateGateway)
 	gateways.Delete("/:id", r.Handler.DeleteGateway)
 	gateways.Get("/status", r.Handler.GetGatewayStatus)
+	gateways.Post("/reorder", r.Handler.ReorderGateways)
 
 	// Bridges
 	bridges := system.Group("/bridges")

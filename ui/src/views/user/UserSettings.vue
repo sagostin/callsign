@@ -862,12 +862,369 @@ const changePassword = async () => {
 .icon { width: 20px; height: 20px; }
 .icon-sm { width: 16px; height: 16px; }
 
-/* Responsive */
+/* ============================================
+   RESPONSIVE STYLES - User Settings
+   ============================================ */
+
+/* Tablet (max-width: 1024px) */
+@media (max-width: 1024px) {
+  .settings-layout {
+    gap: 16px;
+  }
+  
+  .settings-nav {
+    width: 180px;
+  }
+}
+
+/* Mobile (max-width: 768px) */
 @media (max-width: 768px) {
-  .settings-layout { flex-direction: column; }
-  .settings-nav { width: 100%; flex-direction: row; overflow-x: auto; gap: 4px; }
-  .nav-btn { white-space: nowrap; }
-  .form-grid { grid-template-columns: 1fr; }
-  .profile-header { flex-direction: column; gap: 16px; }
+  .view-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .settings-layout {
+    flex-direction: column;
+  }
+  
+  .settings-nav {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 4px;
+    padding: 4px;
+    background: var(--bg-app);
+    border-radius: var(--radius-md);
+  }
+  
+  .nav-btn {
+    white-space: nowrap;
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+  
+  .settings-content {
+    padding: 16px;
+  }
+  
+  .section h3 {
+    font-size: 16px;
+    margin-bottom: 16px;
+  }
+  
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .profile-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+  }
+  
+  .avatar-preview {
+    width: 64px;
+    height: 64px;
+  }
+  
+  .avatar-initials {
+    font-size: 22px;
+  }
+  
+  .setting-card {
+    margin-bottom: 12px;
+  }
+  
+  .setting-header {
+    padding: 12px;
+  }
+  
+  .setting-body {
+    padding: 12px;
+    padding-top: 0;
+  }
+  
+  .setting-title {
+    font-size: 13px;
+  }
+  
+  .setting-desc {
+    font-size: 11px;
+  }
+  
+  .ring-strategies {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .strategy-option {
+    padding: 12px;
+  }
+  
+  .strategy-icon {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .strategy-info strong {
+    font-size: 13px;
+  }
+  
+  .strategy-info span {
+    font-size: 11px;
+  }
+  
+  .ring-device-item {
+    padding: 10px 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  
+  .device-order {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+  }
+  
+  .device-icon-box {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .device-name {
+    font-size: 13px;
+  }
+  
+  .device-details {
+    font-size: 11px;
+  }
+  
+  .ring-duration {
+    width: 100%;
+    margin-top: 8px;
+    order: 3;
+  }
+  
+  .ring-duration select {
+    width: 100%;
+  }
+  
+  .pref-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 0;
+  }
+  
+  .pref-label {
+    font-size: 13px;
+  }
+  
+  .pref-desc {
+    font-size: 11px;
+  }
+  
+  .section-actions {
+    margin-top: 16px;
+    padding-top: 16px;
+  }
+  
+  .btn-primary,
+  .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .greeting-options {
+    gap: 8px;
+  }
+  
+  .radio-option {
+    font-size: 12px;
+  }
+  
+  .recording-controls {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .session-item {
+    padding: 10px;
+  }
+  
+  .session-icon {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .session-name {
+    font-size: 12px;
+  }
+  
+  .session-meta {
+    font-size: 10px;
+  }
+}
+
+/* Small Mobile (max-width: 480px) */
+@media (max-width: 480px) {
+  .view-header h2 {
+    font-size: 18px;
+  }
+  
+  .header-content p {
+    font-size: 12px;
+  }
+  
+  .settings-nav {
+    padding: 4px;
+  }
+  
+  .nav-btn {
+    padding: 8px 10px;
+    font-size: 11px;
+    gap: 6px;
+  }
+  
+  .nav-btn span {
+    display: none;
+  }
+  
+  .nav-icon {
+    width: 18px;
+    height: 18px;
+  }
+  
+  .settings-content {
+    padding: 12px;
+    border-radius: var(--radius-sm);
+  }
+  
+  .section h3 {
+    font-size: 15px;
+  }
+  
+  .avatar-upload {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .avatar-preview {
+    width: 56px;
+    height: 56px;
+  }
+  
+  .avatar-initials {
+    font-size: 18px;
+  }
+  
+  .profile-status {
+    width: 100%;
+  }
+  
+  .status-select {
+    flex: 1;
+  }
+  
+  .form-group label {
+    font-size: 10px;
+  }
+  
+  .input-field {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  
+  .input-hint {
+    font-size: 10px;
+  }
+  
+  .setting-card {
+    border-radius: var(--radius-sm);
+    margin-bottom: 10px;
+  }
+  
+  .setting-header {
+    padding: 10px;
+  }
+  
+  .setting-body {
+    padding: 10px;
+    padding-top: 0;
+  }
+  
+  .strategy-option {
+    padding: 10px;
+    gap: 10px;
+  }
+  
+  .strategy-icon {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .strategy-icon .icon {
+    width: 16px;
+    height: 16px;
+  }
+  
+  .ring-device-item {
+    padding: 8px 10px;
+  }
+  
+  .device-icon-box {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .device-icon-box .icon-sm {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .drag-handle {
+    margin-right: 0;
+  }
+  
+  .drag-handle .icon-sm {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .device-order {
+    display: none;
+  }
+  
+  .toggle {
+    width: 40px;
+    height: 22px;
+  }
+  
+  .toggle-slider:before {
+    width: 16px;
+    height: 16px;
+    left: 3px;
+    bottom: 3px;
+  }
+  
+  .toggle input:checked + .toggle-slider:before {
+    transform: translateX(18px);
+  }
+  
+  .form-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .divider {
+    margin: 12px 0;
+  }
 }
 </style>

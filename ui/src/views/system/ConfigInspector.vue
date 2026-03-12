@@ -188,7 +188,7 @@ const dynamicConfigs = [
     name: 'directory/gateways.xml', 
     description: 'SIP trunk/gateway registrations',
     section: 'directory',
-    params: { domain: 'example.com', purpose: 'gateways' }
+    params: { domain: 'example.com', purpose: 'gateways', sip_profile: 'external' }
   },
   
   // Configuration Section - Core modules
@@ -197,37 +197,52 @@ const dynamicConfigs = [
     name: 'configuration/acl.conf.xml', 
     description: 'Access control lists (network permissions)',
     section: 'configuration',
-    params: { key_value: 'acl.conf' }
+    params: { config_name: 'acl.conf' }
   },
   { 
     id: 'config-ivr', 
     name: 'configuration/ivr.conf.xml', 
     description: 'IVR menus and auto-attendants',
     section: 'configuration',
-    params: { key_value: 'ivr.conf' }
+    params: { config_name: 'ivr.conf' }
   },
   { 
     id: 'config-conference', 
     name: 'configuration/conference.conf.xml', 
     description: 'Audio/video conference rooms',
     section: 'configuration',
-    params: { key_value: 'conference.conf' }
+    params: { config_name: 'conference.conf' }
+  },
+  { 
+    id: 'config-callcenter', 
+    name: 'configuration/callcenter.conf.xml', 
+    description: 'Call center queues, agents, and tiers',
+    section: 'configuration',
+    params: { config_name: 'callcenter.conf' }
+  },
+  { 
+    id: 'config-voicemail', 
+    name: 'configuration/voicemail.conf.xml', 
+    description: 'Voicemail profiles and settings',
+    section: 'configuration',
+    params: { config_name: 'voicemail.conf' }
   },
   { 
     id: 'config-local-stream', 
     name: 'configuration/local_stream.conf.xml', 
     description: 'Music on hold and local audio streams',
     section: 'configuration',
-    params: { key_value: 'local_stream.conf' }
+    params: { config_name: 'local_stream.conf' }
   },
   { 
     id: 'config-sofia', 
     name: 'configuration/sofia.conf.xml', 
     description: 'Sofia SIP stack (uses static file)',
     section: 'configuration',
-    params: { key_value: 'sofia.conf' }
+    params: { config_name: 'sofia.conf' }
   },
 ]
+
 
 const allFiles = computed(() => files.value)
 

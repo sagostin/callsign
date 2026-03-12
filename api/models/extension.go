@@ -83,6 +83,11 @@ type Extension struct {
 	// Account code for billing
 	AccountCode string `json:"account_code"`
 
+	// E911 Location — assigns the extension to a physical location
+	// Inherits emergency caller ID from the location's linked system number
+	LocationID *uint     `json:"location_id" gorm:"index"`
+	Location   *Location `json:"location,omitempty" gorm:"foreignKey:LocationID"`
+
 	// MWI (Message Waiting Indicator) account
 	MWIAccount string `json:"mwi_account"`
 

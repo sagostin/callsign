@@ -169,6 +169,10 @@ func AutoMigrate(db *gorm.DB) error {
 		// E911 Locations
 		&Location{},
 
+		// System Number Management
+		&NumberGroup{},
+		&SystemNumber{},
+
 		// Call Broadcast
 		&BroadcastCampaign{},
 

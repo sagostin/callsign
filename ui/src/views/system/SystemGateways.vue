@@ -11,29 +11,56 @@
         <RefreshCwIcon class="btn-icon" :class="{ spinning: refreshing }" />
         Refresh
       </button>
+      <button class="btn-secondary" v-if="orderChanged" @click="saveOrder">
+        Save Order
+      </button>
       <button class="btn-primary" @click="showModal = true">+ Add Trunk</button>
     </div>
   </div>
 
-  <DataTable :columns="columns" :data="gateways" actions>
-    <template #status="{ value }">
-      <StatusBadge :status="value" />
-    </template>
-    
-    <template #type="{ value }">
-      <span class="badge" :class="value.toLowerCase()">{{ value }}</span>
-    </template>
-
-    <template #tenants="{ value }">
-      <span class="tenant-badge">{{ value }} tenants</span>
-    </template>
-
-    <template #actions="{ row }">
-      <button class="btn-link" @click="editGateway(row)">Edit</button>
-      <button class="btn-link" @click="restartGateway(row)">Restart</button>
-      <button class="btn-link text-bad" @click="deleteGateway(row)">Delete</button>
-    </template>
-  </DataTable>
+  <div class="gw-list">
+    <div class="gw-list-header">
+      <span class="gw-col handle-col"></span>
+      <span class="gw-col name-col">Gateway Name</span>
+      <span class="gw-col host-col">Hostname / IP</span>
+      <span class="gw-col type-col">Type</span>
+      <span class="gw-col priority-col">Priority</span>
+      <span class="gw-col status-col">Status</span>
+      <span class="gw-col actions-col">Actions</span>
+    </div>
+    <div 
+      v-for="(gw, idx) in gateways" :key="gw.id"
+      class="gw-row"
+      :class="{ dragging: dragIndex === idx, dragover: dragOverIndex === idx }"
+      draggable="true"
+      @dragstart="onDragStart($event, idx)"
+      @dragover.prevent="onDragOver($event, idx)"
+      @dragleave="onDragLeave"
+      @drop.prevent="onDrop($event, idx)"
+      @dragend="onDragEnd"
+    >
+      <span class="gw-col handle-col">
+        <GripVerticalIcon class="grip-icon" />
+      </span>
+      <span class="gw-col name-col font-semibold">{{ gw.name }}</span>
+      <span class="gw-col host-col text-muted">{{ gw.hostname }}</span>
+      <span class="gw-col type-col">
+        <span class="badge" :class="(gw.type || '').toLowerCase()">{{ gw.type }}</span>
+      </span>
+      <span class="gw-col priority-col">
+        <span class="priority-pill">P{{ gw.priority || 0 }}</span>
+        <span class="weight-pill">W{{ gw.weight || 100 }}</span>
+      </span>
+      <span class="gw-col status-col">
+        <StatusBadge :status="gw.status" />
+      </span>
+      <span class="gw-col actions-col">
+        <button class="btn-link" @click="editGateway(gw)">Edit</button>
+        <button class="btn-link" @click="restartGateway(gw)">Restart</button>
+        <button class="btn-link text-bad" @click="deleteGateway(gw)">Delete</button>
+      </span>
+    </div>
+  </div>
 
   <!-- Gateway Modal -->
   <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
@@ -192,18 +219,9 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { X as XIcon, RefreshCw as RefreshCwIcon } from 'lucide-vue-next'
-import DataTable from '../../components/common/DataTable.vue'
+import { X as XIcon, RefreshCw as RefreshCwIcon, GripVertical as GripVerticalIcon } from 'lucide-vue-next'
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import { systemAPI } from '../../services/api'
-
-const columns = [
-  { key: 'name', label: 'Gateway Name' },
-  { key: 'hostname', label: 'Hostname / IP' },
-  { key: 'type', label: 'Type', width: '120px' },
-  { key: 'tenants', label: 'Usage', width: '100px' },
-  { key: 'status', label: 'Status', width: '120px' }
-]
 
 const gateways = ref([])
 const loading = ref(true)
@@ -257,8 +275,11 @@ const loadGateways = async () => {
       register: g.register || false,
       username: g.username || '',
       realm: g.realm || '',
-      enabled: g.enabled !== false
-    }))
+      enabled: g.enabled !== false,
+      priority: g.priority || 0,
+      weight: g.weight || 100
+    })).sort((a, b) => a.priority - b.priority)
+    originalOrder.value = gateways.value.map(g => ({ id: g.id, priority: g.priority, weight: g.weight }))
   } catch (e) {
     console.error('Failed to load gateways:', e)
   } finally {
@@ -364,6 +385,59 @@ const deleteGateway = async (gw) => {
 
 const restartGateway = (gw) => {
   alert(`Restarting gateway: ${gw.name} - Not implemented yet`)
+}
+
+// Drag-to-reorder
+const dragIndex = ref(null)
+const dragOverIndex = ref(null)
+const orderChanged = ref(false)
+const originalOrder = ref([])
+
+const onDragStart = (e, idx) => {
+  dragIndex.value = idx
+  e.dataTransfer.effectAllowed = 'move'
+}
+
+const onDragOver = (e, idx) => {
+  dragOverIndex.value = idx
+  e.dataTransfer.dropEffect = 'move'
+}
+
+const onDragLeave = () => {
+  dragOverIndex.value = null
+}
+
+const onDrop = (e, idx) => {
+  if (dragIndex.value === null || dragIndex.value === idx) return
+  const item = gateways.value.splice(dragIndex.value, 1)[0]
+  gateways.value.splice(idx, 0, item)
+  // Recalculate priorities based on new order
+  gateways.value.forEach((gw, i) => {
+    gw.priority = (i + 1) * 10
+  })
+  orderChanged.value = true
+  dragIndex.value = null
+  dragOverIndex.value = null
+}
+
+const onDragEnd = () => {
+  dragIndex.value = null
+  dragOverIndex.value = null
+}
+
+const saveOrder = async () => {
+  try {
+    const items = gateways.value.map(gw => ({
+      id: gw.id,
+      priority: gw.priority,
+      weight: gw.weight
+    }))
+    await systemAPI.reorderGateways(items)
+    orderChanged.value = false
+    originalOrder.value = items.map(i => ({ ...i }))
+  } catch (e) {
+    alert('Failed to save gateway order: ' + (e.message || 'Unknown error'))
+  }
 }
 </script>
 
@@ -560,4 +634,63 @@ label {
 .btn-icon { width: 14px; height: 14px; }
 .spinning { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* Gateway draggable list */
+.gw-list { border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; }
+.gw-list-header {
+  display: grid;
+  grid-template-columns: 36px 1.5fr 1.5fr 100px 120px 120px 180px;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.gw-row {
+  display: grid;
+  grid-template-columns: 36px 1.5fr 1.5fr 100px 120px 120px 180px;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  align-items: center;
+  background: white;
+  cursor: grab;
+  transition: all 0.15s ease;
+}
+.gw-row:last-child { border-bottom: none; }
+.gw-row:hover { background: #f8fafc; }
+.gw-row.dragging { opacity: 0.4; background: #e0e7ff; border-style: dashed; }
+.gw-row.dragover { border-top: 2px solid var(--primary-color); background: #eff6ff; }
+.gw-row:active { cursor: grabbing; }
+
+.gw-col { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.handle-col { display: flex; align-items: center; justify-content: center; }
+.grip-icon { width: 16px; height: 16px; color: var(--text-muted); }
+
+.priority-pill, .weight-pill {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  margin-right: 4px;
+}
+.priority-pill { background: #dbeafe; color: #1d4ed8; }
+.weight-pill { background: #f3e8ff; color: #7c3aed; }
+
+.font-semibold { font-weight: 600; }
+.text-muted { color: var(--text-muted); }
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--text-main);
+  cursor: pointer;
+}
 </style>

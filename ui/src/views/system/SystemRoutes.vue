@@ -8,6 +8,8 @@
       <button class="btn-secondary" @click="recalculateOrder" v-if="activeTab === 'inbound' || activeTab === 'outbound'">
         <RefreshCwIcon class="btn-icon" /> Recalculate Order
       </button>
+      <button class="btn-primary" v-if="activeTab === 'numbers' && numbersSubTab === 'numbers'" @click="openAddNumber">+ Add Number</button>
+      <button class="btn-primary" v-if="activeTab === 'numbers' && numbersSubTab === 'groups'" @click="openAddGroup">+ New Group</button>
       <button class="btn-primary" v-if="activeTab === 'inbound'" @click="showInboundModal = true">+ Global Inbound</button>
       <button class="btn-primary" v-if="activeTab === 'outbound'" @click="showOutboundModal = true">+ Global Outbound</button>
     </div>
@@ -40,36 +42,107 @@
     <button class="tab" :class="{ active: activeTab === 'settings' }" @click="activeTab = 'settings'">Global Settings</button>
   </div>
 
-  <!-- NUMBERS TAB (All Tenants) -->
+  <!-- NUMBERS TAB (System Number Pool) -->
   <div class="tab-content" v-if="activeTab === 'numbers'">
-    <div class="route-help">
-      <InfoIcon class="help-icon" />
-      <span>All phone numbers (DIDs) across all tenants. Numbers are stored in E.164 format.</span>
+    <div class="sub-tabs">
+      <button class="sub-tab" :class="{ active: numbersSubTab === 'numbers' }" @click="numbersSubTab = 'numbers'">All Numbers</button>
+      <button class="sub-tab" :class="{ active: numbersSubTab === 'groups' }" @click="numbersSubTab = 'groups'">Number Groups</button>
     </div>
 
-    <div class="filter-bar">
-      <div class="search-box">
-        <SearchIcon class="search-icon" />
-        <input type="text" v-model="numberSearch" placeholder="Search numbers..." class="search-input">
+    <!-- Numbers Sub-Tab -->
+    <div v-if="numbersSubTab === 'numbers'">
+      <div class="route-help">
+        <InfoIcon class="help-icon" />
+        <span>System-managed phone numbers. Add numbers here and assign them to tenants. Tenants cannot add their own.</span>
       </div>
-      <select v-model="tenantFilter" class="filter-dropdown">
-        <option value="">All Tenants</option>
-        <option v-for="t in uniqueTenants" :key="t.id" :value="t.id">{{ t.name }}</option>
-      </select>
+
+      <div class="filter-bar">
+        <div class="search-box">
+          <SearchIcon class="search-icon" />
+          <input type="text" v-model="numberSearch" placeholder="Search numbers..." class="search-input">
+        </div>
+        <select v-model="statusFilter" class="filter-dropdown">
+          <option value="">All Statuses</option>
+          <option value="available">Available</option>
+          <option value="assigned">Assigned</option>
+          <option value="reserved">Reserved</option>
+          <option value="porting">Porting</option>
+        </select>
+        <select v-model="tenantFilter" class="filter-dropdown">
+          <option value="">All Tenants</option>
+          <option v-for="t in tenants" :key="t.id" :value="t.id">{{ t.name }}</option>
+        </select>
+        <select v-model="groupFilter" class="filter-dropdown">
+          <option value="">All Groups</option>
+          <option v-for="g in numberGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
+        </select>
+      </div>
+
+      <DataTable :columns="numberColumns" :data="filteredNumbers" :actions="numberActions">
+        <template #phone_number="{ value }">
+          <span class="font-mono font-semibold">{{ formatPhoneNumber(value) }}</span>
+        </template>
+        <template #status="{ value }">
+          <StatusBadge :status="value === 'assigned' ? 'Active' : value === 'available' ? 'Available' : value" />
+        </template>
+        <template #tenant="{ row }">
+          <span class="tenant-badge" v-if="row.tenant">{{ row.tenant.name }}</span>
+          <span class="text-muted" v-else>—</span>
+        </template>
+        <template #number_group="{ row }">
+          <span class="badge gateway" v-if="row.number_group">{{ row.number_group.name }}</span>
+          <span class="text-muted" v-else>—</span>
+        </template>
+        <template #capabilities="{ row }">
+          <div class="cap-badges">
+            <span class="cap-badge voice">Voice</span>
+            <span class="cap-badge sms" v-if="row.sms_enabled">SMS</span>
+            <span class="cap-badge mms" v-if="row.mms_enabled">MMS</span>
+            <span class="cap-badge fax" v-if="row.fax_enabled">Fax</span>
+            <span class="cap-badge e911" v-if="row.e911_eligible">E911</span>
+          </div>
+        </template>
+      </DataTable>
     </div>
 
-    <DataTable :columns="numberColumns" :data="filteredNumbers">
-      <template #destination_number="{ value }">
-        <span class="font-mono font-semibold">{{ formatPhoneNumber(value) }}</span>
-      </template>
-      <template #tenant="{ row }">
-        <span class="tenant-badge" v-if="row.Tenant">{{ row.Tenant.name }}</span>
-        <span class="text-muted" v-else>—</span>
-      </template>
-      <template #enabled="{ value }">
-        <StatusBadge :status="value ? 'Active' : 'Disabled'" />
-      </template>
-    </DataTable>
+    <!-- Number Groups Sub-Tab -->
+    <div v-if="numbersSubTab === 'groups'">
+      <div class="route-help">
+        <InfoIcon class="help-icon" />
+        <span>Number groups define outbound carrier routing. Each group has a priority-ordered list of gateways for failover.</span>
+      </div>
+
+      <div class="routes-list" v-if="numberGroups.length">
+        <div class="route-card" v-for="group in numberGroups" :key="group.id">
+          <div class="route-main">
+            <div class="route-name-row">
+              <h4>{{ group.name }}</h4>
+              <div class="route-badges">
+                <span class="badge context">{{ group.number_count || 0 }} numbers</span>
+                <span class="badge gateway" v-if="group.default_gateway">{{ group.default_gateway.name || group.default_gateway.gateway_name }}</span>
+              </div>
+            </div>
+            <p class="text-muted text-sm" v-if="group.description">{{ group.description }}</p>
+            <div class="gw-priority-list" v-if="group.gateway_priorities && group.gateway_priorities.length">
+              <span class="gw-priority-item" v-for="(gp, i) in group.gateway_priorities" :key="i">
+                {{ i + 1 }}. {{ gp.gateway_name }} (P{{ gp.priority }}, W{{ gp.weight }})
+              </span>
+            </div>
+          </div>
+          <div class="route-controls">
+            <label class="switch small">
+              <input type="checkbox" v-model="group.enabled">
+              <span class="slider round"></span>
+            </label>
+            <button class="btn-icon" @click="editGroup(group)"><EditIcon class="icon-sm" /></button>
+            <button class="btn-icon" @click="deleteGroup(group)"><TrashIcon class="icon-sm text-bad" /></button>
+          </div>
+        </div>
+      </div>
+      <div class="empty-state" v-else>
+        <p>No number groups configured. Create one to organize outbound routing.</p>
+      </div>
+    </div>
   </div>
 
   <!-- INBOUND ROUTES TAB -->
@@ -352,6 +425,156 @@
       </div>
     </div>
   </div>
+
+  <!-- ADD/EDIT NUMBER MODAL -->
+  <div v-if="showNumberModal" class="modal-overlay" @click.self="showNumberModal = false">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>{{ editingNumber ? 'Edit System Number' : 'Add System Number' }}</h3>
+        <button class="btn-icon" @click="showNumberModal = false"><XIcon class="icon-sm" /></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Phone Number (E.164)</label>
+          <input v-model="numberForm.phone_number" class="input-field code" placeholder="+14155551234" :disabled="editingNumber">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Caller ID Name</label>
+            <input v-model="numberForm.caller_id_name" class="input-field" placeholder="Company Name">
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select v-model="numberForm.status" class="input-field">
+              <option value="available">Available</option>
+              <option value="assigned">Assigned</option>
+              <option value="reserved">Reserved</option>
+              <option value="porting">Porting</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Number Group</label>
+            <select v-model="numberForm.number_group_id" class="input-field">
+              <option :value="null">None</option>
+              <option v-for="g in numberGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Assign to Tenant</label>
+            <select v-model="numberForm.tenant_id" class="input-field">
+              <option :value="null">Unassigned</option>
+              <option v-for="t in tenants" :key="t.id" :value="t.id">{{ t.name }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <input v-model="numberForm.description" class="input-field" placeholder="Main office line">
+        </div>
+
+        <div class="checkbox-group">
+          <label class="checkbox-row"><input type="checkbox" v-model="numberForm.sms_enabled"><span>SMS Capable</span></label>
+          <label class="checkbox-row"><input type="checkbox" v-model="numberForm.mms_enabled"><span>MMS Capable</span></label>
+          <label class="checkbox-row"><input type="checkbox" v-model="numberForm.fax_enabled"><span>Fax Capable</span></label>
+          <label class="checkbox-row"><input type="checkbox" v-model="numberForm.e911_eligible"><span>E911 Eligible</span></label>
+          <label class="checkbox-row"><input type="checkbox" v-model="numberForm.enabled"><span>Enabled</span></label>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-secondary" @click="showNumberModal = false">Cancel</button>
+        <button class="btn-primary" @click="saveNumber" :disabled="!numberForm.phone_number">{{ editingNumber ? 'Update' : 'Add Number' }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ASSIGN TENANT MODAL -->
+  <div v-if="showAssignModal" class="modal-overlay" @click.self="showAssignModal = false">
+    <div class="modal-card small">
+      <div class="modal-header">
+        <h3>Assign to Tenant</h3>
+        <button class="btn-icon" @click="showAssignModal = false"><XIcon class="icon-sm" /></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-sm">Assign <strong>{{ formatPhoneNumber(assigningNumber?.phone_number) }}</strong> to:</p>
+        <div class="form-group">
+          <label>Tenant</label>
+          <select v-model="assignTenantId" class="input-field">
+            <option v-for="t in tenants" :key="t.id" :value="t.id">{{ t.name }}</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" @click="showAssignModal = false">Cancel</button>
+        <button class="btn-primary" @click="confirmAssign" :disabled="!assignTenantId">Assign</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NUMBER GROUP MODAL -->
+  <div v-if="showGroupModal" class="modal-overlay" @click.self="showGroupModal = false">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>{{ editingGroup ? 'Edit Number Group' : 'New Number Group' }}</h3>
+        <button class="btn-icon" @click="showGroupModal = false"><XIcon class="icon-sm" /></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label>Group Name</label>
+            <input v-model="groupForm.name" class="input-field" placeholder="e.g. US Domestic">
+          </div>
+          <div class="form-group">
+            <label>Default Gateway</label>
+            <select v-model="groupForm.default_gateway_id" class="input-field">
+              <option :value="null">None</option>
+              <option v-for="gw in gateways" :key="gw.id" :value="gw.id">{{ gw.name || gw.gateway_name }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <input v-model="groupForm.description" class="input-field" placeholder="Routes for domestic calls">
+        </div>
+
+        <div class="form-section">
+          <div class="section-header">
+            <h4>Gateway Priorities (failover order)</h4>
+            <button class="btn-small" @click="addGatewayPriority">+ Add Gateway</button>
+          </div>
+          <div class="gw-editor">
+            <div class="gw-row" v-for="(gp, i) in groupForm.gateway_priorities" :key="i">
+              <span class="gw-order">{{ i + 1 }}</span>
+              <select v-model="gp.gateway_id" class="input-field" @change="updateGatewayName(gp)">
+                <option v-for="gw in gateways" :key="gw.id" :value="gw.id">{{ gw.name || gw.gateway_name }}</option>
+              </select>
+              <input type="number" v-model.number="gp.priority" class="input-field small" placeholder="Priority">
+              <input type="number" v-model.number="gp.weight" class="input-field small" placeholder="Weight">
+              <button class="btn-icon" @click="groupForm.gateway_priorities.splice(i, 1)"><XIcon class="icon-sm" /></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="checkbox-group">
+          <label class="checkbox-row"><input type="checkbox" v-model="groupForm.enabled"><span>Enabled</span></label>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-secondary" @click="showGroupModal = false">Cancel</button>
+        <button class="btn-primary" @click="saveGroup" :disabled="!groupForm.name">{{ editingGroup ? 'Update' : 'Create Group' }}</button>
+      </div>
+    </div>
+  </div>
+
 </template>
 
 <script setup>
@@ -359,7 +582,8 @@ import { ref, computed, onMounted } from 'vue'
 import { 
   Search as SearchIcon, Info as InfoIcon, GripVertical as GripVerticalIcon,
   ArrowRight as ArrowRightIcon, Edit as EditIcon,
-  Trash2 as TrashIcon, X as XIcon, RefreshCw as RefreshCwIcon
+  Trash2 as TrashIcon, X as XIcon, RefreshCw as RefreshCwIcon,
+  UserPlus as UserPlusIcon, UserMinus as UserMinusIcon
 } from 'lucide-vue-next'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
@@ -412,37 +636,208 @@ const onDragEnd = () => {
   dragType.value = null
 }
 
-// All Numbers (System-wide)
+// =====================
+// System Numbers
+// =====================
 const allNumbers = ref([])
 const numberSearch = ref('')
+const statusFilter = ref('')
 const tenantFilter = ref('')
+const groupFilter = ref('')
+const numbersSubTab = ref('numbers')
+const tenants = ref([])
+const numberGroups = ref([])
+
 const numberColumns = [
-  { key: 'destination_number', label: 'Number', width: '160px' },
-  { key: 'tenant', label: 'Tenant', width: '150px' },
-  { key: 'destination_type', label: 'Type', width: '100px' },
-  { key: 'context', label: 'Context', width: '100px' },
-  { key: 'enabled', label: 'Status', width: '80px' }
+  { key: 'phone_number', label: 'Number', width: '160px' },
+  { key: 'tenant', label: 'Tenant', width: '140px' },
+  { key: 'number_group', label: 'Group', width: '120px' },
+  { key: 'capabilities', label: 'Capabilities', width: '180px' },
+  { key: 'status', label: 'Status', width: '100px' },
+  { key: 'caller_id_name', label: 'Caller ID', width: '140px' },
 ]
 
-// Get unique tenants from numbers for filter dropdown
-const uniqueTenants = computed(() => {
-  const tenantMap = new Map()
-  allNumbers.value.forEach(n => {
-    if (n.Tenant) {
-      tenantMap.set(n.Tenant.id, n.Tenant)
-    }
-  })
-  return Array.from(tenantMap.values()).sort((a, b) => a.name.localeCompare(b.name))
-})
+const numberActions = [
+  { label: 'Edit', icon: EditIcon, handler: (row) => editNumber(row) },
+  { label: 'Assign', icon: UserPlusIcon, handler: (row) => openAssign(row), show: (row) => !row.tenant_id },
+  { label: 'Unassign', icon: UserMinusIcon, handler: (row) => unassignNum(row), show: (row) => !!row.tenant_id },
+  { label: 'Delete', icon: TrashIcon, handler: (row) => deleteNumber(row), className: 'text-bad' },
+]
 
 const filteredNumbers = computed(() => {
   return allNumbers.value.filter(n => {
-    const numStr = n.destination_number || ''
-    const matchesSearch = numStr.includes(numberSearch.value)
-    const matchesTenant = !tenantFilter.value || n.Tenant?.id === parseInt(tenantFilter.value)
-    return matchesSearch && matchesTenant
+    const matchesSearch = !numberSearch.value || (n.phone_number || '').includes(numberSearch.value)
+    const matchesTenant = !tenantFilter.value || n.tenant_id === parseInt(tenantFilter.value)
+    const matchesStatus = !statusFilter.value || n.status === statusFilter.value
+    const matchesGroup = !groupFilter.value || n.number_group_id === parseInt(groupFilter.value)
+    return matchesSearch && matchesTenant && matchesStatus && matchesGroup
   })
 })
+
+const loadNumbers = async () => {
+  try {
+    const response = await systemAPI.listSystemNumbers()
+    allNumbers.value = response.data?.data || response.data || []
+  } catch (e) {
+    console.error('Failed to load system numbers', e)
+  }
+}
+
+const loadTenants = async () => {
+  try {
+    const response = await systemAPI.listTenants()
+    tenants.value = response.data?.data || response.data || []
+  } catch (e) {
+    console.error('Failed to load tenants', e)
+  }
+}
+
+const loadNumberGroups = async () => {
+  try {
+    const response = await systemAPI.listNumberGroups()
+    numberGroups.value = response.data?.data || response.data || []
+  } catch (e) {
+    console.error('Failed to load number groups', e)
+  }
+}
+
+// Number CRUD
+const showNumberModal = ref(false)
+const editingNumber = ref(false)
+const numberForm = ref({
+  phone_number: '', caller_id_name: '', description: '',
+  number_group_id: null, tenant_id: null,
+  sms_enabled: false, mms_enabled: false, fax_enabled: false,
+  e911_eligible: true, enabled: true, status: 'available'
+})
+
+const openAddNumber = () => {
+  numberForm.value = {
+    phone_number: '', caller_id_name: '', description: '',
+    number_group_id: null, tenant_id: null,
+    sms_enabled: false, mms_enabled: false, fax_enabled: false,
+    e911_eligible: true, enabled: true, status: 'available'
+  }
+  editingNumber.value = false
+  showNumberModal.value = true
+}
+
+const editNumber = (row) => {
+  numberForm.value = { ...row }
+  editingNumber.value = true
+  showNumberModal.value = true
+}
+
+const saveNumber = async () => {
+  try {
+    if (editingNumber.value) {
+      await systemAPI.updateSystemNumber(numberForm.value.id, numberForm.value)
+    } else {
+      await systemAPI.createSystemNumber(numberForm.value)
+    }
+    showNumberModal.value = false
+    await loadNumbers()
+  } catch (e) {
+    alert('Failed to save number: ' + (e.message || 'Unknown error'))
+  }
+}
+
+const deleteNumber = async (row) => {
+  if (confirm(`Delete number ${row.phone_number}? This cannot be undone.`)) {
+    try {
+      await systemAPI.deleteSystemNumber(row.id)
+      await loadNumbers()
+    } catch (e) {
+      alert('Failed to delete number')
+    }
+  }
+}
+
+// Assignment
+const showAssignModal = ref(false)
+const assigningNumber = ref(null)
+const assignTenantId = ref(null)
+
+const openAssign = (row) => {
+  assigningNumber.value = row
+  assignTenantId.value = null
+  showAssignModal.value = true
+}
+
+const confirmAssign = async () => {
+  try {
+    await systemAPI.assignNumber(assigningNumber.value.id, { tenant_id: assignTenantId.value })
+    showAssignModal.value = false
+    await loadNumbers()
+  } catch (e) {
+    alert('Failed to assign number: ' + (e.message || 'Unknown error'))
+  }
+}
+
+const unassignNum = async (row) => {
+  if (confirm(`Unassign ${row.phone_number} from ${row.tenant?.name || 'tenant'}?`)) {
+    try {
+      await systemAPI.unassignNumber(row.id)
+      await loadNumbers()
+    } catch (e) {
+      alert('Failed to unassign number')
+    }
+  }
+}
+
+// Number Groups
+const showGroupModal = ref(false)
+const editingGroup = ref(false)
+const groupForm = ref({
+  name: '', description: '', enabled: true,
+  default_gateway_id: null, gateway_priorities: []
+})
+
+const openAddGroup = () => {
+  groupForm.value = { name: '', description: '', enabled: true, default_gateway_id: null, gateway_priorities: [] }
+  editingGroup.value = false
+  showGroupModal.value = true
+}
+
+const editGroup = (group) => {
+  groupForm.value = { ...group, gateway_priorities: [...(group.gateway_priorities || [])] }
+  editingGroup.value = true
+  showGroupModal.value = true
+}
+
+const saveGroup = async () => {
+  try {
+    if (editingGroup.value) {
+      await systemAPI.updateNumberGroup(groupForm.value.id, groupForm.value)
+    } else {
+      await systemAPI.createNumberGroup(groupForm.value)
+    }
+    showGroupModal.value = false
+    await loadNumberGroups()
+  } catch (e) {
+    alert('Failed to save group: ' + (e.message || 'Unknown error'))
+  }
+}
+
+const deleteGroup = async (group) => {
+  if (confirm(`Delete group "${group.name}"?`)) {
+    try {
+      await systemAPI.deleteNumberGroup(group.id)
+      await loadNumberGroups()
+    } catch (e) {
+      alert('Failed to delete group')
+    }
+  }
+}
+
+const addGatewayPriority = () => {
+  groupForm.value.gateway_priorities.push({ gateway_id: null, gateway_name: '', priority: (groupForm.value.gateway_priorities.length + 1) * 10, weight: 1 })
+}
+
+const updateGatewayName = (gp) => {
+  const gw = gateways.value.find(g => g.id === gp.gateway_id)
+  if (gw) gp.gateway_name = gw.name || gw.gateway_name
+}
 
 // Computed: Total enabled routes
 const enabledRoutesCount = computed(() => {
@@ -484,12 +879,7 @@ const recalculateOrder = async () => {
 }
 
 const loadAllNumbers = async () => {
-  try {
-    const response = await systemAPI.listAllNumbers()
-    allNumbers.value = response.data.data || []
-  } catch (e) {
-    console.error('Failed to load all numbers', e)
-  }
+  await Promise.all([loadNumbers(), loadTenants(), loadNumberGroups()])
 }
 
 // Inbound Routes (Global)
@@ -978,4 +1368,46 @@ label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var
   .view-header { flex-direction: column; gap: 12px; align-items: flex-start; }
   .header-actions { width: 100%; flex-wrap: wrap; }
 }
+
+/* Sub-tabs */
+.sub-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+.sub-tab { padding: 6px 14px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--text-muted); }
+.sub-tab.active { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+
+/* Capability badges */
+.cap-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.cap-badge { font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+.cap-badge.voice { background: #dbeafe; color: #1d4ed8; }
+.cap-badge.sms { background: #d1fae5; color: #059669; }
+.cap-badge.mms { background: #fce7f3; color: #db2777; }
+.cap-badge.fax { background: #e0e7ff; color: #4338ca; }
+.cap-badge.e911 { background: #fee2e2; color: #dc2626; }
+
+/* Tenant badge */
+.tenant-badge { font-size: 12px; padding: 2px 8px; background: #f3e8ff; color: #7c3aed; border-radius: 4px; font-weight: 500; }
+
+/* Gateway priority list */
+.gw-priority-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.gw-priority-item { font-size: 11px; background: var(--bg-app); padding: 4px 8px; border-radius: 4px; color: var(--text-main); }
+
+/* Gateway editor in modals */
+.gw-editor { display: flex; flex-direction: column; gap: 8px; }
+.gw-row { display: flex; gap: 8px; align-items: center; }
+.gw-order { font-size: 12px; font-weight: 700; color: var(--text-muted); min-width: 20px; text-align: center; }
+
+/* Empty state */
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+.empty-state p { font-size: 14px; }
+
+/* Modals */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal-card { background: white; border-radius: var(--radius-md); width: 600px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+.modal-card.small { width: 420px; }
+.modal-card.large { width: 780px; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px 16px; border-bottom: 1px solid var(--border-color); }
+.modal-header h3 { margin: 0; font-size: 16px; }
+.modal-body { padding: 20px 24px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 24px; border-top: 1px solid var(--border-color); }
+
+.text-sm { font-size: 13px; }
 </style>

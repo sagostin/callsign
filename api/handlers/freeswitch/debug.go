@@ -34,12 +34,17 @@ func (h *FSHandler) DebugXML(c *fiber.Ctx) error {
 	case "directory":
 		req.User = c.Query("user")
 		req.Domain = c.Query("domain")
-		req.Action = c.Query("action") // e.g. message-count, sip_auth
+		req.Action = c.Query("action")          // e.g. message-count, sip_auth
+		req.Purpose = c.Query("purpose")        // e.g. gateways, network-list
+		req.SIPProfile = c.Query("sip_profile") // e.g. internal, external
 
 	case "configuration":
 		req.KeyName = "name"
 		req.KeyValue = c.Query("config_name") // e.g. sofia.conf
-		// Some configs need other params, simplistic for now
+		// Fallback: also accept key_value param (used by ConfigInspector dynamic entries)
+		if req.KeyValue == "" {
+			req.KeyValue = c.Query("key_value")
+		}
 	}
 
 	// Dispatch to handler logic

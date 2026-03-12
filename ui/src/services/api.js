@@ -452,6 +452,9 @@ export const numbersAPI = {
     create: (data) => api.post('/numbers', data),
     update: (id, data) => api.put(`/numbers/${id}`, data),
     delete: (id) => api.delete(`/numbers/${id}`),
+    // Location assignment (E911)
+    assignLocation: (id, data) => api.post(`/numbers/${id}/location`, data),
+    unassignLocation: (id) => api.delete(`/numbers/${id}/location`),
 }
 
 // =====================
@@ -595,8 +598,22 @@ export const systemAPI = {
     updateTenant: (id, data) => api.put(`/system/tenants/${id}`, data),
     deleteTenant: (id) => api.delete(`/system/tenants/${id}`),
 
-    // System Numbers (All Tenants)
-    listAllNumbers: () => api.get('/system/numbers'),
+    // System Numbers (centralized pool)
+    listSystemNumbers: (params) => api.get('/system/numbers', { params }),
+    createSystemNumber: (data) => api.post('/system/numbers', data),
+    getSystemNumber: (id) => api.get(`/system/numbers/${id}`),
+    updateSystemNumber: (id, data) => api.put(`/system/numbers/${id}`, data),
+    deleteSystemNumber: (id) => api.delete(`/system/numbers/${id}`),
+    assignNumber: (id, data) => api.post(`/system/numbers/${id}/assign`, data),
+    unassignNumber: (id) => api.post(`/system/numbers/${id}/unassign`),
+
+    // Number Groups (outbound routing groups)
+    listNumberGroups: (params) => api.get('/system/number-groups', { params }),
+    createNumberGroup: (data) => api.post('/system/number-groups', data),
+    getNumberGroup: (id) => api.get(`/system/number-groups/${id}`),
+    updateNumberGroup: (id, data) => api.put(`/system/number-groups/${id}`, data),
+    deleteNumberGroup: (id) => api.delete(`/system/number-groups/${id}`),
+    reorderGroupGateways: (id, data) => api.post(`/system/number-groups/${id}/reorder-gateways`, data),
 
     // Tenant Profiles
     listProfiles: () => api.get('/system/tenant-profiles'),
@@ -611,6 +628,7 @@ export const systemAPI = {
     updateGateway: (id, data) => api.put(`/system/gateways/${id}`, data),
     deleteGateway: (id) => api.delete(`/system/gateways/${id}`),
     getGatewayStatus: () => api.get('/system/gateways/status'),
+    reorderGateways: (data) => api.post('/system/gateways/reorder', data),
 
     // Bridges
     listBridges: () => api.get('/system/bridges'),

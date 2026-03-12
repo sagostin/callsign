@@ -4,6 +4,7 @@ import (
 	"callsign/models"
 	"callsign/services/xmlcache"
 	"fmt"
+	"regexp"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -100,9 +101,9 @@ func (h *FSHandler) checkCallBlocks(req *XMLCurlRequest) string {
 		case "prefix":
 			matched = strings.HasPrefix(callerNumber, block.Number) || strings.HasPrefix(callerNumber, "+"+block.Number)
 		case "regex":
-			// Simple regex matching
-			if strings.HasPrefix(callerNumber, block.Number) {
-				matched = true
+			// Real regex matching
+			if re, err := regexp.Compile(block.Number); err == nil {
+				matched = re.MatchString(callerNumber)
 			}
 		default:
 			matched = callerNumber == block.Number
@@ -161,6 +162,7 @@ func (h *FSHandler) buildBlockedCallerXML(req *XMLCurlRequest, block *models.Cal
 // buildMultiDialplan gets all dialplans for a context including feature codes
 func (h *FSHandler) buildMultiDialplan(req *XMLCurlRequest) string {
 	var b strings.Builder
+	hasContent := false
 
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
 	b.WriteString("\n")
@@ -187,6 +189,7 @@ func (h *FSHandler) buildMultiDialplan(req *XMLCurlRequest) string {
 			xml := h.buildDialplanFromDetails(&dp)
 			b.WriteString(xml)
 		}
+		hasContent = true
 	}
 
 	// 2. Add feature codes for this context (if internal/domain context)
@@ -194,42 +197,49 @@ func (h *FSHandler) buildMultiDialplan(req *XMLCurlRequest) string {
 		featureXML := h.buildFeatureCodeDialplans(req)
 		if featureXML != "" {
 			b.WriteString(featureXML)
+			hasContent = true
 		}
 
 		// 2b. Add time conditions and call flows
 		timeCondXML := h.buildTimeConditionDialplans(req)
 		if timeCondXML != "" {
 			b.WriteString(timeCondXML)
+			hasContent = true
 		}
 
 		// 2c. Add ring group routing
 		ringGroupXML := h.buildRingGroupDialplans(req)
 		if ringGroupXML != "" {
 			b.WriteString(ringGroupXML)
+			hasContent = true
 		}
 
 		// 2d. Add conference room routing
 		conferenceXML := h.buildConferenceDialplans(req)
 		if conferenceXML != "" {
 			b.WriteString(conferenceXML)
+			hasContent = true
 		}
 
 		// 2e. Add queue routing
 		queueXML := h.buildQueueDialplans(req)
 		if queueXML != "" {
 			b.WriteString(queueXML)
+			hasContent = true
 		}
 
 		// 2f. Add outbound routes (gateway routing for PSTN calls)
 		outboundXML := h.buildOutboundRouteDialplans(req)
 		if outboundXML != "" {
 			b.WriteString(outboundXML)
+			hasContent = true
 		}
 
 		// 2g. Add per-extension routing (rings all registered endpoints for each extension)
 		extensionXML := h.buildExtensionDialplans(req)
 		if extensionXML != "" {
 			b.WriteString(extensionXML)
+			hasContent = true
 		}
 	}
 
@@ -249,10 +259,11 @@ func (h *FSHandler) buildMultiDialplan(req *XMLCurlRequest) string {
 			xml := h.buildDialplanFromDetails(&dp)
 			b.WriteString(xml)
 		}
+		hasContent = true
 	}
 
-	// If nothing was added, return empty for fallback
-	if len(globalDialplans) == 0 && len(dialplans) == 0 {
+	// If nothing was added anywhere, return empty for fallback
+	if !hasContent {
 		return ""
 	}
 
@@ -343,7 +354,14 @@ func (h *FSHandler) findDialplanByPattern(req *XMLCurlRequest) string {
 	for _, dp := range dialplans {
 		for _, detail := range dp.Details {
 			if detail.ConditionField == "destination_number" && detail.ConditionExpression != "" {
-				// Simple check: if the expression contains the destination number or if it's a known pattern
+				// Actually test the regex against the destination number
+				re, err := regexp.Compile(detail.ConditionExpression)
+				if err != nil {
+					continue // Invalid regex, skip
+				}
+				if !re.MatchString(req.DestinationNumber) {
+					continue // Doesn't match
+				}
 				if dp.DialplanXML != "" {
 					// Return the pre-generated XML wrapped in document
 					var b strings.Builder
@@ -542,34 +560,46 @@ func (h *FSHandler) buildTimeConditionDialplans(req *XMLCurlRequest) string {
 		b.WriteString("\n")
 		b.WriteString(fmt.Sprintf(`      <extension name="tc_%s" continue="false">`, tc.UUID.String()))
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf(`        <condition field="destination_number" expression="^%s$">`, xmlEscape(tc.Extension)))
-		b.WriteString("\n")
 
 		// Build time expression
 		// FreeSWITCH time format: wday, hour, minute, month, mday, year, yday
 		timeExpr := h.buildTimeExpression(&tc)
 		if timeExpr != "" {
-			b.WriteString(fmt.Sprintf(`          <condition %s>`, timeExpr))
+			// FreeSWITCH requires sibling conditions, not nested ones.
+			// First condition matches destination_number with break="never" so processing continues.
+			// Second condition tests the time expression with actions/anti-actions.
+			b.WriteString(fmt.Sprintf(`        <condition field="destination_number" expression="^%s$" break="never"/>`, xmlEscape(tc.Extension)))
+			b.WriteString("\n")
+
+			b.WriteString(fmt.Sprintf(`        <condition %s>`, timeExpr))
 			b.WriteString("\n")
 
 			// Match action (within time)
 			matchAction := h.buildDestinationAction(tc.MatchDestType, tc.MatchDestValue, domain)
-			b.WriteString(fmt.Sprintf(`            <action application="%s" data="%s"/>`,
+			b.WriteString(fmt.Sprintf(`          <action application="%s" data="%s"/>`,
 				matchAction.App, xmlEscape(matchAction.Data)))
 			b.WriteString("\n")
 
 			// Anti-action (outside time)
 			noMatchAction := h.buildDestinationAction(tc.NoMatchDestType, tc.NoMatchDestValue, domain)
-			b.WriteString(fmt.Sprintf(`            <anti-action application="%s" data="%s"/>`,
+			b.WriteString(fmt.Sprintf(`          <anti-action application="%s" data="%s"/>`,
 				noMatchAction.App, xmlEscape(noMatchAction.Data)))
 			b.WriteString("\n")
 
-			b.WriteString(`          </condition>`)
+			b.WriteString(`        </condition>`)
+			b.WriteString("\n")
+		} else {
+			// No time expression, just match by destination and route
+			b.WriteString(fmt.Sprintf(`        <condition field="destination_number" expression="^%s$">`, xmlEscape(tc.Extension)))
+			b.WriteString("\n")
+			matchAction := h.buildDestinationAction(tc.MatchDestType, tc.MatchDestValue, domain)
+			b.WriteString(fmt.Sprintf(`          <action application="%s" data="%s"/>`,
+				matchAction.App, xmlEscape(matchAction.Data)))
+			b.WriteString("\n")
+			b.WriteString(`        </condition>`)
 			b.WriteString("\n")
 		}
 
-		b.WriteString(`        </condition>`)
-		b.WriteString("\n")
 		b.WriteString(`      </extension>`)
 		b.WriteString("\n")
 	}
@@ -778,7 +808,7 @@ func (h *FSHandler) buildConferenceDialplans(req *XMLCurlRequest) string {
 		b.WriteString("\n")
 
 		// Route to conference ESL socket
-		b.WriteString(`          <action application="socket" data="127.0.0.4:9001 async full"/>`)
+		b.WriteString(`          <action application="socket" data="127.0.0.1:9001 async full"/>`)
 		b.WriteString("\n")
 
 		b.WriteString(`        </condition>`)
