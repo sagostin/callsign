@@ -2,6 +2,7 @@ package esl
 
 import (
 	"callsign/config"
+	"callsign/services/email"
 	"callsign/services/tts"
 	"callsign/services/websocket"
 	"fmt"
@@ -23,6 +24,7 @@ type Manager struct {
 	Modules   *ModuleRegistry
 	WSHub     *websocket.Hub
 	TTS       *tts.Service
+	Email     *email.Service
 
 	running bool
 	mu      sync.RWMutex
@@ -42,6 +44,11 @@ func NewManager(cfg *config.Config, db *gorm.DB) *Manager {
 // SetWSHub sets the WebSocket hub for real-time event broadcasting
 func (m *Manager) SetWSHub(hub *websocket.Hub) {
 	m.WSHub = hub
+}
+
+// SetEmailService sets the email service for notifications
+func (m *Manager) SetEmailService(svc *email.Service) {
+	m.Email = svc
 }
 
 // Start starts the ESL manager

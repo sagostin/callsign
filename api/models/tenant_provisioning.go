@@ -151,7 +151,7 @@ var allModules = []moduleDefinition{
 		Label:       "Conference Bridges",
 		Description: "Conference bridge access codes",
 		Templates: []featureCodeTemplate{
-			{Code: "*85", Name: "Start Conference", Action: FCActionCustom, ActionData: "conference", Order: 120},
+			{Code: "*85", Name: "Start Conference", Action: FCActionConference, Order: 120},
 		},
 	},
 	{
@@ -159,8 +159,8 @@ var allModules = []moduleDefinition{
 		Label:       "Call Queue / Agent",
 		Description: "Agent login/logout for call queues",
 		Templates: []featureCodeTemplate{
-			{Code: "*90", Name: "Agent Login", Action: FCActionCustom, ActionData: "agent_login", Order: 130},
-			{Code: "*91", Name: "Agent Logout", Action: FCActionCustom, ActionData: "agent_logout", Order: 131},
+			{Code: "*90", Name: "Agent Login", Action: FCActionQueueLogin, Order: 130},
+			{Code: "*91", Name: "Agent Logout", Action: FCActionQueueLogout, Order: 131},
 		},
 	},
 }

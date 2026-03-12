@@ -201,6 +201,30 @@ func (s *Service) handleDeposit(conn *eventsocket.Connection, manager *esl.Manag
 		})
 	}
 
+	// Send email notification with .wav attachment (async)
+	if manager.Email != nil && manager.Email.IsEnabled() {
+		go func() {
+			// Find the extension's email address
+			var ext models.Extension
+			if err := db.Where("extension = ? AND tenant_id = ?", box.Extension, box.TenantID).First(&ext).Error; err == nil {
+				emailAddr := ""
+				// Try extension's user email
+				if ext.UserID != nil {
+					var user models.User
+					if err := db.First(&user, *ext.UserID).Error; err == nil {
+						emailAddr = user.Email
+					}
+				}
+				if emailAddr != "" {
+					manager.Email.SendVoicemailNotification(
+						emailAddr, box.Extension, callerID, callerName,
+						duration, recordPath,
+					)
+				}
+			}
+		}()
+	}
+
 	// Thank the caller
 	conn.Execute("playback", "voicemail/vm-goodbye.wav", true)
 	conn.Execute("hangup", "", false)

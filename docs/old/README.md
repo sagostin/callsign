@@ -4,8 +4,8 @@
 
 | Document | Purpose |
 |----------|---------|
-| [Project Status](../PROJECT_STATUS.md) | Overall completion status |
-| [Roadmap](../ROADMAP.md) | Development roadmap & progress |
+| [Project Status](main/PROJECT_STATUS.md) | Overall completion status |
+| [Roadmap](main/ROADMAP.md) | Development roadmap & progress |
 | [Backend TODO](BACKEND_TODO.md) | Complete API endpoint list |
 | [Call Flow](CALLFLOW.MD) | Call routing diagrams |
 | [API Reference](API.md) | API documentation |
@@ -22,7 +22,7 @@
 | Document | Purpose |
 |----------|---------|
 | [API.md](API.md) | Endpoint documentation & examples |
-| [FreeSWITCH Integration](../api/FREESWITCH_INTEGRATION.md) | ESL + mod_xml_curl architecture |
+| [FreeSWITCH Integration](../../api/FREESWITCH_INTEGRATION.md) | ESL + mod_xml_curl architecture |
 
 ## UI Documentation
 
@@ -36,9 +36,9 @@ These are reverse-engineering notes from FusionPBX - useful for implementation:
 
 | Document | Purpose |
 |----------|---------|
-| [FREESWITCH_GO_BACKEND.md](reference/FREESWITCH_GO_BACKEND.md) | Go backend patterns for FS |
-| [FREESWITCH_LUA_APPS.md](reference/FREESWITCH_LUA_APPS.md) | Lua app analysis |
-| [FREESWITCH_XML_HANDLER.md](reference/FREESWITCH_XML_HANDLER.md) | XML handler patterns |
-| [FUSIONPBX_APPS.md](reference/FUSIONPBX_APPS.md) | FusionPBX app structure |
-| [FUSIONPBX_CONFIG_GENERATION.md](reference/FUSIONPBX_CONFIG_GENERATION.md) | Config generation |
-| [FUSIONPBX_INSTALL.md](reference/FUSIONPBX_INSTALL.md) | Installation notes |
+| [FREESWITCH_GO_BACKEND.md](../reference/FREESWITCH_GO_BACKEND.md) | Go backend patterns for FS |
+| [FREESWITCH_LUA_APPS.md](../reference/FREESWITCH_LUA_APPS.md) | Lua app analysis |
+| [FREESWITCH_XML_HANDLER.md](../reference/FREESWITCH_XML_HANDLER.md) | XML handler patterns |
+| [FUSIONPBX_APPS.md](../reference/FUSIONPBX_APPS.md) | FusionPBX app structure |
+| [FUSIONPBX_CONFIG_GENERATION.md](../reference/FUSIONPBX_CONFIG_GENERATION.md) | Config generation |
+| [FUSIONPBX_INSTALL.md](../reference/FUSIONPBX_INSTALL.md) | Installation notes |

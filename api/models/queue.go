@@ -74,6 +74,11 @@ type Queue struct {
 	AnnounceSound     string `json:"announce_sound"`     // Periodic announcement
 	AnnounceFrequency int    `json:"announce_frequency"` // Seconds between
 	AnnouncePosition  bool   `json:"announce_position" gorm:"default:true"`
+	AnnounceWaitTime  bool   `json:"announce_wait_time" gorm:"default:false"`
+
+	// Callback
+	CallbackEnabled   bool `json:"callback_enabled" gorm:"default:false"`
+	CallbackThreshold int  `json:"callback_threshold" gorm:"default:5"` // Position threshold to offer callback
 
 	// Exit destinations
 	ExitAction      string `json:"exit_action"`      // hangup, transfer
@@ -147,4 +152,29 @@ type QueueStatistics struct {
 	AvgTalkTime     int       `json:"avg_talk_time_sec"`
 	LongestWait     int       `json:"longest_wait_sec"`
 	LastUpdated     time.Time `json:"last_updated"`
+}
+
+// QueueCallback represents a callback request from a caller in queue
+type QueueCallback struct {
+	ID        uint           `json:"id" gorm:"primaryKey"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+
+	// Queue reference
+	QueueID  uint `json:"queue_id" gorm:"index;not null"`
+	TenantID uint `json:"tenant_id" gorm:"index;not null"`
+
+	// Caller info
+	CallerNumber   string `json:"caller_number" gorm:"not null"`
+	CallerName     string `json:"caller_name"`
+	CallbackNumber string `json:"callback_number" gorm:"not null"` // May differ from caller
+
+	// Status: pending, calling, completed, failed, expired
+	Status      string     `json:"status" gorm:"default:'pending'"`
+	RequestedAt time.Time  `json:"requested_at"`
+	CalledAt    *time.Time `json:"called_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	Attempts    int        `json:"attempts" gorm:"default:0"`
+	MaxAttempts int        `json:"max_attempts" gorm:"default:3"`
 }

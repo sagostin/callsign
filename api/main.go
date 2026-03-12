@@ -6,6 +6,7 @@ import (
 	"callsign/models"
 	"callsign/router"
 	"callsign/services/cdr"
+	emailsvc "callsign/services/email"
 	"callsign/services/esl"
 	"callsign/services/esl/modules/callcontrol"
 	conferencemod "callsign/services/esl/modules/conference"
@@ -116,6 +117,15 @@ func main() {
 		// Warm the cache with system phrases in background
 		go ttsService.Init()
 		logManager.Info("STARTUP", "TTS cache service initialized", nil)
+	}
+
+	// Initialize email service for voicemail notifications
+	emailCfg := emailsvc.LoadFromEnv()
+	if emailCfg.Enabled {
+		eslManager.SetEmailService(emailsvc.New(emailCfg))
+		logManager.Info("STARTUP", "Email service initialized (SMTP: "+emailCfg.SMTPHost+")", nil)
+	} else {
+		logManager.Info("STARTUP", "Email service not configured (set SMTP_HOST + SMTP_FROM_ADDRESS)", nil)
 	}
 
 	// Initialize fax manager (routing, queue processing, retry strategy)

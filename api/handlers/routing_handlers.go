@@ -520,6 +520,70 @@ func (h *Handler) DeleteFeatureCode(c *fiber.Ctx) error {
 }
 
 // =====================
+// Feature Code Module Provisioning
+// =====================
+
+// ProvisionFeatureCodeModules enables selected feature code modules for this tenant.
+// Body: {"modules": ["voicemail", "parking", "dnd"]}
+// Passing empty/null modules provisions ALL modules.
+func (h *Handler) ProvisionFeatureCodeModules(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+
+	var req struct {
+		Modules []models.FeatureCodeModule `json:"modules"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if err := models.ProvisionFeatureCodes(h.DB, tenantID, req.Modules); err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	h.reloadXML()
+
+	// Return updated module list
+	modules := models.ListAvailableModules(h.DB, tenantID)
+	return c.JSON(fiber.Map{
+		"message": "Feature code modules provisioned",
+		"data":    modules,
+	})
+}
+
+// DeprovisionFeatureCodeModules disables selected feature code modules for this tenant.
+// Body: {"modules": ["voicemail", "parking"]}
+// Passing empty/null modules removes ALL feature codes.
+func (h *Handler) DeprovisionFeatureCodeModules(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+
+	var req struct {
+		Modules []models.FeatureCodeModule `json:"modules"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if err := models.DeprovisionFeatureCodes(h.DB, tenantID, req.Modules); err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	h.reloadXML()
+
+	modules := models.ListAvailableModules(h.DB, tenantID)
+	return c.JSON(fiber.Map{
+		"message": "Feature code modules deprovisioned",
+		"data":    modules,
+	})
+}
+
+// ListFeatureCodeModules returns all available modules with their enabled status.
+func (h *Handler) ListFeatureCodeModules(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	modules := models.ListAvailableModules(h.DB, tenantID)
+	return c.JSON(fiber.Map{"data": modules})
+}
+
+// =====================
 // Time Conditions
 // =====================
 

@@ -42,10 +42,10 @@ callsign/
 |----------|---------|
 | [ROADMAP.md](ROADMAP.md) | Development roadmap & progress |
 | [PROJECT_STATUS.md](PROJECT_STATUS.md) | What's done vs pending |
-| [docs/BACKEND_TODO.md](docs/BACKEND_TODO.md) | API endpoint checklist |
-| [docs/README.md](docs/README.md) | Documentation index |
-| [docs/API.md](docs/API.md) | API reference |
-| [docs/DEVELOPER.md](docs/DEVELOPER.md) | Developer guide |
+| [docs/BACKEND_TODO.md](../BACKEND_TODO.md) | API endpoint checklist |
+| [docs/README.md](../README.md) | Documentation index |
+| [docs/API.md](../API.md) | API reference |
+| [docs/DEVELOPER.md](../DEVELOPER.md) | Developer guide |
 
 ## Quick Start
 
@@ -126,4 +126,4 @@ npm run dev
 
 ## License
 
-See [LICENSE.md](LICENSE.md)
+See [LICENSE.md](../../../LICENSE.md)

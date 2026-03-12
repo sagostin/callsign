@@ -81,22 +81,118 @@ func (s *Service) Handle(conn *eventsocket.Connection) {
 	// Answer the call
 	conn.Execute("answer", "", true)
 
-	// Build conference name
+	// Look up conference config from DB
+	var conf models.Conference
+	db := manager.DB
+	if err := db.Where("extension = ? AND enabled = ?", conferenceNum, true).First(&conf).Error; err != nil {
+		logger.Warnf("Conference not found for extension %s", conferenceNum)
+		conn.Execute("playback", "ivr/ivr-call_cannot_be_completed_as_dialed.wav", true)
+		conn.Execute("hangup", "", false)
+		return
+	}
+
+	// ---------- Max Participant Enforcement ----------
 	confName := fmt.Sprintf("%s-%s@default", domain, conferenceNum)
+	if conf.MaxMembers > 0 {
+		currentCount := s.getConferenceMemberCount(confName)
+		if currentCount >= conf.MaxMembers {
+			logger.Infof("Conference full (%d/%d)", currentCount, conf.MaxMembers)
+			conn.Execute("playback", "ivr/ivr-conference_is_full.wav", true)
+			conn.Execute("hangup", "NORMAL_CLEARING", false)
+			return
+		}
+	}
+
+	// ---------- PIN Authentication ----------
+	isModerator := false
+	if conf.PIN != "" || conf.ModeratorPIN != "" {
+		authenticated := false
+		for attempt := 0; attempt < 3; attempt++ {
+			// Collect PIN
+			conn.Execute("play_and_get_digits",
+				"4 10 1 5000 # conference/conf-pin.wav ivr/ivr-that_was_an_invalid_entry.wav pin \\d+ 5000",
+				true)
+
+			ev, err := conn.Send("api uuid_getvar " + uuid + " pin")
+			if err != nil {
+				break
+			}
+			enteredPIN := strings.TrimSpace(ev.Body)
+			if enteredPIN == "" || enteredPIN == "_undef_" {
+				continue
+			}
+
+			// Check moderator PIN first
+			if conf.ModeratorPIN != "" && enteredPIN == conf.ModeratorPIN {
+				isModerator = true
+				authenticated = true
+				logger.Info("Conference: authenticated as moderator")
+				break
+			}
+
+			// Check participant PIN
+			if conf.PIN != "" && enteredPIN == conf.PIN {
+				authenticated = true
+				logger.Info("Conference: authenticated as participant")
+				break
+			}
+		}
+
+		if !authenticated {
+			logger.Warn("Conference: PIN auth failed")
+			conn.Execute("playback", "ivr/ivr-not_authorized.wav", true)
+			conn.Execute("hangup", "NORMAL_CLEARING", false)
+			return
+		}
+	}
 
 	// Get or create session
 	tenantID, _ := strconv.ParseUint(tenantIDStr, 10, 32)
 	session := s.getOrCreateSession(confName, uint(tenantID))
 
-	// Set caller info for conference
+	// ---------- Build Conference Flags ----------
+	var flags []string
+	if isModerator {
+		flags = append(flags, "moderator")
+	}
+	if conf.MuteOnJoin && !isModerator {
+		flags = append(flags, "mute")
+	}
+	if conf.WaitForModerator && !isModerator {
+		flags = append(flags, "wait-mod")
+	}
+
+	// Set caller info
 	conn.Execute("set", "conference_member_nospeak_relax=true", true)
 	conn.Execute("set", fmt.Sprintf("effective_caller_id_name=%s", callerName), true)
 	conn.Execute("set", fmt.Sprintf("effective_caller_id_number=%s", callerID), true)
 
-	logger.Infof("Joining conference: %s", confName)
+	if isModerator {
+		conn.Execute("set", "conference_member_flags=moderator", true)
+	}
+	if conf.MuteOnJoin && !isModerator {
+		conn.Execute("set", "conference_member_flags=mute", true)
+	}
+
+	logger.Infof("Joining conference: %s (moderator=%v)", confName, isModerator)
+
+	// ---------- Auto-Recording ----------
+	if conf.RecordConference {
+		recordPath := fmt.Sprintf("/var/lib/freeswitch/recordings/%s/conference_%s_%s.wav",
+			domain, conferenceNum, time.Now().Format("20060102_150405"))
+		conn.Execute("set", fmt.Sprintf("conference_auto_record=%s", recordPath), true)
+		s.db.Model(session).Updates(map[string]interface{}{
+			"recording":      true,
+			"recording_path": recordPath,
+		})
+	}
 
 	// Join the conference (blocks until hangup)
-	conn.Execute("conference", confName, true)
+	confArg := confName
+	if conf.ProfileName != "" && conf.ProfileName != "default" {
+		confArg = fmt.Sprintf("%s@%s", confName, conf.ProfileName)
+	}
+	conn.Execute("conference", confArg, true)
 
 	// Wait for hangup and track events
 	for {
@@ -118,6 +214,23 @@ func (s *Service) Handle(conn *eventsocket.Connection) {
 			}
 		}
 	}
+}
+
+// getConferenceMemberCount returns the current number of participants
+func (s *Service) getConferenceMemberCount(confName string) int {
+	manager := s.Manager()
+	if manager == nil || manager.Client == nil {
+		return 0
+	}
+
+	result, err := manager.Client.API(fmt.Sprintf("conference %s list count", confName))
+	if err != nil {
+		return 0
+	}
+
+	count := 0
+	fmt.Sscanf(strings.TrimSpace(result), "%d", &count)
+	return count
 }
 
 // getOrCreateSession gets or creates a conference session

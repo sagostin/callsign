@@ -179,6 +179,18 @@ func (s *Service) executeFeatureCode(ctx *ExecutionContext) {
 	case models.FCActionRecord:
 		handleRecord(ctx)
 
+	case models.FCActionQueueLogin:
+		handleQueueLogin(ctx)
+
+	case models.FCActionQueueLogout:
+		handleQueueLogout(ctx)
+
+	case models.FCActionSpeedDial:
+		handleSpeedDial(ctx)
+
+	case models.FCActionConference:
+		handleConference(ctx)
+
 	case models.FCActionCustom:
 		handleCustom(ctx)
 

@@ -293,21 +293,21 @@
 
 ## Contributing
 
-See [DEVELOPER.md](docs/DEVELOPER.md) for development setup and contribution guidelines.
+See [DEVELOPER.md](../DEVELOPER.md) for development setup and contribution guidelines.
 
 ## Documentation Index
 
 | Document | Purpose |
 |----------|---------|
 | [PROJECT_STATUS.md](PROJECT_STATUS.md) | Current completion status |
-| [docs/BACKEND_TODO.md](docs/BACKEND_TODO.md) | Detailed API endpoint checklist |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture overview |
-| [docs/API.md](docs/API.md) | API reference documentation |
-| [docs/CALLFLOW.md](docs/CALLFLOW.MD) | Call flow diagrams |
-| [docs/DEVELOPER.md](docs/DEVELOPER.md) | Developer guide |
+| [docs/BACKEND_TODO.md](../BACKEND_TODO.md) | Detailed API endpoint checklist |
+| [docs/ARCHITECTURE.md](../ARCHITECTURE.md) | System architecture overview |
+| [docs/API.md](../API.md) | API reference documentation |
+| [docs/CALLFLOW.md](../CALLFLOW.MD) | Call flow diagrams |
+| [docs/DEVELOPER.md](../DEVELOPER.md) | Developer guide |
 
 ---
 
 ## License
 
-See [LICENSE.md](LICENSE.md) for licensing information.
+See [LICENSE.md](../../../LICENSE.md) for licensing information.

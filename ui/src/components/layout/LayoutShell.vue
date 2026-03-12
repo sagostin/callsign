@@ -41,9 +41,9 @@
 
     <!-- Main Content -->
     <main class="layout-content" role="main">
-      <router-view v-slot="{ Component }">
+      <router-view v-slot="{ Component, route }">
         <transition name="page" mode="out-in">
-          <component :is="Component" />
+          <component :is="Component" :key="route.fullPath" />
         </transition>
       </router-view>
     </main>
