@@ -86,6 +86,11 @@ func DefaultInternalProfileSettings() []SIPProfileSetting {
 		{SettingName: "nonce-ttl", SettingValue: "60", Enabled: true},
 		{SettingName: "rtp-timeout-sec", SettingValue: "300", Enabled: true},
 		{SettingName: "rtp-hold-timeout-sec", SettingValue: "1800", Enabled: true},
+		// WebRTC / WebSocket support
+		{SettingName: "ws-binding", SettingValue: ":5066", Enabled: false},
+		{SettingName: "wss-binding", SettingValue: ":7443", Enabled: true},
+		{SettingName: "apply-candidate-acl", SettingValue: "localnet.auto", Enabled: true},
+		{SettingName: "apply-candidate-acl", SettingValue: "wan_v4.auto", Enabled: true},
 	}
 }
 

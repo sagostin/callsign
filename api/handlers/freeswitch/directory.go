@@ -333,6 +333,12 @@ func (h *FSHandler) buildClientDirectoryXML(reg *models.ClientRegistration, req 
 	if reg.WebRTC {
 		b.WriteString(`                <variable name="sip-force-contact" value="NDLB-connectile-dysfunction"/>`)
 		b.WriteString("\n")
+		b.WriteString(`                <variable name="media_webrtc" value="true"/>`)
+		b.WriteString("\n")
+		b.WriteString(`                <variable name="rtcp_mux" value="true"/>`)
+		b.WriteString("\n")
+		b.WriteString(`                <variable name="sip_enable_soa" value="false"/>`)
+		b.WriteString("\n")
 	}
 
 	// If linked to an extension, inherit outbound permissions

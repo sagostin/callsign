@@ -179,28 +179,16 @@ const editACL = (acl) => {
 const saveACL = async () => {
   saving.value = true
   try {
-    // Save the ACL first
-    let savedACL
+    // Build payload with nodes inline — backend handles them atomically
+    const payload = {
+      ...form.value,
+      nodes: formNodes.value.filter(n => n.cidr)
+    }
+
     if (isEditing.value && form.value.id) {
-      const resp = await systemAPI.updateACL(form.value.id, form.value)
-      savedACL = resp.data
-      
-      // Delete existing nodes and recreate
-      const existingNodes = acls.value.find(a => a.id === form.value.id)?.nodes || []
-      for (const node of existingNodes) {
-        try { await systemAPI.deleteACLNode(form.value.id, node.id) } catch(e) {}
-      }
-      // Add new nodes
-      for (const node of formNodes.value.filter(n => n.cidr)) {
-        await systemAPI.createACLNode(form.value.id, node)
-      }
+      await systemAPI.updateACL(form.value.id, payload)
     } else {
-      const resp = await systemAPI.createACL(form.value)
-      savedACL = resp.data
-      // Add nodes
-      for (const node of formNodes.value.filter(n => n.cidr)) {
-        await systemAPI.createACLNode(savedACL.id, node)
-      }
+      await systemAPI.createACL(payload)
     }
     await loadACLs()
     showModal.value = false

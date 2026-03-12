@@ -617,6 +617,12 @@ export const systemAPI = {
     updateNumberGroup: (id, data) => api.put(`/system/number-groups/${id}`, data),
     deleteNumberGroup: (id) => api.delete(`/system/number-groups/${id}`),
     reorderGroupGateways: (id, data) => api.post(`/system/number-groups/${id}/reorder-gateways`, data),
+    // Number Group Routing Rules
+    listRoutingRules: (groupId) => api.get(`/system/number-groups/${groupId}/routing-rules`),
+    createRoutingRule: (groupId, data) => api.post(`/system/number-groups/${groupId}/routing-rules`, data),
+    updateRoutingRule: (groupId, ruleId, data) => api.put(`/system/number-groups/${groupId}/routing-rules/${ruleId}`, data),
+    deleteRoutingRule: (groupId, ruleId) => api.delete(`/system/number-groups/${groupId}/routing-rules/${ruleId}`),
+    reorderRoutingRules: (groupId, data) => api.post(`/system/number-groups/${groupId}/routing-rules/reorder`, data),
 
     // Tenant Profiles
     listProfiles: () => api.get('/system/tenant-profiles'),
@@ -794,6 +800,7 @@ export const extensionPortalAPI = {
     changePassword: (current, newPass) => api.put('/extension/portal/password', { current_password: current, new_password: newPass }),
     getContacts: () => api.get('/extension/portal/contacts'),
     createContact: (data) => api.post('/extension/portal/contacts', data),
+    getWebRTCConfig: () => api.get('/extension/portal/webrtc-config'),
 }
 
 // =====================

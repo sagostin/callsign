@@ -619,6 +619,12 @@ func (r *Router) Init() {
 	numberGroups.Put("/:id", r.Handler.UpdateNumberGroup)
 	numberGroups.Delete("/:id", r.Handler.DeleteNumberGroup)
 	numberGroups.Post("/:id/reorder-gateways", r.Handler.ReorderGroupGateways)
+	// Outbound routing rules (per group)
+	numberGroups.Get("/:id/routing-rules", r.Handler.ListRoutingRules)
+	numberGroups.Post("/:id/routing-rules", r.Handler.CreateRoutingRule)
+	numberGroups.Put("/:id/routing-rules/:ruleId", r.Handler.UpdateRoutingRule)
+	numberGroups.Delete("/:id/routing-rules/:ruleId", r.Handler.DeleteRoutingRule)
+	numberGroups.Post("/:id/routing-rules/reorder", r.Handler.ReorderRoutingRules)
 
 	// Tenant Profiles
 	profiles := system.Group("/tenant-profiles")
@@ -780,6 +786,7 @@ func (r *Router) Init() {
 	extPortal.Put("/password", r.Handler.ChangeExtensionPassword)
 	extPortal.Get("/contacts", r.Handler.GetExtensionContacts)
 	extPortal.Post("/contacts", r.Handler.CreateExtensionContact)
+	extPortal.Get("/webrtc-config", r.Handler.GetWebRTCConfig)
 
 	// FreeSWITCH XML CURL endpoints (inside /api for consistency with Caddy routing)
 	fs := r.App.Group("/api/freeswitch")

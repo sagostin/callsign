@@ -172,6 +172,7 @@ func AutoMigrate(db *gorm.DB) error {
 		// System Number Management
 		&NumberGroup{},
 		&SystemNumber{},
+		&OutboundRoutingRule{},
 
 		// Call Broadcast
 		&BroadcastCampaign{},

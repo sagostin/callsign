@@ -83,6 +83,12 @@ type Config struct {
 	// Encryption settings
 	EncryptionKey  string // Master key for data-at-rest encryption (required)
 	EncryptionSalt string // Salt for key derivation (required)
+
+	// WebRTC / Softphone settings
+	SIPWssURL   string // WebSocket URL for SIP.js (e.g., wss://sip.example.com:7443)
+	SIPDomain   string // SIP domain for registration (e.g., sip.example.com)
+	STUNServers string // Comma-separated STUN server URLs
+	TURNServers string // Comma-separated TURN server URLs (format: url,username,credential)
 }
 
 // Load reads configuration from environment variables
@@ -164,6 +170,12 @@ func Load() *Config {
 		// Encryption
 		EncryptionKey:  getEnv("ENCRYPTION_KEY", ""),
 		EncryptionSalt: getEnv("ENCRYPTION_SALT", ""),
+
+		// WebRTC / Softphone
+		SIPWssURL:   getEnv("SIP_WSS_URL", ""),
+		SIPDomain:   getEnv("SIP_DOMAIN", ""),
+		STUNServers: getEnv("STUN_SERVERS", "stun:stun.l.google.com:19302"),
+		TURNServers: getEnv("TURN_SERVERS", ""),
 	}
 }
 

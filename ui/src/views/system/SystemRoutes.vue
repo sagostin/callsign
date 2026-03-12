@@ -109,7 +109,7 @@
     <div v-if="numbersSubTab === 'groups'">
       <div class="route-help">
         <InfoIcon class="help-icon" />
-        <span>Number groups define outbound carrier routing. Each group has a priority-ordered list of gateways for failover.</span>
+        <span>Number groups define outbound carrier routing and SMS provider. Each group has routing rules, gateway priorities, and messaging config.</span>
       </div>
 
       <div class="routes-list" v-if="numberGroups.length">
@@ -127,6 +127,10 @@
               <span class="gw-priority-item" v-for="(gp, i) in group.gateway_priorities" :key="i">
                 {{ i + 1 }}. {{ gp.gateway_name }} (P{{ gp.priority }}, W{{ gp.weight }})
               </span>
+            </div>
+            <div class="route-badges" style="margin-top: 4px">
+              <span class="badge context" v-if="group.routing_rules && group.routing_rules.length">{{ group.routing_rules.length }} routing rules</span>
+              <span class="badge gateway" v-if="group.messaging_provider">SMS: {{ group.messaging_provider.name }}</span>
             </div>
           </div>
           <div class="route-controls">
@@ -517,58 +521,207 @@
     </div>
   </div>
 
-  <!-- NUMBER GROUP MODAL -->
+  <!-- NUMBER GROUP MODAL (expanded with tabs) -->
   <div v-if="showGroupModal" class="modal-overlay" @click.self="showGroupModal = false">
-    <div class="modal-card">
+    <div class="modal-card large">
       <div class="modal-header">
         <h3>{{ editingGroup ? 'Edit Number Group' : 'New Number Group' }}</h3>
         <button class="btn-icon" @click="showGroupModal = false"><XIcon class="icon-sm" /></button>
       </div>
 
+      <!-- Group Modal Tabs -->
+      <div class="sub-tabs" style="padding: 0 1.5rem">
+        <button class="sub-tab" :class="{ active: groupModalTab === 'general' }" @click="groupModalTab = 'general'">General</button>
+        <button class="sub-tab" :class="{ active: groupModalTab === 'gateways' }" @click="groupModalTab = 'gateways'">Gateway Priorities</button>
+        <button class="sub-tab" :class="{ active: groupModalTab === 'rules' }" @click="groupModalTab = 'rules'">Routing Rules</button>
+      </div>
+
       <div class="modal-body">
-        <div class="form-row">
-          <div class="form-group flex-2">
-            <label>Group Name</label>
-            <input v-model="groupForm.name" class="input-field" placeholder="e.g. US Domestic">
-          </div>
-          <div class="form-group">
-            <label>Default Gateway</label>
-            <select v-model="groupForm.default_gateway_id" class="input-field">
-              <option :value="null">None</option>
-              <option v-for="gw in gateways" :key="gw.id" :value="gw.id">{{ gw.name || gw.gateway_name }}</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Description</label>
-          <input v-model="groupForm.description" class="input-field" placeholder="Routes for domestic calls">
-        </div>
-
-        <div class="form-section">
-          <div class="section-header">
-            <h4>Gateway Priorities (failover order)</h4>
-            <button class="btn-small" @click="addGatewayPriority">+ Add Gateway</button>
-          </div>
-          <div class="gw-editor">
-            <div class="gw-row" v-for="(gp, i) in groupForm.gateway_priorities" :key="i">
-              <span class="gw-order">{{ i + 1 }}</span>
-              <select v-model="gp.gateway_id" class="input-field" @change="updateGatewayName(gp)">
+        <!-- GENERAL TAB -->
+        <div v-if="groupModalTab === 'general'">
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label>Group Name</label>
+              <input v-model="groupForm.name" class="input-field" placeholder="e.g. US Domestic">
+            </div>
+            <div class="form-group">
+              <label>Default Gateway</label>
+              <select v-model="groupForm.default_gateway_id" class="input-field">
+                <option :value="null">None</option>
                 <option v-for="gw in gateways" :key="gw.id" :value="gw.id">{{ gw.name || gw.gateway_name }}</option>
               </select>
-              <input type="number" v-model.number="gp.priority" class="input-field small" placeholder="Priority">
-              <input type="number" v-model.number="gp.weight" class="input-field small" placeholder="Weight">
-              <button class="btn-icon" @click="groupForm.gateway_priorities.splice(i, 1)"><XIcon class="icon-sm" /></button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Description</label>
+            <input v-model="groupForm.description" class="input-field" placeholder="Routes for domestic calls">
+          </div>
+
+          <div class="form-group">
+            <label>SMS / Messaging Provider</label>
+            <select v-model="groupForm.messaging_provider_id" class="input-field">
+              <option :value="null">None</option>
+              <option v-for="mp in messagingProviders" :key="mp.id" :value="mp.id">{{ mp.name }}</option>
+            </select>
+            <span class="help-text">Default messaging provider for all numbers in this group. Individual numbers can override.</span>
+          </div>
+
+          <div class="checkbox-group">
+            <label class="checkbox-row"><input type="checkbox" v-model="groupForm.enabled"><span>Enabled</span></label>
+          </div>
+        </div>
+
+        <!-- GATEWAY PRIORITIES TAB -->
+        <div v-if="groupModalTab === 'gateways'">
+          <div class="form-section">
+            <div class="section-header">
+              <h4>Gateway Priorities (failover order)</h4>
+              <button class="btn-small" @click="addGatewayPriority">+ Add Gateway</button>
+            </div>
+            <div class="gw-editor">
+              <div class="gw-row" v-for="(gp, i) in groupForm.gateway_priorities" :key="i">
+                <span class="gw-order">{{ i + 1 }}</span>
+                <select v-model="gp.gateway_id" class="input-field" @change="updateGatewayName(gp)">
+                  <option v-for="gw in gateways" :key="gw.id" :value="gw.id">{{ gw.name || gw.gateway_name }}</option>
+                </select>
+                <input type="number" v-model.number="gp.priority" class="input-field small" placeholder="Priority">
+                <input type="number" v-model.number="gp.weight" class="input-field small" placeholder="Weight">
+                <button class="btn-icon" @click="groupForm.gateway_priorities.splice(i, 1)"><XIcon class="icon-sm" /></button>
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="checkbox-group">
-          <label class="checkbox-row"><input type="checkbox" v-model="groupForm.enabled"><span>Enabled</span></label>
+        <!-- ROUTING RULES TAB -->
+        <div v-if="groupModalTab === 'rules'">
+          <div class="route-help" style="margin-bottom: 12px">
+            <InfoIcon class="help-icon" />
+            <span>Regex-based routing rules control how outbound calls are processed. Lower priority = evaluated first.</span>
+          </div>
+
+          <!-- Preset Buttons -->
+          <div class="preset-bar" v-if="!editingRule">
+            <button class="btn-small" @click="addRulePreset('us_domestic')">+ US Domestic</button>
+            <button class="btn-small" @click="addRulePreset('international')">+ International</button>
+            <button class="btn-small" @click="addRulePreset('emergency')">+ Emergency</button>
+            <button class="btn-small" @click="addRulePreset('toll_free')">+ Toll Free</button>
+            <button class="btn-small" @click="addRulePreset('custom')">+ Custom Rule</button>
+          </div>
+
+          <!-- Rules List -->
+          <div class="routes-list" v-if="groupRoutingRules.length && !editingRule" style="margin-top: 12px">
+            <div class="route-card compact" v-for="rule in groupRoutingRules" :key="rule.id" :class="{ disabled: !rule.enabled }">
+              <div class="route-main">
+                <div class="route-name-row">
+                  <h4>{{ rule.name }}</h4>
+                  <div class="route-badges">
+                    <span class="badge context">P{{ rule.priority }}</span>
+                    <span class="badge gateway" v-if="rule.gateway_name">{{ rule.gateway_name }}</span>
+                    <span class="badge intl" v-if="rule.dial_format !== 'e164'">{{ rule.dial_format }}</span>
+                  </div>
+                </div>
+                <div class="route-pattern">
+                  <span class="pattern-label">Pattern:</span>
+                  <code class="pattern-regex">{{ rule.pattern }}</code>
+                </div>
+                <div class="route-transforms" v-if="rule.prepend || rule.strip_digits">
+                  <span class="transform" v-if="rule.strip_digits">Strip: {{ rule.strip_digits }}</span>
+                  <span class="transform" v-if="rule.prepend">Prepend: {{ rule.prepend }}</span>
+                  <span class="transform" v-if="rule.prefix">Prefix: {{ rule.prefix }}</span>
+                </div>
+              </div>
+              <div class="route-controls">
+                <label class="switch small">
+                  <input type="checkbox" v-model="rule.enabled">
+                  <span class="slider round"></span>
+                </label>
+                <button class="btn-icon" @click="editRoutingRule(rule)"><EditIcon class="icon-sm" /></button>
+                <button class="btn-icon" @click="deleteRoutingRule(rule)"><TrashIcon class="icon-sm text-bad" /></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="empty-state" v-if="!groupRoutingRules.length && !editingRule">
+            <p>No routing rules. Add one using the presets above or create a custom rule.</p>
+          </div>
+
+          <!-- Rule Editor (inline) -->
+          <div class="rule-editor" v-if="editingRule">
+            <h4 style="margin-bottom: 12px">{{ ruleForm.id ? 'Edit Rule' : 'New Rule' }}</h4>
+            <div class="form-row">
+              <div class="form-group flex-2">
+                <label>Rule Name</label>
+                <input v-model="ruleForm.name" class="input-field" placeholder="e.g. US Domestic 10-digit">
+              </div>
+              <div class="form-group">
+                <label>Priority</label>
+                <input type="number" v-model.number="ruleForm.priority" class="input-field" placeholder="100">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Pattern (Regex)</label>
+              <input v-model="ruleForm.pattern" class="input-field code" placeholder="^\\+?1?(\\d{10})$">
+              <span class="help-text">Regex matched against the dialed number. Use capture groups for transforms.</span>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Match Field</label>
+                <select v-model="ruleForm.match_field" class="input-field">
+                  <option value="destination_number">Destination Number</option>
+                  <option value="caller_id_number">Caller ID Number</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Dial Format</label>
+                <select v-model="ruleForm.dial_format" class="input-field">
+                  <option value="e164">E.164 (+1NXXXXXXXXX)</option>
+                  <option value="11d">11 Digit (1NXXXXXXXXX)</option>
+                  <option value="10d">10 Digit (NXXXXXXXXX)</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Strip Leading Digits</label>
+                <input type="number" v-model.number="ruleForm.strip_digits" class="input-field" min="0">
+              </div>
+              <div class="form-group">
+                <label>Prepend</label>
+                <input v-model="ruleForm.prepend" class="input-field code" placeholder="">
+              </div>
+              <div class="form-group">
+                <label>Prefix</label>
+                <input v-model="ruleForm.prefix" class="input-field code" placeholder="e.g. 011">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Gateway / Trunk</label>
+              <select v-model="ruleForm.gateway_id" class="input-field" @change="updateRuleGatewayName">
+                <option :value="null">Use Group Default</option>
+                <option v-for="gw in gateways" :key="gw.id" :value="gw.id">{{ gw.name || gw.gateway_name }}</option>
+              </select>
+            </div>
+
+            <div class="checkbox-group">
+              <label class="checkbox-row"><input type="checkbox" v-model="ruleForm.continue_on_fail"><span>Continue to next rule on failure</span></label>
+              <label class="checkbox-row"><input type="checkbox" v-model="ruleForm.enabled"><span>Enabled</span></label>
+            </div>
+
+            <div class="form-actions" style="margin-top: 12px">
+              <button class="btn-secondary" @click="editingRule = false">Cancel</button>
+              <button class="btn-primary" @click="saveRoutingRule" :disabled="!ruleForm.name || !ruleForm.pattern">{{ ruleForm.id ? 'Update Rule' : 'Add Rule' }}</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="modal-actions">
+      <div class="modal-actions" v-if="!editingRule">
         <button class="btn-secondary" @click="showGroupModal = false">Cancel</button>
         <button class="btn-primary" @click="saveGroup" :disabled="!groupForm.name">{{ editingGroup ? 'Update' : 'Create Group' }}</button>
       </div>
@@ -790,19 +943,37 @@ const showGroupModal = ref(false)
 const editingGroup = ref(false)
 const groupForm = ref({
   name: '', description: '', enabled: true,
-  default_gateway_id: null, gateway_priorities: []
+  default_gateway_id: null, gateway_priorities: [],
+  messaging_provider_id: null
+})
+const groupModalTab = ref('general')
+const messagingProviders = ref([])
+const groupRoutingRules = ref([])
+const editingRule = ref(false)
+const ruleForm = ref({
+  name: '', pattern: '', match_field: 'destination_number',
+  priority: 100, weight: 1, strip_digits: 0, prepend: '', prefix: '',
+  dial_format: 'e164', gateway_id: null, gateway_name: '',
+  continue_on_fail: true, enabled: true
 })
 
 const openAddGroup = () => {
-  groupForm.value = { name: '', description: '', enabled: true, default_gateway_id: null, gateway_priorities: [] }
+  groupForm.value = { name: '', description: '', enabled: true, default_gateway_id: null, gateway_priorities: [], messaging_provider_id: null }
+  groupModalTab.value = 'general'
+  groupRoutingRules.value = []
+  editingRule.value = false
   editingGroup.value = false
   showGroupModal.value = true
 }
 
-const editGroup = (group) => {
+const editGroup = async (group) => {
   groupForm.value = { ...group, gateway_priorities: [...(group.gateway_priorities || [])] }
+  groupModalTab.value = 'general'
+  editingRule.value = false
   editingGroup.value = true
   showGroupModal.value = true
+  // Load routing rules for this group
+  await loadGroupRoutingRules(group.id)
 }
 
 const saveGroup = async () => {
@@ -837,6 +1008,84 @@ const addGatewayPriority = () => {
 const updateGatewayName = (gp) => {
   const gw = gateways.value.find(g => g.id === gp.gateway_id)
   if (gw) gp.gateway_name = gw.name || gw.gateway_name
+}
+
+// Messaging Providers
+const loadMessagingProviders = async () => {
+  try {
+    const response = await systemAPI.listMessagingProviders()
+    messagingProviders.value = response.data?.data || response.data || []
+  } catch (e) {
+    console.error('Failed to load messaging providers', e)
+  }
+}
+
+// Routing Rules
+const loadGroupRoutingRules = async (groupId) => {
+  try {
+    const response = await systemAPI.listRoutingRules(groupId)
+    groupRoutingRules.value = response.data?.data || response.data || []
+  } catch (e) {
+    console.error('Failed to load routing rules', e)
+    groupRoutingRules.value = []
+  }
+}
+
+const rulePresets = {
+  us_domestic: { name: 'US Domestic', pattern: '^\\+?1?(\\d{10})$', dial_format: 'e164', priority: 100, strip_digits: 0, prepend: '+1' },
+  international: { name: 'International', pattern: '^\\+(?!1)(\\d+)$', dial_format: 'e164', priority: 200, strip_digits: 0, prepend: '' },
+  emergency: { name: 'Emergency', pattern: '^(911|933)$', dial_format: 'e164', priority: 10, strip_digits: 0, prepend: '' },
+  toll_free: { name: 'Toll Free', pattern: '^\\+?1?(8[0-9]{2}\\d{7})$', dial_format: 'e164', priority: 90, strip_digits: 0, prepend: '+1' },
+  custom: { name: '', pattern: '', dial_format: 'e164', priority: 100, strip_digits: 0, prepend: '' }
+}
+
+const addRulePreset = (presetKey) => {
+  const preset = rulePresets[presetKey]
+  ruleForm.value = {
+    name: preset.name, pattern: preset.pattern, match_field: 'destination_number',
+    priority: preset.priority, weight: 1, strip_digits: preset.strip_digits,
+    prepend: preset.prepend, prefix: '', dial_format: preset.dial_format,
+    gateway_id: null, gateway_name: '', continue_on_fail: true, enabled: true
+  }
+  editingRule.value = true
+}
+
+const editRoutingRule = (rule) => {
+  ruleForm.value = { ...rule }
+  editingRule.value = true
+}
+
+const updateRuleGatewayName = () => {
+  const gw = gateways.value.find(g => g.id === ruleForm.value.gateway_id)
+  ruleForm.value.gateway_name = gw ? (gw.name || gw.gateway_name) : ''
+}
+
+const saveRoutingRule = async () => {
+  try {
+    const groupId = groupForm.value.id
+    if (ruleForm.value.id) {
+      await systemAPI.updateRoutingRule(groupId, ruleForm.value.id, ruleForm.value)
+    } else {
+      await systemAPI.createRoutingRule(groupId, ruleForm.value)
+    }
+    editingRule.value = false
+    await loadGroupRoutingRules(groupId)
+    await loadNumberGroups()
+  } catch (e) {
+    alert('Failed to save routing rule: ' + (e.message || 'Unknown error'))
+  }
+}
+
+const deleteRoutingRule = async (rule) => {
+  if (confirm(`Delete rule "${rule.name}"?`)) {
+    try {
+      await systemAPI.deleteRoutingRule(groupForm.value.id, rule.id)
+      await loadGroupRoutingRules(groupForm.value.id)
+      await loadNumberGroups()
+    } catch (e) {
+      alert('Failed to delete routing rule')
+    }
+  }
 }
 
 // Computed: Total enabled routes
@@ -1021,7 +1270,7 @@ const saveInboundRoute = async () => {
 // Outbound Routes (Global)
 const showOutboundModal = ref(false)
 const editingOutbound = ref(false)
-const outboundForm = ref({ dialplan_name: '', dialplan_context: 'default', enabled: true, pattern: '', strip: 0, prepend: '', gateway: '', continue: true, details: [] })
+const outboundForm = ref({ name: '', dialplan_context: 'default', enabled: true, pattern: '', strip: 0, prepend: '', gateway: '', continue: true, details: [] })
 // Helper for outbound simplified UI (Pattern, Strip, Prepend, Gateway) -> Dialplan Details
 // This logic is complex because 'outbound' UI is an abstraction over raw dialplan conditions/actions.
 // For now, I'll stick to a simpler implementation or reuse the raw editor if the UI allows.
@@ -1177,6 +1426,7 @@ onMounted(() => {
   loadAllNumbers()
   loadRoutes()
   loadGateways()
+  loadMessagingProviders()
 })
 
 // Settings

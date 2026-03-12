@@ -1503,8 +1503,22 @@ func (h *Handler) CreateACL(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
-	if err := h.DB.Create(&acl).Error; err != nil {
+	// Stash nodes before creating to prevent GORM auto-cascade
+	incomingNodes := acl.Nodes
+	acl.Nodes = nil
+
+	if err := h.DB.Omit("Nodes").Create(&acl).Error; err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create ACL"})
+	}
+
+	// Create nodes explicitly
+	if len(incomingNodes) > 0 {
+		for i := range incomingNodes {
+			incomingNodes[i].ACLUUID = acl.UUID
+			incomingNodes[i].ID = 0
+		}
+		h.DB.Create(&incomingNodes)
+		acl.Nodes = incomingNodes
 	}
 
 	h.reloadACL()
@@ -1538,12 +1552,43 @@ func (h *Handler) UpdateACL(c *fiber.Ctx) error {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "ACL not found"})
 	}
 
-	if err := c.BodyParser(&acl); err != nil {
+	var input models.ACL
+	if err := c.BodyParser(&input); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
-	if err := h.DB.Save(&acl).Error; err != nil {
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update ACL"})
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		// Update ACL fields only, omit nodes to prevent cascade
+		input.ID = uint(id)
+		input.UUID = acl.UUID // Preserve UUID
+		if err := tx.Omit("Nodes").Save(&input).Error; err != nil {
+			return err
+		}
+
+		// Replace nodes if provided in payload
+		if input.Nodes != nil {
+			// Delete existing nodes
+			if err := tx.Where("acl_uuid = ?", acl.UUID).Delete(&models.ACLNode{}).Error; err != nil {
+				return err
+			}
+			// Create new nodes
+			if len(input.Nodes) > 0 {
+				for i := range input.Nodes {
+					input.Nodes[i].ACLUUID = acl.UUID
+					input.Nodes[i].ID = 0
+				}
+				if err := tx.Create(&input.Nodes).Error; err != nil {
+					return err
+				}
+			}
+		}
+
+		acl = input
+		return nil
+	})
+
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update ACL: " + err.Error()})
 	}
 
 	h.reloadACL()
@@ -1569,8 +1614,7 @@ func (h *Handler) DeleteACL(c *fiber.Ctx) error {
 	}
 
 	h.reloadACL()
-	c.Status(http.StatusNoContent)
-	return nil
+	return c.JSON(fiber.Map{"message": "ACL deleted successfully"})
 }
 
 func (h *Handler) CreateACLNode(c *fiber.Ctx) error {
@@ -1635,8 +1679,7 @@ func (h *Handler) DeleteACLNode(c *fiber.Ctx) error {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete ACL node"})
 	}
 
-	c.Status(http.StatusNoContent)
-	return nil
+	return c.JSON(fiber.Map{"message": "ACL node deleted successfully"})
 }
 
 // =====================
@@ -2264,7 +2307,9 @@ func (h *Handler) UnassignNumber(c *fiber.Ctx) error {
 
 func (h *Handler) ListNumberGroups(c *fiber.Ctx) error {
 	var groups []models.NumberGroup
-	if err := h.DB.Preload("DefaultGateway").Order("name ASC").Find(&groups).Error; err != nil {
+	if err := h.DB.Preload("DefaultGateway").Preload("MessagingProvider").Preload("RoutingRules", func(db *gorm.DB) *gorm.DB {
+		return db.Order("priority ASC")
+	}).Order("name ASC").Find(&groups).Error; err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve number groups"})
 	}
 
@@ -2303,7 +2348,9 @@ func (h *Handler) GetNumberGroup(c *fiber.Ctx) error {
 	}
 
 	var group models.NumberGroup
-	if err := h.DB.Preload("DefaultGateway").First(&group, id).Error; err != nil {
+	if err := h.DB.Preload("DefaultGateway").Preload("MessagingProvider").Preload("RoutingRules", func(db *gorm.DB) *gorm.DB {
+		return db.Preload("Gateway").Order("priority ASC")
+	}).First(&group, id).Error; err != nil {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number group not found"})
 	}
 
@@ -2371,6 +2418,168 @@ func (h *Handler) ReorderGroupGateways(c *fiber.Ctx) error {
 	h.DB.Model(&group).Update("gateway_priorities", input.GatewayPriorities)
 
 	return c.JSON(fiber.Map{"data": group, "message": "Gateway priorities updated"})
+}
+
+// =====================
+// Outbound Routing Rules (per Number Group)
+// =====================
+
+// ListRoutingRules returns all routing rules for a number group
+func (h *Handler) ListRoutingRules(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid group ID"})
+	}
+
+	// Verify group exists
+	var group models.NumberGroup
+	if err := h.DB.First(&group, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number group not found"})
+	}
+
+	var rules []models.OutboundRoutingRule
+	if err := h.DB.Where("number_group_id = ?", id).Preload("Gateway").Order("priority ASC").Find(&rules).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve routing rules"})
+	}
+
+	return c.JSON(fiber.Map{"data": rules})
+}
+
+// CreateRoutingRule creates a new routing rule for a number group
+func (h *Handler) CreateRoutingRule(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid group ID"})
+	}
+
+	// Verify group exists
+	var group models.NumberGroup
+	if err := h.DB.First(&group, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number group not found"})
+	}
+
+	var rule models.OutboundRoutingRule
+	if err := c.BodyParser(&rule); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	// Force parent association
+	rule.NumberGroupID = uint(id)
+
+	// Validate required fields
+	if rule.Name == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Rule name is required"})
+	}
+	if rule.Pattern == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Pattern is required"})
+	}
+
+	// Auto-fill gateway name if ID is provided
+	if rule.GatewayID != nil && rule.GatewayName == "" {
+		var gw models.Gateway
+		if err := h.DB.First(&gw, *rule.GatewayID).Error; err == nil {
+			rule.GatewayName = gw.GatewayName
+		}
+	}
+
+	if err := h.DB.Create(&rule).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create routing rule"})
+	}
+
+	// Reload with gateway
+	h.DB.Preload("Gateway").First(&rule, rule.ID)
+
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": rule})
+}
+
+// UpdateRoutingRule updates a routing rule
+func (h *Handler) UpdateRoutingRule(c *fiber.Ctx) error {
+	groupID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid group ID"})
+	}
+
+	ruleID, err := strconv.Atoi(c.Params("ruleId"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid rule ID"})
+	}
+
+	var rule models.OutboundRoutingRule
+	if err := h.DB.Where("id = ? AND number_group_id = ?", ruleID, groupID).First(&rule).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Routing rule not found"})
+	}
+
+	if err := c.BodyParser(&rule); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	// Preserve identity
+	rule.ID = uint(ruleID)
+	rule.NumberGroupID = uint(groupID)
+
+	// Auto-fill gateway name if ID changed
+	if rule.GatewayID != nil && rule.GatewayName == "" {
+		var gw models.Gateway
+		if err := h.DB.First(&gw, *rule.GatewayID).Error; err == nil {
+			rule.GatewayName = gw.GatewayName
+		}
+	}
+
+	if err := h.DB.Save(&rule).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update routing rule"})
+	}
+
+	h.DB.Preload("Gateway").First(&rule, ruleID)
+	return c.JSON(fiber.Map{"data": rule})
+}
+
+// DeleteRoutingRule deletes a routing rule
+func (h *Handler) DeleteRoutingRule(c *fiber.Ctx) error {
+	groupID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid group ID"})
+	}
+
+	ruleID, err := strconv.Atoi(c.Params("ruleId"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid rule ID"})
+	}
+
+	result := h.DB.Where("id = ? AND number_group_id = ?", ruleID, groupID).Delete(&models.OutboundRoutingRule{})
+	if result.RowsAffected == 0 {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Routing rule not found"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Routing rule deleted"})
+}
+
+// ReorderRoutingRules bulk-updates priority for routing rules in a number group
+func (h *Handler) ReorderRoutingRules(c *fiber.Ctx) error {
+	groupID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid group ID"})
+	}
+
+	var items []struct {
+		ID       uint `json:"id"`
+		Priority int  `json:"priority"`
+	}
+	if err := c.BodyParser(&items); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	tx := h.DB.Begin()
+	for _, item := range items {
+		if err := tx.Model(&models.OutboundRoutingRule{}).
+			Where("id = ? AND number_group_id = ?", item.ID, groupID).
+			Update("priority", item.Priority).Error; err != nil {
+			tx.Rollback()
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to reorder rules"})
+		}
+	}
+	tx.Commit()
+
+	return c.JSON(fiber.Map{"message": "Routing rules reordered"})
 }
 
 // ReorderGateways bulk-updates gateway priority/weight for trunk ordering

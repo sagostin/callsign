@@ -153,46 +153,8 @@
         <div class="divider"></div>
 
         <div class="form-section">
-          <h4>Dial Format</h4>
-          <p class="help-text" style="margin-bottom: 12px;">Configure how numbers are formatted when sent to this trunk.</p>
-          
-          <div class="form-row">
-            <label class="checkbox-label">
-              <input type="checkbox" v-model="form.allow_10_digit">
-              <span>Allow 10-digit dialing (NANPA)</span>
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" v-model="form.allow_11_digit">
-              <span>Allow 11-digit dialing (1+10)</span>
-            </label>
-          </div>
-
-          <div class="form-row" style="margin-top: 12px;">
-            <div class="form-group">
-              <label>International Prefix</label>
-              <input type="text" v-model="form.international_prefix" class="input-field" placeholder="011">
-            </div>
-            <div class="form-group">
-              <label>Outbound Format</label>
-              <select v-model="form.dial_format" class="input-field">
-                <option value="e164">E.164 (+1XXXXXXXXXX)</option>
-                <option value="11d">11-digit (1XXXXXXXXXX)</option>
-                <option value="10d">10-digit (XXXXXXXXXX)</option>
-                <option value="custom">Custom</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label>Strip Prefix</label>
-              <input type="text" v-model="form.strip_prefix" class="input-field" placeholder="None">
-            </div>
-            <div class="form-group">
-              <label>Prepend Prefix</label>
-              <input type="text" v-model="form.prepend_prefix" class="input-field" placeholder="None">
-            </div>
-          </div>
+          <h4>Routing Priority</h4>
+          <p class="help-text" style="margin-bottom: 12px;">Dial format and number transformations are now configured on <strong>Number Group routing rules</strong> in System Routing.</p>
 
           <div class="form-row">
             <div class="form-group">
@@ -245,13 +207,6 @@ const defaultForm = () => ({
   realm: '',
   enabled: true,
   access: 'all',
-  // Dial format fields
-  dial_format: 'e164',
-  allow_10_digit: true,
-  allow_11_digit: true,
-  international_prefix: '011',
-  strip_prefix: '',
-  prepend_prefix: '',
   priority: 0,
   weight: 100
 })
@@ -275,15 +230,8 @@ const loadGateways = async () => {
       register: g.register || false,
       username: g.username || '',
       realm: g.realm || '',
-      enabled: g.enabled !== false,
       priority: g.priority || 0,
-      weight: g.weight || 100,
-      dial_format: g.dial_format || 'e164',
-      allow_10_digit: g.allow_10_digit !== false,
-      allow_11_digit: g.allow_11_digit !== false,
-      international_prefix: g.international_prefix || '011',
-      strip_prefix: g.strip_prefix || '',
-      prepend_prefix: g.prepend_prefix || ''
+      weight: g.weight || 100
     })).sort((a, b) => a.priority - b.priority)
     originalOrder.value = gateways.value.map(g => ({ id: g.id, priority: g.priority, weight: g.weight }))
   } catch (e) {
@@ -353,13 +301,6 @@ const saveGateway = async () => {
       password: form.value.password,
       realm: form.value.realm,
       enabled: form.value.enabled,
-      // Dial format fields
-      dial_format: form.value.dial_format,
-      allow_10_digit: form.value.allow_10_digit,
-      allow_11_digit: form.value.allow_11_digit,
-      international_prefix: form.value.international_prefix,
-      strip_prefix: form.value.strip_prefix,
-      prepend_prefix: form.value.prepend_prefix,
       priority: parseInt(form.value.priority) || 0,
       weight: parseInt(form.value.weight) || 100
     }

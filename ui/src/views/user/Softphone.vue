@@ -190,11 +190,14 @@
 
     <!-- Device Menu Backdrop -->
     <div class="menu-backdrop" v-if="showDeviceMenu" @click="showDeviceMenu = false"></div>
+
+    <!-- Hidden audio element for WebRTC remote media -->
+    <audio ref="remoteAudioRef" autoplay style="display: none;"></audio>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, inject, nextTick } from 'vue'
 import { 
   Phone as PhoneIcon, PhoneOff as PhoneOffIcon, PhoneCall as PhoneCallIcon,
   PhoneMissed as PhoneMissedIcon, PhoneOutgoing as PhoneOutgoingIcon, PhoneIncoming as PhoneIncomingIcon,
@@ -204,15 +207,21 @@ import {
   Headphones as HeadphonesIcon, X as XIcon, Info as InfoIcon
 } from 'lucide-vue-next'
 import { extensionPortalAPI, devicesAPI, extensionsAPI } from '../../services/api'
+import { useSipService, SipState, CallState, AudioMode } from '../../services/sipService'
 
 const toast = inject('toast')
+
+// Initialize SIP service composable
+const sip = useSipService()
+
+// Template ref for the audio element
+const remoteAudioRef = ref(null)
 
 // ============================================
 // DEVICE BINDING
 // ============================================
 
 const showDeviceMenu = ref(false)
-const boundDevice = ref(null)
 const deviceHasActiveCall = ref(false)
 const quickTransferTargets = ref([])
 
@@ -228,6 +237,9 @@ const getDeviceIcon = (device) => {
   if (!device) return MonitorIcon
   return deviceIconMap[device.type] || device.icon || MonitorIcon
 }
+
+// Computed: map sip.state.boundDevice to local ref for template compatibility
+const boundDevice = computed(() => sip.state.boundDevice)
 
 const fetchDevices = async () => {
   try {
@@ -245,7 +257,6 @@ const fetchDevices = async () => {
       }))
     ]
   } catch (err) {
-    // Fallback to just softphone
     userDevices.value = [
       { id: 'softphone', type: 'softphone', name: 'Browser Softphone', meta: 'WebRTC', status: 'online', icon: HeadphonesIcon }
     ]
@@ -254,103 +265,55 @@ const fetchDevices = async () => {
 
 const bindDevice = (device) => {
   if (device.status === 'offline') return
-  boundDevice.value = device
+  sip.bindToDevice(device)
   showDeviceMenu.value = false
-  
-  if (device.type !== 'softphone') {
-    subscribeToDeviceEvents(device)
-  }
-}
-
-const subscribeToDeviceEvents = (device) => {
-  // Poll device call status periodically when bound to hardware device
-  const pollInterval = setInterval(async () => {
-    if (boundDevice.value?.id !== device.id) {
-      clearInterval(pollInterval)
-      return
-    }
-    try {
-      const res = await devicesAPI.callStatus(device.id)
-      const status = res.data
-      if (status && status.active) {
-        deviceHasActiveCall.value = true
-      } else {
-        deviceHasActiveCall.value = false
-      }
-    } catch {
-      // Device may not support call status polling
-    }
-  }, 5000)
 }
 
 const takeCallControl = () => {
-  // TODO: SIP.js — transfer active device call to browser WebRTC session
-  // This requires SIP REFER or re-INVITE to move the call to the WebRTC endpoint
-  toast?.info('Call control transfer requires SIP.js integration')
+  toast?.info('Call control transfer requires active SIP.js session')
 }
 
 // ============================================
-// SIP STATE (Groundwork for SIP.js)
+// SIP STATE (mapped from composable)
 // ============================================
 
-const sipState = ref('disconnected')
+const sipState = computed(() => sip.state.connectionState)
 const sipStateLabel = computed(() => {
   const labels = {
-    disconnected: 'Disconnected',
-    connecting: 'Connecting...',
-    connected: 'Connected',
-    registered: 'Ready'
+    [SipState.DISCONNECTED]: 'Disconnected',
+    [SipState.CONNECTING]: 'Connecting...',
+    [SipState.CONNECTED]: 'Connected',
+    [SipState.REGISTERED]: 'Ready',
+    [SipState.FAILED]: 'Failed'
   }
-  return labels[sipState.value] || 'Unknown'
+  return labels[sip.state.connectionState] || 'Unknown'
 })
 
-const canMakeCalls = computed(() => {
-  return sipState.value === 'registered' || sipState.value === 'disconnected'
-})
-
-const initializeSip = async () => {
-  sipState.value = 'connecting'
-  // TODO: SIP.js — Initialize UserAgent with WebSocket transport:
-  // const ua = new SIP.UserAgent({ uri, transportOptions: { server: wsUrl }, authorizationPassword: sipPassword })
-  // await ua.start()
-  // const registerer = new SIP.Registerer(ua)
-  // await registerer.register()
-  // For now, mark as ready so UI is functional for click-to-call via hardware devices
-  sipState.value = boundDevice.value?.type === 'softphone' ? 'disconnected' : 'registered'
-}
+const canMakeCalls = computed(() => sip.canCall.value)
 
 // ============================================
-// CALL STATE
+// CALL STATE (mapped from composable)
 // ============================================
 
 const number = ref('')
-const callState = ref('idle')
-const callDirection = ref(null)
-const remoteNumber = ref('')
-const remoteName = ref('')
-const startTime = ref(null)
-const duration = ref(0)
-const isMuted = ref(false)
-const isOnHold = ref(false)
-
-let durationTimer = null
+const callState = computed(() => sip.state.callState)
+const callDirection = computed(() => sip.currentCall.direction)
+const remoteNumber = computed(() => sip.currentCall.remoteNumber)
+const remoteName = computed(() => sip.currentCall.remoteName)
+const isMuted = computed(() => sip.currentCall.muted)
+const isOnHold = computed(() => sip.currentCall.onHold)
+const formattedDuration = computed(() => sip.formattedDuration.value)
 
 const callStatusText = computed(() => {
   const statusMap = {
-    idle: '',
-    dialing: 'Dialing...',
-    ringing: callDirection.value === 'inbound' ? 'Incoming Call' : 'Ringing...',
-    established: isOnHold.value ? 'On Hold' : 'Connected',
-    holding: 'On Hold',
-    terminated: 'Call Ended'
+    [CallState.IDLE]: '',
+    [CallState.DIALING]: 'Dialing...',
+    [CallState.RINGING]: sip.currentCall.direction === 'inbound' ? 'Incoming Call' : 'Ringing...',
+    [CallState.ESTABLISHED]: sip.currentCall.onHold ? 'On Hold' : 'Connected',
+    [CallState.HOLDING]: 'On Hold',
+    [CallState.TERMINATED]: 'Call Ended'
   }
-  return statusMap[callState.value] || ''
-})
-
-const formattedDuration = computed(() => {
-  const mins = Math.floor(duration.value / 60)
-  const secs = duration.value % 60
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  return statusMap[sip.state.callState] || ''
 })
 
 // ============================================
@@ -367,19 +330,10 @@ const keys = [
 const showKeypad = ref(false)
 
 const pressKey = (key) => {
-  if (callState.value === 'established') {
-    sendDtmf(key)
+  if (sip.state.callState === CallState.ESTABLISHED) {
+    sip.sendDtmf(key)
   } else {
     number.value += key
-  }
-}
-
-const sendDtmf = (tone) => {
-  // TODO: SIP.js — session.sessionDescriptionHandler.sendDtmf(tone)
-  // For hardware devices, we could potentially send via API
-  if (boundDevice.value?.type !== 'softphone' && boundDevice.value?.id) {
-    // Hardware devices can receive DTMF via the PBX
-    console.log('[Dialer] DTMF via hardware device:', tone)
   }
 }
 
@@ -388,97 +342,43 @@ const sendDtmf = (tone) => {
 // ============================================
 
 const makeCall = async () => {
-  if (!number.value || callState.value !== 'idle') return
-  
-  callState.value = 'dialing'
-  callDirection.value = 'outbound'
-  remoteNumber.value = number.value
+  if (!number.value || sip.state.callState !== CallState.IDLE) return
 
-  if (boundDevice.value?.type !== 'softphone' && boundDevice.value?.id) {
-    // Click-to-call via device API — tell the PBX to originate a call from this device
+  if (sip.state.boundDevice?.type !== 'softphone' && sip.state.boundDevice?.id) {
+    // Click-to-call via device API — tell the PBX to originate from the hardware phone
     try {
-      await devicesAPI.dial(boundDevice.value.id, number.value)
-      callState.value = 'ringing'
-      // Poll for call status updates
-      const pollCall = setInterval(async () => {
-        try {
-          const res = await devicesAPI.callStatus(boundDevice.value.id)
-          const status = res.data
-          if (status?.state === 'established' || status?.state === 'active') {
-            callState.value = 'established'
-            startTime.value = new Date()
-            startDurationTimer()
-            clearInterval(pollCall)
-          } else if (status?.state === 'terminated' || status?.state === 'hangup') {
-            clearInterval(pollCall)
-            hangupCall()
-          }
-        } catch {
-          clearInterval(pollCall)
-        }
-      }, 2000)
-      // Auto-stop polling after 60s
-      setTimeout(() => clearInterval(pollCall), 60000)
-      return
+      await devicesAPI.dial(sip.state.boundDevice.id, number.value)
+      toast?.success(`Dialing ${number.value} on ${sip.state.boundDevice.name}`)
     } catch (err) {
       toast?.error(err.message || 'Failed to initiate call')
-      resetCall()
-      return
     }
+    return
   }
 
-  // TODO: SIP.js — for browser softphone:
-  // const session = userAgent.invite(SIP.UserAgent.makeURI(`sip:${number.value}@domain`))
-  // session.stateChange.addListener((state) => { ... })
-  toast?.info('Browser calling requires SIP.js integration. Use a hardware device for click-to-call.')
-  resetCall()
+  // Browser softphone call via SIP.js
+  const success = await sip.call(number.value)
+  if (!success) {
+    toast?.error(sip.state.error || 'Failed to start call')
+  }
 }
 
 const answerCall = async () => {
-  if (callState.value !== 'ringing') return
-  callState.value = 'established'
-  startTime.value = new Date()
-  startDurationTimer()
+  const success = await sip.answer()
+  if (!success) {
+    toast?.error('Failed to answer call')
+  }
 }
 
 const hangupCall = async () => {
-  stopDurationTimer()
-  callState.value = 'terminated'
-  setTimeout(() => { resetCall() }, 1500)
+  await sip.hangup()
 }
 
 const toggleMute = () => {
-  isMuted.value = !isMuted.value
+  sip.toggleMute()
 }
 
-const toggleHold = () => {
-  isOnHold.value = !isOnHold.value
-  callState.value = isOnHold.value ? 'holding' : 'established'
-}
-
-const startDurationTimer = () => {
-  duration.value = 0
-  durationTimer = setInterval(() => {
-    if (startTime.value) {
-      duration.value = Math.floor((Date.now() - startTime.value.getTime()) / 1000)
-    }
-  }, 1000)
-}
-
-const stopDurationTimer = () => {
-  if (durationTimer) { clearInterval(durationTimer); durationTimer = null }
-}
-
-const resetCall = () => {
-  callState.value = 'idle'
-  callDirection.value = null
-  remoteNumber.value = ''
-  remoteName.value = ''
-  startTime.value = null
-  duration.value = 0
-  isMuted.value = false
-  isOnHold.value = false
-  number.value = ''
+const toggleHold = async () => {
+  await sip.toggleHold()
 }
 
 // ============================================
@@ -490,10 +390,9 @@ const transferType = ref('blind')
 const transferTarget = ref('')
 
 const executeTransfer = async () => {
-  if (boundDevice.value?.type !== 'softphone' && boundDevice.value?.id) {
-    // Transfer via device API
+  if (sip.state.boundDevice?.type !== 'softphone' && sip.state.boundDevice?.id) {
     try {
-      await devicesAPI.transfer(boundDevice.value.id, transferTarget.value, transferType.value)
+      await devicesAPI.transfer(sip.state.boundDevice.id, transferTarget.value, transferType.value)
       toast?.success(`Call transferred to ${transferTarget.value}`)
       showTransferModal.value = false
       hangupCall()
@@ -502,9 +401,15 @@ const executeTransfer = async () => {
     }
     return
   }
-  // TODO: SIP.js — session.refer(targetURI) for blind, or hold + invite for attended
-  toast?.info('Browser transfer requires SIP.js integration')
-  showTransferModal.value = false
+
+  // SIP.js blind transfer
+  const success = await sip.transfer(transferTarget.value)
+  if (success) {
+    toast?.success(`Call transferred to ${transferTarget.value}`)
+    showTransferModal.value = false
+  } else {
+    toast?.error(sip.state.error || 'Transfer failed')
+  }
 }
 
 // ============================================
@@ -553,9 +458,40 @@ const dialNumber = (num) => {
 
 onMounted(async () => {
   await fetchDevices()
-  boundDevice.value = userDevices.value.find(d => d.type === 'softphone')
-  initializeSip()
+
+  // Default to softphone device
+  const softphone = userDevices.value.find(d => d.type === 'softphone')
+  if (softphone) {
+    sip.bindToDevice(softphone)
+  }
+
+  // Wire the audio element after DOM is ready
+  await nextTick()
+  if (remoteAudioRef.value) {
+    sip.setRemoteAudioElement(remoteAudioRef.value)
+  }
+
+  // Get auth token from localStorage for SIP provisioning
+  const token = localStorage.getItem('token') || ''
+  const profile = JSON.parse(localStorage.getItem('user_profile') || '{}')
+
+  // Initialize SIP service
+  await sip.initialize({
+    authToken: token,
+    userId: profile.user_id || profile.id,
+    extensionId: profile.extension_id,
+    displayName: profile.display_name || profile.name || profile.extension || ''
+  })
+
+  // Connect to FreeSWITCH via WebSocket
+  const connected = await sip.connect()
+  if (!connected && sip.state.error) {
+    console.warn('[Softphone] SIP connection failed:', sip.state.error)
+    // Not showing toast here — the connection status pill in the UI is sufficient
+  }
+
   fetchRecentCalls()
+
   // Load quick transfer targets from company directory
   try {
     const extRes = await extensionsAPI.list()
@@ -568,7 +504,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  stopDurationTimer()
+  sip.disconnect()
 })
 </script>
 
