@@ -106,9 +106,12 @@ func buildFileTree(root, currentPath string) (*FileNode, error) {
 		return nil, err
 	}
 
+	relPath := strings.TrimPrefix(currentPath, root)
+	relPath = strings.TrimPrefix(relPath, "/")
+
 	node := &FileNode{
 		Name: info.Name(),
-		Path: strings.TrimPrefix(currentPath, root),
+		Path: relPath,
 		Type: "file",
 		Size: info.Size(),
 	}

@@ -315,7 +315,7 @@ const getNodeByPath = (tree, path) => {
     
     if (!path) return { children: currentChildren }
 
-    const parts = path.split('/')
+    const parts = path.split('/').filter(Boolean)
     let currentNode = { children: currentChildren }
     
     for (const part of parts) {
@@ -505,8 +505,8 @@ const loadData = async () => {
             systemAPI.listSounds(),
             systemAPI.listMusic()
         ])
-        soundsTree.value = soundsRes.data.data
-        musicTree.value = musicRes.data.data
+        soundsTree.value = soundsRes.data || []
+        musicTree.value = musicRes.data || []
         
         // phrases.value = ...
     } catch(e) {

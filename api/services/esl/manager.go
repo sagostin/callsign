@@ -814,6 +814,20 @@ func (m *Manager) API(command string) (string, error) {
 	return client.API(command)
 }
 
+// BgAPI sends a background API command to FreeSWITCH and returns the job UUID.
+// Use this for long-running commands (e.g. sofia profile restart) that may
+// block or disrupt the ESL connection if run synchronously.
+func (m *Manager) BgAPI(command string) (string, error) {
+	m.mu.RLock()
+	client := m.Client
+	m.mu.RUnlock()
+
+	if client == nil {
+		return "", fmt.Errorf("not connected")
+	}
+	return client.BgAPI(command)
+}
+
 // ReloadXML sends a reloadxml command to FreeSWITCH
 // Call this after config changes that affect xml_curl-served data
 func (m *Manager) ReloadXML() error {

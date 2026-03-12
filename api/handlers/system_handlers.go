@@ -4,6 +4,7 @@ import (
 	"callsign/handlers/freeswitch"
 	"callsign/middleware"
 	"callsign/models"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -332,6 +333,14 @@ func (h *Handler) CreateGateway(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
+	// Password has json:"-" so BodyParser skips it. Extract manually.
+	var raw map[string]interface{}
+	if err := json.Unmarshal(c.Body(), &raw); err == nil {
+		if pw, ok := raw["password"].(string); ok && pw != "" {
+			gateway.Password = pw
+		}
+	}
+
 	// If tenant admin, scope to their tenant
 	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID > 0 {
@@ -387,8 +396,23 @@ func (h *Handler) UpdateGateway(c *fiber.Ctx) error {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Gateway not found"})
 	}
 
+	// Stash existing password before BodyParser overwrites (Password has json:"-")
+	existingPassword := gateway.Password
+
 	if err := c.BodyParser(&gateway); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	// Password has json:"-" so BodyParser skips it. Extract manually from raw body.
+	var raw map[string]interface{}
+	if err := json.Unmarshal(c.Body(), &raw); err == nil {
+		if pw, ok := raw["password"].(string); ok && pw != "" {
+			gateway.Password = pw
+		} else {
+			gateway.Password = existingPassword // Preserve existing password
+		}
+	} else {
+		gateway.Password = existingPassword
 	}
 
 	gateway.ID = uint(id)
@@ -903,6 +927,8 @@ func (h *Handler) GetSofiaGatewayStatus(c *fiber.Ctx) error {
 }
 
 // RestartSofiaProfile restarts a Sofia profile
+// Uses BgAPI to avoid blocking — sofia restart can take 10-30s and may
+// disrupt the ESL connection, causing synchronous API() calls to hang/502.
 func (h *Handler) RestartSofiaProfile(c *fiber.Ctx) error {
 	profileName := c.Params("name")
 	if profileName == "" {
@@ -913,15 +939,21 @@ func (h *Handler) RestartSofiaProfile(c *fiber.Ctx) error {
 		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
-	result, err := h.ESLManager.API("sofia profile " + profileName + " restart reloadxml")
+	jobUUID, err := h.ESLManager.BgAPI("sofia profile " + profileName + " restart reloadxml")
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to restart profile: " + err.Error()})
 	}
 
-	return c.JSON(fiber.Map{"message": "Profile restarted", "data": result, "profile": profileName})
+	return c.JSON(fiber.Map{
+		"message":  "Profile restart command sent",
+		"data":     "Restart command queued (background job: " + jobUUID + ")",
+		"profile":  profileName,
+		"job_uuid": jobUUID,
+	})
 }
 
 // StartSofiaProfile starts a stopped Sofia profile
+// Uses BgAPI to avoid blocking — sofia start can take several seconds.
 func (h *Handler) StartSofiaProfile(c *fiber.Ctx) error {
 	profileName := c.Params("name")
 	if profileName == "" {
@@ -932,15 +964,21 @@ func (h *Handler) StartSofiaProfile(c *fiber.Ctx) error {
 		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
-	result, err := h.ESLManager.API("sofia profile " + profileName + " start")
+	jobUUID, err := h.ESLManager.BgAPI("sofia profile " + profileName + " start")
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to start profile: " + err.Error()})
 	}
 
-	return c.JSON(fiber.Map{"message": "Profile started", "data": result, "profile": profileName})
+	return c.JSON(fiber.Map{
+		"message":  "Profile start command sent",
+		"data":     "Start command queued (background job: " + jobUUID + ")",
+		"profile":  profileName,
+		"job_uuid": jobUUID,
+	})
 }
 
 // StopSofiaProfile stops a running Sofia profile
+// Uses BgAPI to avoid blocking — sofia stop can take several seconds.
 func (h *Handler) StopSofiaProfile(c *fiber.Ctx) error {
 	profileName := c.Params("name")
 	if profileName == "" {
@@ -951,12 +989,17 @@ func (h *Handler) StopSofiaProfile(c *fiber.Ctx) error {
 		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
-	result, err := h.ESLManager.API("sofia profile " + profileName + " stop")
+	jobUUID, err := h.ESLManager.BgAPI("sofia profile " + profileName + " stop")
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to stop profile: " + err.Error()})
 	}
 
-	return c.JSON(fiber.Map{"message": "Profile stopped", "data": result, "profile": profileName})
+	return c.JSON(fiber.Map{
+		"message":  "Profile stop command sent",
+		"data":     "Stop command queued (background job: " + jobUUID + ")",
+		"profile":  profileName,
+		"job_uuid": jobUUID,
+	})
 }
 
 // ReloadSofiaXML reloads FreeSWITCH XML configuration
@@ -1145,6 +1188,17 @@ func (h *Handler) CreateMessagingProvider(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
+	// AuthToken and WebhookSecret have json:"-" so BodyParser skips them.
+	var raw map[string]interface{}
+	if err := json.Unmarshal(c.Body(), &raw); err == nil {
+		if token, ok := raw["auth_token"].(string); ok && token != "" {
+			provider.AuthToken = token
+		}
+		if secret, ok := raw["webhook_secret"].(string); ok && secret != "" {
+			provider.WebhookSecret = secret
+		}
+	}
+
 	// Ensure it's a system-level provider
 	provider.TenantID = nil
 
@@ -1180,10 +1234,33 @@ func (h *Handler) UpdateMessagingProvider(c *fiber.Ctx) error {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Messaging provider not found"})
 	}
 
+	// Stash existing secrets before BodyParser overwrites (these have json:"-")
+	existingAuthToken := provider.AuthToken
+	existingWebhookSecret := provider.WebhookSecret
+
 	if err := c.BodyParser(&provider); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
+	// AuthToken and WebhookSecret have json:"-" so BodyParser skips them.
+	var raw map[string]interface{}
+	if err := json.Unmarshal(c.Body(), &raw); err == nil {
+		if token, ok := raw["auth_token"].(string); ok && token != "" {
+			provider.AuthToken = token
+		} else {
+			provider.AuthToken = existingAuthToken
+		}
+		if secret, ok := raw["webhook_secret"].(string); ok && secret != "" {
+			provider.WebhookSecret = secret
+		} else {
+			provider.WebhookSecret = existingWebhookSecret
+		}
+	} else {
+		provider.AuthToken = existingAuthToken
+		provider.WebhookSecret = existingWebhookSecret
+	}
+
+	provider.ID = uint(id)
 	if err := h.DB.Save(&provider).Error; err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update messaging provider"})
 	}
@@ -1339,13 +1416,47 @@ func (h *Handler) UpdateGlobalDialplan(c *fiber.Ctx) error {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Dial plan not found"})
 	}
 
-	if err := c.BodyParser(&dialplan); err != nil {
+	var input models.Dialplan
+	if err := c.BodyParser(&input); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
-	if err := h.DB.Save(&dialplan).Error; err != nil {
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update dial plan"})
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		input.ID = uint(id)
+		input.UUID = dialplan.UUID
+		input.TenantID = nil // Keep as global dialplan
+
+		// Update dialplan fields only, skip associations to prevent auto-save duplication
+		if err := tx.Omit("Details").Save(&input).Error; err != nil {
+			return err
+		}
+
+		// Replace details if provided (delete old + create new)
+		if input.Details != nil {
+			if err := tx.Where("dialplan_uuid = ?", dialplan.UUID).Delete(&models.DialplanDetail{}).Error; err != nil {
+				return err
+			}
+			if len(input.Details) > 0 {
+				for i := range input.Details {
+					input.Details[i].DialplanUUID = dialplan.UUID
+					input.Details[i].ID = 0 // Force create
+				}
+				if err := tx.Create(&input.Details).Error; err != nil {
+					return err
+				}
+			}
+		}
+
+		dialplan = input
+		return nil
+	})
+
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update dial plan: " + err.Error()})
 	}
+
+	// Reload FreeSWITCH so updated dialplan is active
+	h.reloadXML()
 
 	return c.JSON(dialplan)
 }

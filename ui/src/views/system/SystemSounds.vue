@@ -395,7 +395,7 @@ const currentFolderContents = computed(() => {
     return rawData.value
   }
   
-  const parts = selectedFolderPath.value.split('/')
+  const parts = selectedFolderPath.value.split('/').filter(Boolean)
   let current = rawData.value
   
   for (const part of parts) {
