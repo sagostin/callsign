@@ -216,6 +216,7 @@ const formatRecording = (r) => {
     group: r.queue_name || r.group || null,
     hasTranscript: !!r.has_transcription,
     size: `${sizeMB} MB`,
+    rawDate: dt.toISOString(),
   }
 }
 
@@ -240,6 +241,12 @@ const totalStorage = computed(() => {
 })
 
 const filteredRecordings = computed(() => {
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfWeek = new Date(startOfToday)
+  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
   return recordings.value.filter(r => {
     const matchesSearch = !searchQuery.value || 
       r.from.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
@@ -249,8 +256,20 @@ const filteredRecordings = computed(() => {
     const matchesType = !filterType.value ||
       (filterType.value === 'personal' && !r.group) ||
       (filterType.value === 'group' && r.group)
+
+    let matchesDate = true
+    if (filterDateRange.value && r.rawDate) {
+      const rd = new Date(r.rawDate)
+      if (filterDateRange.value === 'today') {
+        matchesDate = rd >= startOfToday
+      } else if (filterDateRange.value === 'week') {
+        matchesDate = rd >= startOfWeek
+      } else if (filterDateRange.value === 'month') {
+        matchesDate = rd >= startOfMonth
+      }
+    }
     
-    return matchesSearch && matchesType
+    return matchesSearch && matchesType && matchesDate
   })
 })
 

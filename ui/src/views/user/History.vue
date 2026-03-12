@@ -135,7 +135,10 @@
         </div>
         <div class="detail-row" v-if="selectedCall.recording">
           <span class="detail-label">Recording</span>
-          <button class="btn-link"><PlayIcon class="icon-xs" /> Play Recording</button>
+          <button class="btn-link" @click="playRecording(selectedCall)"><PlayIcon class="icon-xs" /> {{ playingRecording === selectedCall.id ? 'Playing...' : 'Play Recording' }}</button>
+        </div>
+        <div v-if="playingRecording === selectedCall.id" style="margin-top: 8px;">
+          <audio controls autoplay :src="recordingUrl" style="width: 100%;" @ended="playingRecording = null"></audio>
         </div>
 
         <div class="detail-actions">
@@ -161,7 +164,7 @@ import {
   MessageSquare as MessageSquareIcon, UserPlus as UserPlusIcon,
   X as XIcon, Play as PlayIcon
 } from 'lucide-vue-next'
-import { extensionPortalAPI, contactsAPI } from '../../services/api'
+import { extensionPortalAPI, contactsAPI, recordingsAPI } from '../../services/api'
 
 const router = useRouter()
 const searchQuery = ref('')
@@ -200,6 +203,7 @@ const formatCallRecord = (record) => {
     date: dateGroup,
     fullDate: dt.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
     recording: !!record.recording_id || !!record.has_recording,
+    recording_id: record.recording_id || null,
   }
 }
 
@@ -218,6 +222,21 @@ const fetchHistory = async () => {
 
 onMounted(fetchHistory)
 
+const playingRecording = ref(null)
+const recordingUrl = ref('')
+
+const playRecording = (call) => {
+  if (playingRecording.value === call.id) {
+    playingRecording.value = null
+    recordingUrl.value = ''
+    return
+  }
+  if (call.recording_id) {
+    recordingUrl.value = recordingsAPI.streamUrl(call.recording_id)
+    playingRecording.value = call.id
+  }
+}
+
 const filteredCalls = computed(() => {
   return callHistory.value.filter(call => {
     const matchesSearch = !searchQuery.value || 
@@ -226,9 +245,19 @@ const filteredCalls = computed(() => {
     
     const matchesFilter = activeFilter.value === 'all' || call.type === activeFilter.value
     
-    const matchesDate = !dateFilter.value || call.date === dateFilter.value ||
-      (dateFilter.value === 'week' && ['today', 'yesterday', 'week'].includes(call.date)) ||
-      (dateFilter.value === 'month' && true)
+    let matchesDate = true
+    if (dateFilter.value) {
+      if (dateFilter.value === 'today') {
+        matchesDate = call.date === 'today'
+      } else if (dateFilter.value === 'yesterday') {
+        matchesDate = call.date === 'today' || call.date === 'yesterday'
+      } else if (dateFilter.value === 'week') {
+        matchesDate = ['today', 'yesterday', 'week'].includes(call.date)
+      } else if (dateFilter.value === 'month') {
+        // Include everything within the current month — all groups qualify
+        matchesDate = ['today', 'yesterday', 'week', 'month'].includes(call.date)
+      }
+    }
     
     return matchesSearch && matchesFilter && matchesDate
   })

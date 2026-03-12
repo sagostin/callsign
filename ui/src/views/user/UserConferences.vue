@@ -252,19 +252,25 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, inject } from 'vue'
+import { useRouter } from 'vue-router'
 import { 
   Users as UsersIcon, PhoneCall as PhoneCallIcon, Calendar as CalendarIcon,
   Plus as PlusIcon, Share2 as ShareIcon, Settings as SettingsIcon,
   Clock as ClockIcon, X as XIcon, Copy as CopyIcon
 } from 'lucide-vue-next'
 import DataTable from '../../components/common/DataTable.vue'
+import { conferencesAPI } from '../../services/api'
 
+const router = useRouter()
+const toast = inject('toast')
 const activeTab = ref('rooms')
 const showCreateModal = ref(false)
 const showScheduleModal = ref(false)
 const showShareModal = ref(false)
 const sharingConference = ref(null)
+const loading = ref(false)
+const editingConference = ref(null)
 
 const newRoom = ref({
   name: '',
@@ -276,16 +282,8 @@ const newRoom = ref({
   muteOnEntry: false
 })
 
-const conferences = ref([
-  { id: 1, name: 'Personal Meeting Room', extension: '3050', pin: '1234', status: 'idle', participants: 0, duration: '' },
-  { id: 2, name: 'Project Team Sync', extension: '3051', pin: '', status: 'active', participants: 5, duration: '00:23:45' },
-  { id: 3, name: 'Client Calls', extension: '3052', pin: '9876', status: 'idle', participants: 0, duration: '' },
-])
-
-const scheduledMeetings = ref([
-  { id: 1, title: 'Weekly Standup', day: '12', month: 'Dec', time: '10:00 AM', duration: '30 min', invitees: ['John', 'Sarah', 'Mike', 'Lisa'] },
-  { id: 2, title: 'Client Review', day: '13', month: 'Dec', time: '2:00 PM', duration: '1 hour', invitees: ['Client Team', 'Sales'] },
-])
+const conferences = ref([])
+const scheduledMeetings = ref([])
 
 const historyColumns = [
   { key: 'date', label: 'Date', width: '120px' },
@@ -295,41 +293,151 @@ const historyColumns = [
   { key: 'recording', label: 'Recording', width: '100px' }
 ]
 
-const meetingHistory = ref([
-  { date: 'Dec 10, 2024', name: 'Team Sync', duration: '00:45:12', participants: 6, recording: true },
-  { date: 'Dec 9, 2024', name: 'Client Call', duration: '01:02:33', participants: 3, recording: true },
-  { date: 'Dec 8, 2024', name: 'Personal Room', duration: '00:15:00', participants: 2, recording: false },
-])
+const meetingHistory = ref([])
 
-const joinConference = (conf) => alert(`Joining ${conf.name}...`)
+const loadConferences = async () => {
+  loading.value = true
+  try {
+    const res = await conferencesAPI.list()
+    const data = res.data || []
+    conferences.value = data.map(c => ({
+      id: c.id,
+      name: c.name || `Conference ${c.extension}`,
+      extension: c.extension || c.dial_code || '',
+      pin: c.pin || '',
+      status: 'idle',
+      participants: 0,
+      duration: '',
+      maxParticipants: c.max_members || 25,
+      recordCalls: c.record || false,
+      announceJoin: c.announce || true,
+      muteOnEntry: c.mute_on_entry || false
+    }))
+
+    // Try to get live status
+    try {
+      const liveRes = await conferencesAPI.listLive()
+      const liveData = liveRes.data || []
+      for (const live of liveData) {
+        const match = conferences.value.find(c => c.name === live.name || c.extension === live.name)
+        if (match) {
+          match.status = 'active'
+          match.participants = live.member_count || 0
+        }
+      }
+    } catch { /* live data optional */ }
+  } catch (err) {
+    console.error('Failed to load conferences:', err)
+  }
+  loading.value = false
+}
+
+const loadHistory = async () => {
+  // Try to load session history for the first conference 
+  // If there are conferences, get sessions from the first one as an example
+  try {
+    if (conferences.value.length > 0) {
+      const res = await conferencesAPI.getSessions(conferences.value[0].id)
+      const sessions = res.data || []
+      meetingHistory.value = sessions.map(s => ({
+        date: new Date(s.start_time || s.created_at).toLocaleDateString(),
+        name: s.conference_name || 'Conference',
+        duration: s.duration || '00:00:00',
+        participants: s.participant_count || 0,
+        recording: !!s.recording_path
+      }))
+    }
+  } catch { /* sessions optional */ }
+}
+
+onMounted(async () => {
+  await loadConferences()
+  await loadHistory()
+})
+
+const joinConference = (conf) => {
+  router.push({ name: 'PortalDialer', query: { dial: conf.extension } })
+}
+
 const shareConference = (conf) => {
   sharingConference.value = conf
   showShareModal.value = true
 }
-const editConference = (conf) => alert(`Edit ${conf.name}`)
-const startMeeting = (meeting) => alert(`Starting ${meeting.title}`)
-const editMeeting = (meeting) => alert(`Edit ${meeting.title}`)
+
+const editConference = (conf) => {
+  editingConference.value = conf
+  newRoom.value = {
+    name: conf.name,
+    extension: conf.extension,
+    pin: conf.pin,
+    maxParticipants: String(conf.maxParticipants || 25),
+    recordCalls: conf.recordCalls || false,
+    announceJoin: conf.announceJoin !== false,
+    muteOnEntry: conf.muteOnEntry || false
+  }
+  showCreateModal.value = true
+}
+
+const startMeeting = (meeting) => {
+  toast?.info('Meeting scheduling coming soon')
+}
+
+const editMeeting = (meeting) => {
+  toast?.info('Meeting editing coming soon')
+}
+
 const cancelMeeting = (meeting) => {
-  if (confirm(`Cancel "${meeting.title}"?`)) {
-    scheduledMeetings.value = scheduledMeetings.value.filter(m => m.id !== meeting.id)
+  toast?.info('Meeting cancellation coming soon')
+}
+
+const playRecording = (row) => {
+  toast?.info('Recording playback coming soon')
+}
+
+const viewDetails = (row) => {
+  toast?.info('Session details coming soon')
+}
+
+const createRoom = async () => {
+  try {
+    if (editingConference.value) {
+      // Update existing conference
+      await conferencesAPI.update(editingConference.value.id, {
+        name: newRoom.value.name,
+        extension: newRoom.value.extension,
+        pin: newRoom.value.pin,
+        max_members: parseInt(newRoom.value.maxParticipants) || 25,
+        record: newRoom.value.recordCalls,
+        announce: newRoom.value.announceJoin,
+        mute_on_entry: newRoom.value.muteOnEntry
+      })
+      toast?.success('Conference updated')
+    } else {
+      // Create new
+      await conferencesAPI.create({
+        name: newRoom.value.name,
+        extension: newRoom.value.extension,
+        pin: newRoom.value.pin,
+        max_members: parseInt(newRoom.value.maxParticipants) || 25,
+        record: newRoom.value.recordCalls,
+        announce: newRoom.value.announceJoin,
+        mute_on_entry: newRoom.value.muteOnEntry
+      })
+      toast?.success('Conference room created')
+    }
+    showCreateModal.value = false
+    editingConference.value = null
+    newRoom.value = { name: '', extension: '', pin: '', maxParticipants: '25', recordCalls: false, announceJoin: true, muteOnEntry: false }
+    await loadConferences()
+  } catch (err) {
+    toast?.error(err.message || 'Failed to save conference')
   }
 }
-const playRecording = (row) => alert(`Playing recording for ${row.name}`)
-const viewDetails = (row) => alert(`Details for ${row.name}`)
-const createRoom = () => {
-  conferences.value.push({
-    id: Date.now(),
-    ...newRoom.value,
-    status: 'idle',
-    participants: 0,
-    duration: ''
-  })
-  showCreateModal.value = false
-  newRoom.value = { name: '', extension: '', pin: '', maxParticipants: '25', recordCalls: false, announceJoin: true, muteOnEntry: false }
-}
+
 const copy = (text) => {
-  navigator.clipboard.writeText(text)
-  alert('Copied!')
+  navigator.clipboard.writeText(text).then(() => {
+    toast?.success('Copied to clipboard')
+  })
 }
 const copyLink = () => copy(`https://meet.callsign.io/${sharingConference.value?.extension}`)
 </script>

@@ -161,8 +161,8 @@
             <div class="form-group">
               <label>From (Caller ID)</label>
               <select v-model="sendForm.from" class="input-field">
-                <option value="(415) 555-3299">(415) 555-3299 - My Fax</option>
-                <option value="(415) 555-0100">(415) 555-0100 - Main Office</option>
+                <option v-for="num in faxNumbers" :key="num.number" :value="num.number">{{ num.number }} - {{ num.label || 'Fax Line' }}</option>
+                <option v-if="faxNumbers.length === 0" value="">No fax numbers available</option>
               </select>
             </div>
 
@@ -280,12 +280,16 @@
         </div>
         <div class="modal-body fax-viewer">
           <div class="viewer-page">
-            <img src="https://placehold.co/600x800/f8fafc/64748b?text=Fax+Preview" alt="Fax Page" class="viewer-image">
-          </div>
-          <div class="viewer-nav">
-            <button><ChevronLeftIcon class="icon-sm" /></button>
-            <span>Page 1 of {{ viewingFax.pages }}</span>
-            <button><ChevronRightIcon class="icon-sm" /></button>
+            <object
+              :data="`/api/fax/jobs/${viewingFax.id}/download`"
+              type="application/pdf"
+              class="viewer-pdf"
+            >
+              <p style="text-align: center; padding: 40px; color: var(--text-muted);">
+                Unable to display fax inline.
+                <a :href="`/api/fax/jobs/${viewingFax.id}/download`" target="_blank">Download PDF</a>
+              </p>
+            </object>
           </div>
         </div>
         <div class="modal-actions">
@@ -314,6 +318,8 @@ const showSendModal = ref(false)
 const viewingFax = ref(null)
 const fileInput = ref(null)
 const isDragging = ref(false)
+const faxNumbers = ref([])
+const forwardingFaxId = ref(null)
 
 // Fax settings
 const myFaxNumber = ref('—')
@@ -408,6 +414,18 @@ const fetchSettings = async () => {
 
 onMounted(async () => {
   await Promise.all([fetchSettings(), fetchInbox(), fetchSent(), fetchPending()])
+  // Fetch fax numbers for the From dropdown
+  try {
+    const epRes = await faxAPI.listEndpoints()
+    const endpoints = epRes.data || []
+    faxNumbers.value = endpoints.map(ep => ({
+      number: ep.caller_id_number || ep.number || ep.extension || '',
+      label: ep.name || ep.description || 'Fax Line'
+    }))
+    if (faxNumbers.value.length > 0 && !sendForm.value.from) {
+      sendForm.value.from = faxNumbers.value[0].number
+    }
+  } catch { /* fax numbers optional */ }
 })
 
 // File Handling
@@ -455,7 +473,19 @@ const processDocuments = async () => {
   
   previewPages.value = uploadedFiles.value.length + (sendForm.value.coverPage !== 'none' ? 1 : 0)
   currentPreviewPage.value = 1
-  previewImage.value = ''
+  // Generate actual preview from first uploaded file  
+  if (uploadedFiles.value.length > 0) {
+    const file = uploadedFiles.value[0]
+    if (file.type?.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = (e) => { previewImage.value = e.target.result }
+      reader.readAsDataURL(file)
+    } else {
+      previewImage.value = ''
+    }
+  } else {
+    previewImage.value = ''
+  }
   previewState.value = 'ready'
 }
 
@@ -501,9 +531,15 @@ const closeSendModal = () => {
   previewState.value = 'empty'
 }
 
-const viewFax = (fax) => { 
+const viewFax = async (fax) => { 
   viewingFax.value = fax
-  if (!fax.read) fax.read = true
+  if (!fax.read) {
+    fax.read = true
+    // Persist read status via API
+    try {
+      await faxAPI.get(fax.id) // Touching the fax marks it as seen on backend
+    } catch { /* non-critical */ }
+  }
 }
 
 const downloadFax = async (fax) => {
@@ -521,7 +557,9 @@ const downloadFax = async (fax) => {
 }
 
 const forwardFax = (fax) => {
+  forwardingFaxId.value = fax.id
   sendForm.value.to = ''
+  sendForm.value.coverMessage = `Fwd: Fax from ${fax.from || fax.to || 'Unknown'}`
   showSendModal.value = true
   toast?.info('Forward: set destination number and send')
 }
@@ -683,6 +721,7 @@ const cancelFax = async (fax) => {
 .fax-viewer { display: flex; flex-direction: column; align-items: center; }
 .viewer-page { background: white; border: 1px solid var(--border-color); border-radius: 4px; margin-bottom: 16px; overflow: hidden; max-height: 60vh; overflow-y: auto; }
 .viewer-image { width: 100%; max-width: 600px; display: block; }
+.viewer-pdf { width: 100%; height: 600px; border: none; }
 .viewer-nav { display: flex; align-items: center; gap: 16px; }
 .viewer-nav button { width: 32px; height: 32px; border-radius: 4px; border: 1px solid var(--border-color); background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 

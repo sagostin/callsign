@@ -2,7 +2,7 @@
   <div class="view-container">
     <div class="page-header">
       <h2>Contacts</h2>
-      <button class="btn-primary">+ Add Contact</button>
+      <button class="btn-primary" @click="addContact">+ Add Contact</button>
     </div>
 
     <div class="tabs">
@@ -69,14 +69,15 @@
     </div>
 
     <div class="contact-list" v-if="activeTab === 'system'">
+      <div v-if="contacts.system.length === 0" class="empty-state">No system resources available.</div>
       <div class="contact-card" v-for="c in contacts.system" :key="c.id">
         <div class="avatar bg-purple-100 text-purple-600"><Bot class="icon-sm" /></div>
         <div class="info">
            <div class="name">{{ c.name }}</div>
-           <div class="ext">Ext. {{ c.ext }}</div>
+           <div class="ext">{{ c.type }} • Ext. {{ c.ext }}</div>
         </div>
         <div class="actions">
-           <button class="btn-icon"><Phone class="icon-sm" /></button>
+           <button class="btn-icon" @click="dialContact(c.ext)"><Phone class="icon-sm" /></button>
         </div>
       </div>
     </div>
@@ -84,12 +85,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { Phone, MessageSquare, Bot, Zap } from 'lucide-vue-next'
-import { extensionsAPI, extensionPortalAPI, speedDialsAPI } from '../../services/api'
+import { extensionsAPI, extensionPortalAPI, speedDialsAPI, queuesAPI, ringGroupsAPI } from '../../services/api'
 
 const router = useRouter()
+const toast = inject('toast')
 const activeTab = ref('local')
 const loading = ref(false)
 
@@ -148,6 +150,38 @@ const fetchContacts = async () => {
     console.error('Failed to load speed dials:', err)
   }
 
+  // System resources (queues + ring groups)
+  try {
+    const systemContacts = []
+    try {
+      const qRes = await queuesAPI.list()
+      const queues = qRes.data || []
+      queues.forEach(q => {
+        systemContacts.push({
+          id: `queue-${q.id}`,
+          name: q.name || `Queue ${q.extension}`,
+          ext: q.extension || q.dial_code || '',
+          type: 'Queue'
+        })
+      })
+    } catch { /* queues optional */ }
+    try {
+      const rgRes = await ringGroupsAPI.list()
+      const rgs = rgRes.data || []
+      rgs.forEach(rg => {
+        systemContacts.push({
+          id: `rg-${rg.id}`,
+          name: rg.name || `Ring Group ${rg.extension}`,
+          ext: rg.extension || rg.dial_code || '',
+          type: 'Ring Group'
+        })
+      })
+    } catch { /* ring groups optional */ }
+    contacts.value.system = systemContacts
+  } catch {
+    contacts.value.system = []
+  }
+
   loading.value = false
 }
 
@@ -155,6 +189,28 @@ onMounted(fetchContacts)
 
 const dialSpeedDial = (prefix, code) => {
   router.push({ path: '/dialer', query: { dial: `${prefix}${code}` } })
+}
+
+const dialContact = (number) => {
+  router.push({ path: '/dialer', query: { dial: number } })
+}
+
+const messageContact = (number) => {
+  router.push({ path: '/messages', query: { to: number } })
+}
+
+const addContact = async () => {
+  const name = prompt('Contact name:')
+  if (!name) return
+  const phone = prompt('Phone number or extension:')
+  if (!phone) return
+  try {
+    await extensionPortalAPI.createContact({ name, phone })
+    toast?.success('Contact added')
+    await fetchContacts()
+  } catch (err) {
+    toast?.error(err.message || 'Failed to add contact')
+  }
 }
 </script>
 

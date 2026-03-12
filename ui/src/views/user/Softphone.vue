@@ -177,8 +177,7 @@
           </div>
           <div class="quick-transfer">
             <span class="quick-label">Quick:</span>
-            <button class="quick-btn" @click="transferTarget = '100'">Reception</button>
-            <button class="quick-btn" @click="transferTarget = '200'">Sales</button>
+            <button class="quick-btn" v-for="qt in quickTransferTargets" :key="qt.ext" @click="transferTarget = qt.ext">{{ qt.name }}</button>
             <button class="quick-btn" @click="transferTarget = '*98'">Voicemail</button>
           </div>
         </div>
@@ -204,7 +203,7 @@ import {
   ChevronDown as ChevronDownIcon, Monitor as MonitorIcon, Smartphone as SmartphoneIcon,
   Headphones as HeadphonesIcon, X as XIcon, Info as InfoIcon
 } from 'lucide-vue-next'
-import { extensionPortalAPI } from '../../services/api'
+import { extensionPortalAPI, devicesAPI, extensionsAPI } from '../../services/api'
 
 const toast = inject('toast')
 
@@ -215,6 +214,7 @@ const toast = inject('toast')
 const showDeviceMenu = ref(false)
 const boundDevice = ref(null)
 const deviceHasActiveCall = ref(false)
+const quickTransferTargets = ref([])
 
 const userDevices = ref([])
 
@@ -263,17 +263,30 @@ const bindDevice = (device) => {
 }
 
 const subscribeToDeviceEvents = (device) => {
-  // WebSocket subscription placeholder for FreeSWITCH ESL
-  console.log('[Dialer] Subscribing to events for:', device.id)
+  // Poll device call status periodically when bound to hardware device
+  const pollInterval = setInterval(async () => {
+    if (boundDevice.value?.id !== device.id) {
+      clearInterval(pollInterval)
+      return
+    }
+    try {
+      const res = await devicesAPI.callStatus(device.id)
+      const status = res.data
+      if (status && status.active) {
+        deviceHasActiveCall.value = true
+      } else {
+        deviceHasActiveCall.value = false
+      }
+    } catch {
+      // Device may not support call status polling
+    }
+  }, 5000)
 }
 
 const takeCallControl = () => {
-  callState.value = 'established'
-  remoteNumber.value = ''
-  remoteName.value = 'Device Call'
-  callDirection.value = 'inbound'
-  startTime.value = new Date(Date.now() - 45000)
-  deviceHasActiveCall.value = false
+  // TODO: SIP.js — transfer active device call to browser WebRTC session
+  // This requires SIP REFER or re-INVITE to move the call to the WebRTC endpoint
+  toast?.info('Call control transfer requires SIP.js integration')
 }
 
 // ============================================
@@ -297,9 +310,13 @@ const canMakeCalls = computed(() => {
 
 const initializeSip = async () => {
   sipState.value = 'connecting'
-  // SIP.js integration point
-  await new Promise(r => setTimeout(r, 500))
-  sipState.value = 'registered'
+  // TODO: SIP.js — Initialize UserAgent with WebSocket transport:
+  // const ua = new SIP.UserAgent({ uri, transportOptions: { server: wsUrl }, authorizationPassword: sipPassword })
+  // await ua.start()
+  // const registerer = new SIP.Registerer(ua)
+  // await registerer.register()
+  // For now, mark as ready so UI is functional for click-to-call via hardware devices
+  sipState.value = boundDevice.value?.type === 'softphone' ? 'disconnected' : 'registered'
 }
 
 // ============================================
@@ -358,7 +375,12 @@ const pressKey = (key) => {
 }
 
 const sendDtmf = (tone) => {
-  console.log('[Dialer] DTMF:', tone)
+  // TODO: SIP.js — session.sessionDescriptionHandler.sendDtmf(tone)
+  // For hardware devices, we could potentially send via API
+  if (boundDevice.value?.type !== 'softphone' && boundDevice.value?.id) {
+    // Hardware devices can receive DTMF via the PBX
+    console.log('[Dialer] DTMF via hardware device:', tone)
+  }
 }
 
 // ============================================
@@ -372,18 +394,44 @@ const makeCall = async () => {
   callDirection.value = 'outbound'
   remoteNumber.value = number.value
 
-  if (boundDevice.value?.type !== 'softphone') {
-    // Click-to-call via API - will be POST /api/click-to-call
-    console.log('[Dialer] Click-to-call via:', boundDevice.value?.name)
+  if (boundDevice.value?.type !== 'softphone' && boundDevice.value?.id) {
+    // Click-to-call via device API — tell the PBX to originate a call from this device
+    try {
+      await devicesAPI.dial(boundDevice.value.id, number.value)
+      callState.value = 'ringing'
+      // Poll for call status updates
+      const pollCall = setInterval(async () => {
+        try {
+          const res = await devicesAPI.callStatus(boundDevice.value.id)
+          const status = res.data
+          if (status?.state === 'established' || status?.state === 'active') {
+            callState.value = 'established'
+            startTime.value = new Date()
+            startDurationTimer()
+            clearInterval(pollCall)
+          } else if (status?.state === 'terminated' || status?.state === 'hangup') {
+            clearInterval(pollCall)
+            hangupCall()
+          }
+        } catch {
+          clearInterval(pollCall)
+        }
+      }, 2000)
+      // Auto-stop polling after 60s
+      setTimeout(() => clearInterval(pollCall), 60000)
+      return
+    } catch (err) {
+      toast?.error(err.message || 'Failed to initiate call')
+      resetCall()
+      return
+    }
   }
 
-  // SIP.js integration point for actual call
-  await new Promise(r => setTimeout(r, 1000))
-  callState.value = 'ringing'
-  await new Promise(r => setTimeout(r, 2000))
-  callState.value = 'established'
-  startTime.value = new Date()
-  startDurationTimer()
+  // TODO: SIP.js — for browser softphone:
+  // const session = userAgent.invite(SIP.UserAgent.makeURI(`sip:${number.value}@domain`))
+  // session.stateChange.addListener((state) => { ... })
+  toast?.info('Browser calling requires SIP.js integration. Use a hardware device for click-to-call.')
+  resetCall()
 }
 
 const answerCall = async () => {
@@ -441,10 +489,22 @@ const showTransferModal = ref(false)
 const transferType = ref('blind')
 const transferTarget = ref('')
 
-const executeTransfer = () => {
-  console.log('[Dialer] Transfer:', transferType.value, 'to', transferTarget.value)
+const executeTransfer = async () => {
+  if (boundDevice.value?.type !== 'softphone' && boundDevice.value?.id) {
+    // Transfer via device API
+    try {
+      await devicesAPI.transfer(boundDevice.value.id, transferTarget.value, transferType.value)
+      toast?.success(`Call transferred to ${transferTarget.value}`)
+      showTransferModal.value = false
+      hangupCall()
+    } catch (err) {
+      toast?.error(err.message || 'Transfer failed')
+    }
+    return
+  }
+  // TODO: SIP.js — session.refer(targetURI) for blind, or hold + invite for attended
+  toast?.info('Browser transfer requires SIP.js integration')
   showTransferModal.value = false
-  hangupCall()
 }
 
 // ============================================
@@ -496,6 +556,15 @@ onMounted(async () => {
   boundDevice.value = userDevices.value.find(d => d.type === 'softphone')
   initializeSip()
   fetchRecentCalls()
+  // Load quick transfer targets from company directory
+  try {
+    const extRes = await extensionsAPI.list()
+    const exts = extRes.data?.extensions || extRes.data || []
+    quickTransferTargets.value = exts.slice(0, 5).map(e => ({
+      name: e.effective_caller_id_name || e.description || `Ext ${e.extension}`,
+      ext: e.extension
+    }))
+  } catch { /* optional */ }
 })
 
 onUnmounted(() => {

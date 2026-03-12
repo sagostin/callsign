@@ -101,7 +101,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Voicemail, Play, Pause, StopCircle, Trash, RefreshCw, X } from 'lucide-vue-next'
-import { voicemailAPI, authAPI } from '../../services/api'
+import { voicemailAPI, authAPI, extensionPortalAPI } from '../../services/api'
 
 const messages = ref([])
 const loading = ref(false)
@@ -128,7 +128,14 @@ const loadMessages = async () => {
   try {
     // Get current user's extension
     const profileRes = await authAPI.getProfile()
-    const extension = profileRes.data?.data?.extension || profileRes.data?.extension
+    let extension = profileRes.data?.data?.extension || profileRes.data?.extension
+    if (!extension) {
+      // Fallback: get extension from portal settings
+      try {
+        const settingsRes = await extensionPortalAPI.getSettings()
+        extension = settingsRes.data?.extension?.extension || settingsRes.data?.data?.extension?.extension
+      } catch { /* fallback failed */ }
+    }
     if (!extension) {
       console.warn('No extension found for user')
       return

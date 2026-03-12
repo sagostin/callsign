@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/kataras/iris/v12"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -154,18 +155,30 @@ func (h *Handler) GetExtensionSettings(ctx iris.Context) {
 			"extension": ext.Extension,
 			"name":      ext.EffectiveCallerIDName,
 		},
+		"profile": map[string]interface{}{
+			"first_name":               ext.DirectoryFirstName,
+			"last_name":                ext.DirectoryLastName,
+			"email":                    ext.VoicemailMailTo,
+			"outbound_caller_id_name":  ext.OutboundCallerIDName,
+			"effective_caller_id_name": ext.EffectiveCallerIDName,
+		},
 		"call_settings": map[string]interface{}{
-			"do_not_disturb":         ext.DoNotDisturb,
-			"forward_all_enabled":    ext.ForwardAllEnabled,
-			"forward_all_dest":       ext.ForwardAllDestination,
-			"forward_busy_enabled":   ext.ForwardBusyEnabled,
-			"forward_busy_dest":      ext.ForwardBusyDestination,
-			"forward_no_answer":      ext.ForwardNoAnswerEnabled,
-			"forward_no_answer_dest": ext.ForwardNoAnswerDestination,
-			"voicemail_enabled":      ext.VoicemailEnabled,
-			"follow_me_enabled":      ext.FollowMeEnabled,
-			"record_inbound":         ext.RecordInbound,
-			"record_outbound":        ext.RecordOutbound,
+			"do_not_disturb":            ext.DoNotDisturb,
+			"forward_all_enabled":       ext.ForwardAllEnabled,
+			"forward_all_dest":          ext.ForwardAllDestination,
+			"forward_busy_enabled":      ext.ForwardBusyEnabled,
+			"forward_busy_dest":         ext.ForwardBusyDestination,
+			"forward_no_answer_enabled": ext.ForwardNoAnswerEnabled,
+			"forward_no_answer_dest":    ext.ForwardNoAnswerDestination,
+			"voicemail_enabled":         ext.VoicemailEnabled,
+			"voicemail_mail_to":         ext.VoicemailMailTo,
+			"follow_me_enabled":         ext.FollowMeEnabled,
+			"record_inbound":            ext.RecordInbound,
+			"record_outbound":           ext.RecordOutbound,
+			"ring_strategy":             ext.RingStrategy,
+			"no_answer_action":          ext.NoAnswerAction,
+			"no_answer_forward_to":      ext.NoAnswerForwardTo,
+			"outbound_caller_id_name":   ext.OutboundCallerIDName,
 		},
 	})
 }
@@ -178,12 +191,27 @@ func (h *Handler) UpdateExtensionSettings(ctx iris.Context) {
 	}
 
 	var req struct {
+		// Profile
+		FirstName            *string `json:"first_name"`
+		LastName             *string `json:"last_name"`
+		Email                *string `json:"email"`
+		OutboundCallerIDName *string `json:"outbound_caller_id_name"`
+		// Call settings
 		DoNotDisturb           *bool   `json:"do_not_disturb"`
+		FollowMeEnabled        *bool   `json:"follow_me_enabled"`
 		ForwardAllEnabled      *bool   `json:"forward_all_enabled"`
 		ForwardAllDestination  *string `json:"forward_all_destination"`
 		ForwardBusyEnabled     *bool   `json:"forward_busy_enabled"`
 		ForwardBusyDestination *string `json:"forward_busy_destination"`
+		ForwardNoAnswerEnabled *bool   `json:"forward_no_answer_enabled"`
+		ForwardNoAnswerDest    *string `json:"forward_no_answer_dest"`
 		VoicemailEnabled       *bool   `json:"voicemail_enabled"`
+		VoicemailMailTo        *string `json:"voicemail_mail_to"`
+		RecordInbound          *bool   `json:"record_inbound"`
+		RecordOutbound         *bool   `json:"record_outbound"`
+		RingStrategy           *string `json:"ring_strategy"`
+		NoAnswerAction         *string `json:"no_answer_action"`
+		NoAnswerForwardTo      *string `json:"no_answer_forward_to"`
 	}
 
 	if err := ctx.ReadJSON(&req); err != nil {
@@ -192,8 +220,25 @@ func (h *Handler) UpdateExtensionSettings(ctx iris.Context) {
 		return
 	}
 
+	// Profile fields
+	if req.FirstName != nil {
+		ext.DirectoryFirstName = *req.FirstName
+	}
+	if req.LastName != nil {
+		ext.DirectoryLastName = *req.LastName
+	}
+	if req.Email != nil {
+		ext.VoicemailMailTo = *req.Email
+	}
+	if req.OutboundCallerIDName != nil {
+		ext.OutboundCallerIDName = *req.OutboundCallerIDName
+	}
+	// Call settings
 	if req.DoNotDisturb != nil {
 		ext.DoNotDisturb = *req.DoNotDisturb
+	}
+	if req.FollowMeEnabled != nil {
+		ext.FollowMeEnabled = *req.FollowMeEnabled
 	}
 	if req.ForwardAllEnabled != nil {
 		ext.ForwardAllEnabled = *req.ForwardAllEnabled
@@ -207,8 +252,32 @@ func (h *Handler) UpdateExtensionSettings(ctx iris.Context) {
 	if req.ForwardBusyDestination != nil {
 		ext.ForwardBusyDestination = *req.ForwardBusyDestination
 	}
+	if req.ForwardNoAnswerEnabled != nil {
+		ext.ForwardNoAnswerEnabled = *req.ForwardNoAnswerEnabled
+	}
+	if req.ForwardNoAnswerDest != nil {
+		ext.ForwardNoAnswerDestination = *req.ForwardNoAnswerDest
+	}
 	if req.VoicemailEnabled != nil {
 		ext.VoicemailEnabled = *req.VoicemailEnabled
+	}
+	if req.VoicemailMailTo != nil {
+		ext.VoicemailMailTo = *req.VoicemailMailTo
+	}
+	if req.RecordInbound != nil {
+		ext.RecordInbound = *req.RecordInbound
+	}
+	if req.RecordOutbound != nil {
+		ext.RecordOutbound = *req.RecordOutbound
+	}
+	if req.RingStrategy != nil {
+		ext.RingStrategy = *req.RingStrategy
+	}
+	if req.NoAnswerAction != nil {
+		ext.NoAnswerAction = *req.NoAnswerAction
+	}
+	if req.NoAnswerForwardTo != nil {
+		ext.NoAnswerForwardTo = *req.NoAnswerForwardTo
 	}
 
 	if err := h.DB.Save(ext).Error; err != nil {
@@ -218,6 +287,53 @@ func (h *Handler) UpdateExtensionSettings(ctx iris.Context) {
 	}
 
 	ctx.JSON(iris.Map{"message": "Settings updated"})
+}
+
+// ChangeExtensionPassword changes the web password for the logged-in extension.
+func (h *Handler) ChangeExtensionPassword(ctx iris.Context) {
+	ext, ok := h.resolveExtension(ctx)
+	if !ok {
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := ctx.ReadJSON(&req); err != nil {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "Invalid request"})
+		return
+	}
+
+	if req.NewPassword == "" {
+		ctx.StatusCode(http.StatusBadRequest)
+		ctx.JSON(iris.Map{"error": "New password is required"})
+		return
+	}
+
+	// If web password is set, verify current password
+	if ext.WebPassword != "" {
+		if bcrypt.CompareHashAndPassword([]byte(ext.WebPassword), []byte(req.CurrentPassword)) != nil {
+			ctx.StatusCode(http.StatusForbidden)
+			ctx.JSON(iris.Map{"error": "Current password is incorrect"})
+			return
+		}
+	}
+
+	if err := ext.SetWebPassword(req.NewPassword); err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to hash password"})
+		return
+	}
+
+	if err := h.DB.Save(ext).Error; err != nil {
+		ctx.StatusCode(http.StatusInternalServerError)
+		ctx.JSON(iris.Map{"error": "Failed to update password"})
+		return
+	}
+
+	ctx.JSON(iris.Map{"message": "Password updated successfully"})
 }
 
 // GetExtensionContacts returns personal contacts for the extension's tenant.

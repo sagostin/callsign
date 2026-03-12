@@ -403,17 +403,17 @@
             <div class="setting-body">
               <div class="form-group">
                 <label>Current Password</label>
-                <input type="password" class="input-field">
+                <input type="password" v-model="passwordForm.current" class="input-field" placeholder="Enter current password">
               </div>
               <div class="form-group">
                 <label>New Password</label>
-                <input type="password" class="input-field">
+                <input type="password" v-model="passwordForm.newPassword" class="input-field" placeholder="Enter new password">
               </div>
               <div class="form-group">
                 <label>Confirm New Password</label>
-                <input type="password" class="input-field">
+                <input type="password" v-model="passwordForm.confirmPassword" class="input-field" placeholder="Confirm new password">
               </div>
-              <button class="btn-primary">Update Password</button>
+              <button class="btn-primary" @click="changePassword" :disabled="saving">{{ saving ? 'Updating...' : 'Update Password' }}</button>
             </div>
           </div>
 
@@ -442,19 +442,12 @@
                 <div class="session-item">
                   <MonitorIcon class="session-icon" />
                   <div class="session-info">
-                    <span class="session-name">Chrome on macOS</span>
-                    <span class="session-meta">Current session • San Francisco, CA</span>
+                    <span class="session-name">Current Session</span>
+                    <span class="session-meta">This browser • Active now</span>
                   </div>
                   <span class="session-badge current">Current</span>
                 </div>
-                <div class="session-item">
-                  <SmartphoneIcon class="session-icon" />
-                  <div class="session-info">
-                    <span class="session-name">Mobile App on iPhone</span>
-                    <span class="session-meta">Last active 2 hours ago • San Francisco, CA</span>
-                  </div>
-                  <button class="btn-link text-danger">Sign Out</button>
-                </div>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.5rem;">Session management coming soon</p>
               </div>
             </div>
           </div>
@@ -466,7 +459,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { 
   User as UserIcon, Phone as PhoneIcon, Voicemail as VoicemailIcon,
   Bell as BellIcon, Shield as ShieldIcon, Camera as CameraIcon,
@@ -476,9 +469,13 @@ import {
   PhoneCall as PhoneCallIcon, Headphones as HeadphonesIcon,
   Check as CheckIcon, X as XIcon
 } from 'lucide-vue-next'
+import { extensionPortalAPI } from '../../services/api'
 
+const toast = inject('toast')
 const activeSection = ref('profile')
 const showPin = ref(false)
+const loading = ref(false)
+const saving = ref(false)
 
 const sections = [
   { id: 'profile', label: 'Profile', icon: UserIcon },
@@ -489,23 +486,25 @@ const sections = [
 ]
 
 const profile = ref({
-  firstName: 'John',
-  lastName: 'Smith',
-  email: 'john.smith@company.com',
-  mobile: '(415) 555-1234',
-  extension: '101',
+  firstName: '',
+  lastName: '',
+  email: '',
+  mobile: '',
+  extension: '',
   avatar: null,
   status: 'available'
 })
 
 const userInitials = computed(() => {
-  return profile.value.firstName.charAt(0) + profile.value.lastName.charAt(0)
+  const f = profile.value.firstName?.charAt(0) || ''
+  const l = profile.value.lastName?.charAt(0) || ''
+  return (f + l).toUpperCase() || '??'
 })
 
 const phoneSettings = ref({
   dndEnabled: false,
-  callWaiting: true,
-  callerIdName: 'John Smith'
+  callWaiting: false,
+  callerIdName: ''
 })
 
 // Call Handling
@@ -514,11 +513,7 @@ const callHandling = ref({
   strategy: 'simultaneous',
   noAnswerAction: 'voicemail',
   forwardNumber: '',
-  devices: [
-    { id: 1, type: 'softphone', name: 'Web Softphone', details: 'Browser / Desktop App', enabled: true, ringTime: '20' },
-    { id: 2, type: 'desk', name: 'Desk Phone', details: 'Yealink T54W - Office', enabled: true, ringTime: '20' },
-    { id: 3, type: 'mobile', name: 'Mobile App', details: 'iPhone 13', enabled: true, ringTime: '20' },
-  ]
+  devices: []
 })
 
 const dragStart = (index) => { dragIndex.value = index }
@@ -529,13 +524,11 @@ const drop = (index) => {
   dragIndex.value = null
 }
 
-const saveCallHandling = () => alert('Call handling settings saved!')
-
 const voicemailSettings = ref({
-  pin: '1234',
-  emailEnabled: true,
-  transcription: true,
-  greetingType: 'name',
+  pin: '',
+  emailEnabled: false,
+  transcription: false,
+  greetingType: 'default',
   hasCustomGreeting: false
 })
 
@@ -552,7 +545,149 @@ const security = ref({
   twoFactorEnabled: false
 })
 
-const saveProfile = () => alert('Profile saved!')
+// Password change
+const passwordForm = ref({
+  current: '',
+  newPassword: '',
+  confirmPassword: ''
+})
+
+// Load settings from API
+const loadSettings = async () => {
+  loading.value = true
+  try {
+    const res = await extensionPortalAPI.getSettings()
+    const data = res.data || res
+
+    // Extension info
+    const ext = data.extension || {}
+    profile.value.extension = ext.extension || ''
+
+    // Profile info
+    const prof = data.profile || {}
+    profile.value.firstName = prof.first_name || ''
+    profile.value.lastName = prof.last_name || ''
+    profile.value.email = prof.email || ''
+    profile.value.status = 'available'
+
+    // Call settings
+    const cs = data.call_settings || {}
+    phoneSettings.value.dndEnabled = cs.do_not_disturb || false
+    phoneSettings.value.callWaiting = cs.follow_me_enabled || false
+    phoneSettings.value.callerIdName = cs.outbound_caller_id_name || ''
+    callHandling.value.strategy = cs.ring_strategy || 'simultaneous'
+    callHandling.value.noAnswerAction = cs.no_answer_action || 'voicemail'
+    callHandling.value.forwardNumber = cs.no_answer_forward_to || ''
+
+    // Voicemail
+    voicemailSettings.value.emailEnabled = !!cs.voicemail_mail_to
+  } catch (err) {
+    console.error('Failed to load settings:', err)
+  }
+
+  // Load devices
+  try {
+    const devRes = await extensionPortalAPI.getDevices()
+    const devs = devRes.data || []
+    callHandling.value.devices = devs.map((d, i) => ({
+      id: d.registration_id || d.device_uuid || i,
+      type: d.device_type || 'softphone',
+      name: d.name || d.user_agent || 'Device',
+      details: d.user_agent || d.device_uuid || '',
+      enabled: true,
+      ringTime: '20'
+    }))
+    // Always include browser softphone if not present
+    if (!callHandling.value.devices.some(d => d.type === 'softphone' || d.type === 'webrtc')) {
+      callHandling.value.devices.unshift({
+        id: 'softphone', type: 'softphone', name: 'Web Softphone', details: 'Browser / Desktop App', enabled: true, ringTime: '20'
+      })
+    }
+  } catch {
+    callHandling.value.devices = [
+      { id: 'softphone', type: 'softphone', name: 'Web Softphone', details: 'Browser / Desktop App', enabled: true, ringTime: '20' }
+    ]
+  }
+
+  loading.value = false
+}
+
+onMounted(loadSettings)
+
+const saveProfile = async () => {
+  saving.value = true
+  try {
+    await extensionPortalAPI.updateSettings({
+      first_name: profile.value.firstName,
+      last_name: profile.value.lastName,
+      email: profile.value.email,
+      outbound_caller_id_name: phoneSettings.value.callerIdName
+    })
+    toast?.success('Profile saved')
+  } catch (err) {
+    toast?.error(err.message || 'Failed to save profile')
+  } finally {
+    saving.value = false
+  }
+}
+
+const saveCallHandling = async () => {
+  saving.value = true
+  try {
+    await extensionPortalAPI.updateSettings({
+      do_not_disturb: phoneSettings.value.dndEnabled,
+      follow_me_enabled: phoneSettings.value.callWaiting,
+      ring_strategy: callHandling.value.strategy,
+      no_answer_action: callHandling.value.noAnswerAction,
+      no_answer_forward_to: callHandling.value.forwardNumber,
+      outbound_caller_id_name: phoneSettings.value.callerIdName
+    })
+    toast?.success('Call handling settings saved')
+  } catch (err) {
+    toast?.error(err.message || 'Failed to save call handling')
+  } finally {
+    saving.value = false
+  }
+}
+
+const saveVoicemail = async () => {
+  saving.value = true
+  try {
+    await extensionPortalAPI.updateSettings({
+      voicemail_enabled: true,
+      voicemail_mail_to: voicemailSettings.value.emailEnabled ? profile.value.email : ''
+    })
+    toast?.success('Voicemail settings saved')
+  } catch (err) {
+    toast?.error(err.message || 'Failed to save voicemail settings')
+  } finally {
+    saving.value = false
+  }
+}
+
+const changePassword = async () => {
+  if (!passwordForm.value.newPassword) {
+    toast?.error('New password is required')
+    return
+  }
+  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+    toast?.error('New passwords do not match')
+    return
+  }
+  saving.value = true
+  try {
+    await extensionPortalAPI.changePassword(
+      passwordForm.value.current,
+      passwordForm.value.newPassword
+    )
+    toast?.success('Password updated successfully')
+    passwordForm.value = { current: '', newPassword: '', confirmPassword: '' }
+  } catch (err) {
+    toast?.error(err.message || 'Failed to update password')
+  } finally {
+    saving.value = false
+  }
+}
 </script>
 
 <style scoped>

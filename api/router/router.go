@@ -883,6 +883,7 @@ func (r *Router) Init() {
 				extPortal.Get("/voicemail", r.Handler.GetExtensionVoicemail)
 				extPortal.Get("/settings", r.Handler.GetExtensionSettings)
 				extPortal.Put("/settings", r.Handler.UpdateExtensionSettings)
+				extPortal.Put("/password", r.Handler.ChangeExtensionPassword)
 				extPortal.Get("/contacts", r.Handler.GetExtensionContacts)
 				extPortal.Post("/contacts", r.Handler.CreateExtensionContact)
 			}

@@ -770,6 +770,7 @@ export const extensionPortalAPI = {
     getVoicemail: () => api.get('/extension/portal/voicemail'),
     getSettings: () => api.get('/extension/portal/settings'),
     updateSettings: (data) => api.put('/extension/portal/settings', data),
+    changePassword: (current, newPass) => api.put('/extension/portal/password', { current_password: current, new_password: newPass }),
     getContacts: () => api.get('/extension/portal/contacts'),
     createContact: (data) => api.post('/extension/portal/contacts', data),
 }

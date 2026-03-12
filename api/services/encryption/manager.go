@@ -27,7 +27,7 @@ type Manager struct {
 // masterKey should be loaded from environment/HSM
 func NewManager(masterKey string) *Manager {
 	// Derive a proper key using PBKDF2
-	salt := []byte("callsign-encryption-salt") // In production, use unique salt per tenant
+	salt := []byte("callsign-encryption-salt") // In production, use unique salt per tenant TODO
 	key := pbkdf2.Key([]byte(masterKey), salt, 100000, 32, sha256.New)
 	return &Manager{key: key}
 }
