@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 )
 
 // =====================
@@ -17,22 +17,18 @@ import (
 // =====================
 
 // StartCallRecording starts recording an active call via ESL
-func (h *Handler) StartCallRecording(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) StartCallRecording(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var req struct {
 		UUID string `json:"uuid"` // Channel UUID to record
 	}
-	if err := ctx.ReadJSON(&req); err != nil || req.UUID == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Channel UUID required"})
-		return
+	if err := c.BodyParser(&req); err != nil || req.UUID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Channel UUID required"})
 	}
 
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "FreeSWITCH not connected"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH not connected"})
 	}
 
 	// Generate recording path
@@ -44,9 +40,7 @@ func (h *Handler) StartCallRecording(ctx iris.Context) {
 	cmd := fmt.Sprintf("uuid_record %s start %s", req.UUID, recordPath)
 	_, err := h.ESLManager.Client.API(cmd)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to start recording: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to start recording: " + err.Error()})
 	}
 
 	// Save recording record to DB
@@ -59,7 +53,7 @@ func (h *Handler) StartCallRecording(ctx iris.Context) {
 	}
 	h.DB.Create(recording)
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"message":      "Recording started",
 		"recording_id": recording.ID,
 		"file_path":    recordPath,
@@ -67,29 +61,23 @@ func (h *Handler) StartCallRecording(ctx iris.Context) {
 }
 
 // StopCallRecording stops recording an active call via ESL
-func (h *Handler) StopCallRecording(ctx iris.Context) {
+func (h *Handler) StopCallRecording(c *fiber.Ctx) error {
 	var req struct {
 		UUID string `json:"uuid"`
 	}
-	if err := ctx.ReadJSON(&req); err != nil || req.UUID == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Channel UUID required"})
-		return
+	if err := c.BodyParser(&req); err != nil || req.UUID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Channel UUID required"})
 	}
 
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "FreeSWITCH not connected"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH not connected"})
 	}
 
 	// Stop recording via ESL
 	cmd := fmt.Sprintf("uuid_record %s stop all", req.UUID)
 	_, err := h.ESLManager.Client.API(cmd)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to stop recording: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to stop recording: " + err.Error()})
 	}
 
 	// Update recording record in DB
@@ -101,29 +89,26 @@ func (h *Handler) StopCallRecording(ctx iris.Context) {
 			"end_time": now,
 		})
 
-	ctx.JSON(iris.Map{"message": "Recording stopped"})
+	return c.JSON(fiber.Map{"message": "Recording stopped"})
 }
 
 // GetActiveCallsData returns live channel data from FreeSWITCH
-func (h *Handler) GetActiveCallsData(ctx iris.Context) {
+func (h *Handler) GetActiveCallsData(c *fiber.Ctx) error {
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.JSON(iris.Map{"calls": []interface{}{}, "count": 0})
-		return
+		return c.JSON(fiber.Map{"calls": []interface{}{}, "count": 0})
 	}
 
 	result, err := h.ESLManager.Client.API("show channels as json")
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to get active calls"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get active calls"})
 	}
 
-	ctx.JSON(iris.Map{"raw": result})
+	return c.JSON(fiber.Map{"raw": result})
 }
 
 // GetLiveQueueStats returns real-time queue statistics
-func (h *Handler) GetLiveQueueStats(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) GetLiveQueueStats(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	// Get all queues for tenant
 	var queues []models.Queue
@@ -167,7 +152,7 @@ func (h *Handler) GetLiveQueueStats(ctx iris.Context) {
 		stats[i] = qs
 	}
 
-	ctx.JSON(stats)
+	return c.JSON(stats)
 }
 
 // WakeupCallSchedule represents a wake-up call schedule request
@@ -179,36 +164,28 @@ type WakeupCallSchedule struct {
 }
 
 // ScheduleWakeupESL schedules a wake-up call via FreeSWITCH sched_api
-func (h *Handler) ScheduleWakeupESL(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ScheduleWakeupESL(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var req WakeupCallSchedule
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "FreeSWITCH not connected"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH not connected"})
 	}
 
 	// Parse the target time
 	targetTime, err := time.Parse("2006-01-02 15:04", req.Date+" "+req.Time)
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid date/time format"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid date/time format"})
 	}
 
 	// Calculate seconds from now
 	delay := int(time.Until(targetTime).Seconds())
 	if delay <= 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Scheduled time must be in the future"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Scheduled time must be in the future"})
 	}
 
 	// Get a recording path for the wakeup message
@@ -228,12 +205,10 @@ func (h *Handler) ScheduleWakeupESL(ctx iris.Context) {
 
 	_, err = h.ESLManager.Client.API(cmd)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to schedule wake-up call: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to schedule wake-up call: " + err.Error()})
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"message":    "Wake-up call scheduled",
 		"sched_id":   schedID,
 		"target":     req.RoomExtension,
@@ -243,21 +218,18 @@ func (h *Handler) ScheduleWakeupESL(ctx iris.Context) {
 }
 
 // GetDeviceRegistrations returns SIP registration status from FreeSWITCH Sofia
-func (h *Handler) GetDeviceRegistrations(ctx iris.Context) {
+func (h *Handler) GetDeviceRegistrations(c *fiber.Ctx) error {
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.JSON(iris.Map{"registrations": []interface{}{}, "connected": false})
-		return
+		return c.JSON(fiber.Map{"registrations": []interface{}{}, "connected": false})
 	}
 
 	// Query Sofia for all registrations
 	result, err := h.ESLManager.Client.API("sofia status profile internal reg")
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to query registrations"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query registrations"})
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"raw":       result,
 		"connected": true,
 	})

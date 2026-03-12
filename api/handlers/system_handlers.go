@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -21,17 +21,15 @@ import (
 // Tenants
 // =====================
 
-func (h *Handler) ListTenants(ctx iris.Context) {
+func (h *Handler) ListTenants(c *fiber.Ctx) error {
 	var tenants []models.Tenant
 	if err := h.DB.Preload("Profile").Find(&tenants).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve tenants"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve tenants"})
 	}
-	ctx.JSON(iris.Map{"data": tenants})
+	return c.JSON(fiber.Map{"data": tenants})
 }
 
-func (h *Handler) CreateTenant(ctx iris.Context) {
+func (h *Handler) CreateTenant(c *fiber.Ctx) error {
 	var input struct {
 		Name        string `json:"name"`
 		Domain      string `json:"domain"`
@@ -41,10 +39,8 @@ func (h *Handler) CreateTenant(ctx iris.Context) {
 		AdminEmail  string `json:"admin_email"`
 		Settings    string `json:"settings"`
 	}
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	tenant := models.Tenant{
@@ -57,9 +53,7 @@ func (h *Handler) CreateTenant(ctx iris.Context) {
 	}
 
 	if err := h.DB.Create(&tenant).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create tenant"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create tenant"})
 	}
 
 	// Provision FreeSWITCH resources (feature codes, park slots, dialplans)
@@ -70,65 +64,50 @@ func (h *Handler) CreateTenant(ctx iris.Context) {
 	// Reload FreeSWITCH so new dialplan context is available
 	h.reloadXML()
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"data": tenant})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": tenant})
 }
 
-func (h *Handler) GetTenant(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) GetTenant(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid tenant ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid tenant ID"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.Preload("Profile").First(&tenant, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
-	ctx.JSON(tenant)
+	return c.JSON(tenant)
 }
 
-func (h *Handler) UpdateTenant(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) UpdateTenant(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid tenant ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid tenant ID"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
-	if err := ctx.ReadJSON(&tenant); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&tenant); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	tenant.ID = uint(id)
 	if err := h.DB.Save(&tenant).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update tenant"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update tenant"})
 	}
 
-	ctx.JSON(tenant)
+	return c.JSON(tenant)
 }
 
-func (h *Handler) DeleteTenant(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) DeleteTenant(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid tenant ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid tenant ID"})
 	}
 
 	// Deprovision FreeSWITCH resources before deleting tenant
@@ -137,27 +116,23 @@ func (h *Handler) DeleteTenant(ctx iris.Context) {
 	}
 
 	if err := h.DB.Delete(&models.Tenant{}, id).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete tenant"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete tenant"})
 	}
 
 	// Reload FreeSWITCH so removed dialplans/directory entries are cleared
 	h.reloadXML()
 
-	ctx.JSON(iris.Map{"message": "Tenant deleted successfully"})
+	return c.JSON(fiber.Map{"message": "Tenant deleted successfully"})
 }
 
 // =====================
 // Tenant Profiles
 // =====================
 
-func (h *Handler) ListTenantProfiles(ctx iris.Context) {
+func (h *Handler) ListTenantProfiles(c *fiber.Ctx) error {
 	var profiles []models.TenantProfile
 	if err := h.DB.Find(&profiles).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve tenant profiles"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve tenant profiles"})
 	}
 
 	// Compute tenant count for each profile
@@ -176,99 +151,78 @@ func (h *Handler) ListTenantProfiles(ctx iris.Context) {
 		})
 	}
 
-	ctx.JSON(iris.Map{"data": result})
+	return c.JSON(fiber.Map{"data": result})
 }
 
-func (h *Handler) CreateTenantProfile(ctx iris.Context) {
+func (h *Handler) CreateTenantProfile(c *fiber.Ctx) error {
 	var profile models.TenantProfile
-	if err := ctx.ReadJSON(&profile); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&profile); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if err := h.DB.Create(&profile).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create tenant profile"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create tenant profile"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(profile)
+	return c.Status(http.StatusCreated).JSON(profile)
 }
 
-func (h *Handler) GetTenantProfile(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) GetTenantProfile(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid profile ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid profile ID"})
 	}
 
 	var profile models.TenantProfile
 	if err := h.DB.First(&profile, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Profile not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Profile not found"})
 	}
 
-	ctx.JSON(profile)
+	return c.JSON(profile)
 }
 
-func (h *Handler) UpdateTenantProfile(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) UpdateTenantProfile(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid profile ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid profile ID"})
 	}
 
 	var profile models.TenantProfile
 	if err := h.DB.First(&profile, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Profile not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Profile not found"})
 	}
 
-	if err := ctx.ReadJSON(&profile); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&profile); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	profile.ID = uint(id)
 	if err := h.DB.Save(&profile).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update profile"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update profile"})
 	}
 
-	ctx.JSON(profile)
+	return c.JSON(profile)
 }
 
-func (h *Handler) DeleteTenantProfile(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) DeleteTenantProfile(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid profile ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid profile ID"})
 	}
 
 	if err := h.DB.Delete(&models.TenantProfile{}, id).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete profile"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete profile"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Profile deleted successfully"})
+	return c.JSON(fiber.Map{"message": "Profile deleted successfully"})
 }
 
 // =====================
 // Users (System Admin)
 // =====================
 
-func (h *Handler) ListUsers(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+func (h *Handler) ListUsers(c *fiber.Ctx) error {
+	tenantID := middleware.GetScopedTenantID(c)
 
 	var users []models.User
 	query := h.DB
@@ -276,112 +230,87 @@ func (h *Handler) ListUsers(ctx iris.Context) {
 		query = query.Where("tenant_id = ?", tenantID)
 	}
 	if err := query.Find(&users).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve users"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve users"})
 	}
-	ctx.JSON(iris.Map{"data": users})
+	return c.JSON(fiber.Map{"data": users})
 }
 
-func (h *Handler) CreateUser(ctx iris.Context) {
+func (h *Handler) CreateUser(c *fiber.Ctx) error {
 	var user models.User
-	if err := ctx.ReadJSON(&user); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&user); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	// Hash password
-	if password := ctx.FormValue("password"); password != "" {
+	if password := c.FormValue("password"); password != "" {
 		if err := user.SetPassword(password); err != nil {
-			ctx.StatusCode(http.StatusInternalServerError)
-			ctx.JSON(iris.Map{"error": "Failed to set password"})
-			return
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to set password"})
 		}
 	}
 
 	if err := h.DB.Create(&user).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create user"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create user"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(user)
+	return c.Status(http.StatusCreated).JSON(user)
 }
 
-func (h *Handler) GetUser(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) GetUser(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid user ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
 	var user models.User
 	if err := h.DB.First(&user, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "User not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	ctx.JSON(user)
+	return c.JSON(user)
 }
 
-func (h *Handler) UpdateUser(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) UpdateUser(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid user ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
 	var user models.User
 	if err := h.DB.First(&user, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "User not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	if err := ctx.ReadJSON(&user); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&user); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	user.ID = uint(id)
 	if err := h.DB.Save(&user).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update user"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update user"})
 	}
 
-	ctx.JSON(user)
+	return c.JSON(user)
 }
 
-func (h *Handler) DeleteUser(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) DeleteUser(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid user ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
 	if err := h.DB.Delete(&models.User{}, id).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete user"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete user"})
 	}
 
-	ctx.JSON(iris.Map{"message": "User deleted successfully"})
+	return c.JSON(fiber.Map{"message": "User deleted successfully"})
 }
 
 // =====================
 // Gateways
 // =====================
 
-func (h *Handler) ListGateways(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+func (h *Handler) ListGateways(c *fiber.Ctx) error {
+	tenantID := middleware.GetScopedTenantID(c)
 
 	var gateways []models.Gateway
 	query := h.DB
@@ -392,49 +321,39 @@ func (h *Handler) ListGateways(ctx iris.Context) {
 	// System admin sees all gateways
 
 	if err := query.Order("gateway_name").Find(&gateways).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve gateways"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve gateways"})
 	}
-	ctx.JSON(iris.Map{"data": gateways})
+	return c.JSON(fiber.Map{"data": gateways})
 }
 
-func (h *Handler) CreateGateway(ctx iris.Context) {
+func (h *Handler) CreateGateway(c *fiber.Ctx) error {
 	var gateway models.Gateway
-	if err := ctx.ReadJSON(&gateway); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&gateway); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	// If tenant admin, scope to their tenant
-	tenantID := middleware.GetScopedTenantID(ctx)
+	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID > 0 {
 		gateway.TenantID = &tenantID
 	}
 
 	if err := h.DB.Create(&gateway).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create gateway"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create gateway"})
 	}
-
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(gateway)
 
 	// Trigger FreeSWITCH reload so new gateway is picked up
 	h.reloadSofia("internal")
+	return c.Status(http.StatusCreated).JSON(gateway)
 }
 
-func (h *Handler) GetGateway(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) GetGateway(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid gateway ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid gateway ID"})
 	}
 
-	tenantID := middleware.GetScopedTenantID(ctx)
+	tenantID := middleware.GetScopedTenantID(c)
 
 	var gateway models.Gateway
 	query := h.DB
@@ -443,23 +362,19 @@ func (h *Handler) GetGateway(ctx iris.Context) {
 	}
 
 	if err := query.First(&gateway, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Gateway not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Gateway not found"})
 	}
 
-	ctx.JSON(gateway)
+	return c.JSON(gateway)
 }
 
-func (h *Handler) UpdateGateway(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) UpdateGateway(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid gateway ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid gateway ID"})
 	}
 
-	tenantID := middleware.GetScopedTenantID(ctx)
+	tenantID := middleware.GetScopedTenantID(c)
 
 	var gateway models.Gateway
 	query := h.DB
@@ -469,15 +384,11 @@ func (h *Handler) UpdateGateway(ctx iris.Context) {
 	}
 
 	if err := query.First(&gateway, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Gateway not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Gateway not found"})
 	}
 
-	if err := ctx.ReadJSON(&gateway); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&gateway); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	gateway.ID = uint(id)
@@ -486,26 +397,21 @@ func (h *Handler) UpdateGateway(ctx iris.Context) {
 	}
 
 	if err := h.DB.Save(&gateway).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update gateway"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update gateway"})
 	}
-
-	ctx.JSON(gateway)
 
 	// Trigger FreeSWITCH reload so gateway changes are picked up
 	h.reloadSofia("internal")
+	return c.JSON(gateway)
 }
 
-func (h *Handler) DeleteGateway(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) DeleteGateway(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid gateway ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid gateway ID"})
 	}
 
-	tenantID := middleware.GetScopedTenantID(ctx)
+	tenantID := middleware.GetScopedTenantID(c)
 
 	var gateway models.Gateway
 	query := h.DB
@@ -515,35 +421,28 @@ func (h *Handler) DeleteGateway(ctx iris.Context) {
 	}
 
 	if err := query.First(&gateway, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Gateway not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Gateway not found"})
 	}
 
 	if err := h.DB.Delete(&gateway).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete gateway"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete gateway"})
 	}
-
-	ctx.JSON(iris.Map{"message": "Gateway deleted successfully"})
 
 	// Trigger FreeSWITCH reload so gateway removal is picked up
 	h.reloadSofia("internal")
+	return c.JSON(fiber.Map{"message": "Gateway deleted successfully"})
 }
 
 // GetGatewayStatus returns live gateway status from FreeSWITCH
-func (h *Handler) GetGatewayStatus(ctx iris.Context) {
+func (h *Handler) GetGatewayStatus(c *fiber.Ctx) error {
 	// Get all gateways from the database
 	var gateways []models.Gateway
 	if err := h.DB.Find(&gateways).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve gateways"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve gateways"})
 	}
 
 	// Get ESL client from context if available
-	eslClient := ctx.Values().Get("esl_client")
+	eslClient := c.Locals("esl_client")
 	if eslClient == nil {
 		// Return basic status from database if ESL not available
 		statusMap := make(map[string]interface{})
@@ -553,8 +452,7 @@ func (h *Handler) GetGatewayStatus(ctx iris.Context) {
 				"enabled": gw.Enabled,
 			}
 		}
-		ctx.JSON(iris.Map{"data": statusMap, "esl_connected": false})
-		return
+		return c.JSON(fiber.Map{"data": statusMap, "esl_connected": false})
 	}
 
 	// Query FreeSWITCH for real-time gateway status
@@ -607,35 +505,31 @@ func (h *Handler) GetGatewayStatus(ctx iris.Context) {
 	}
 
 	eslConnected := h.ESLManager != nil && h.ESLManager.IsConnected()
-	ctx.JSON(iris.Map{"data": statusMap, "esl_connected": eslConnected})
+	return c.JSON(fiber.Map{"data": statusMap, "esl_connected": eslConnected})
 }
 
 // =====================
 // Bridges
 // =====================
 
-func (h *Handler) ListBridges(ctx iris.Context) {
-	ctx.JSON(iris.Map{"data": []interface{}{}, "message": "Not implemented"})
+func (h *Handler) ListBridges(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{"data": []interface{}{}, "message": "Not implemented"})
 }
 
-func (h *Handler) CreateBridge(ctx iris.Context) {
-	ctx.StatusCode(http.StatusNotImplemented)
-	ctx.JSON(iris.Map{"error": "Not implemented"})
+func (h *Handler) CreateBridge(c *fiber.Ctx) error {
+	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Not implemented"})
 }
 
-func (h *Handler) GetBridge(ctx iris.Context) {
-	ctx.StatusCode(http.StatusNotImplemented)
-	ctx.JSON(iris.Map{"error": "Not implemented"})
+func (h *Handler) GetBridge(c *fiber.Ctx) error {
+	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Not implemented"})
 }
 
-func (h *Handler) UpdateBridge(ctx iris.Context) {
-	ctx.StatusCode(http.StatusNotImplemented)
-	ctx.JSON(iris.Map{"error": "Not implemented"})
+func (h *Handler) UpdateBridge(c *fiber.Ctx) error {
+	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Not implemented"})
 }
 
-func (h *Handler) DeleteBridge(ctx iris.Context) {
-	ctx.StatusCode(http.StatusNotImplemented)
-	ctx.JSON(iris.Map{"error": "Not implemented"})
+func (h *Handler) DeleteBridge(c *fiber.Ctx) error {
+	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Not implemented"})
 }
 
 // =====================
@@ -669,7 +563,7 @@ func (h *Handler) writeSIPProfileToDisk(profile *models.SIPProfile) error {
 	return writer.WriteProfile(profile, settings, domains)
 }
 
-func (h *Handler) ListSIPProfiles(ctx iris.Context) {
+func (h *Handler) ListSIPProfiles(c *fiber.Ctx) error {
 	// Dedup cleanup: remove duplicate settings (same profile + setting_name)
 	// This fixes any historical duplication from GORM auto-cascade creates
 	h.DB.Exec(`
@@ -682,17 +576,15 @@ func (h *Handler) ListSIPProfiles(ctx iris.Context) {
 
 	var profiles []models.SIPProfile
 	if err := h.DB.Preload("Settings").Preload("Domains").Order("profile_name").Find(&profiles).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve SIP profiles"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve SIP profiles"})
 	}
-	ctx.JSON(iris.Map{"data": profiles})
+	return c.JSON(fiber.Map{"data": profiles})
 }
 
 // SyncSIPProfiles imports SIP profiles from disk XML files that don't exist in DB.
 // DB is the source of truth — existing profiles are NOT overwritten.
 // Only new profiles found on disk (not yet in DB) are imported.
-func (h *Handler) SyncSIPProfiles(ctx iris.Context) {
+func (h *Handler) SyncSIPProfiles(c *fiber.Ctx) error {
 	profilesPath := h.Config.SIPProfilesPath
 	if profilesPath == "" {
 		profilesPath = "/etc/freeswitch/sip_profiles"
@@ -704,28 +596,24 @@ func (h *Handler) SyncSIPProfiles(ctx iris.Context) {
 
 	// Do NOT overwrite existing profiles — DB is source of truth
 	if err := importer.SyncProfiles(false); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to sync profiles: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to sync profiles: " + err.Error()})
 	}
 
 	// Return updated list
 	var profiles []models.SIPProfile
 	h.DB.Preload("Settings").Preload("Domains").Order("profile_name").Find(&profiles)
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"message": fmt.Sprintf("Sync complete. Found %d profiles in database.", len(profiles)),
 		"data":    profiles,
 		"path":    profilesPath,
 	})
 }
 
-func (h *Handler) CreateSIPProfile(ctx iris.Context) {
+func (h *Handler) CreateSIPProfile(c *fiber.Ctx) error {
 	var input models.SIPProfile
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	// Stash settings/domains from payload before creating profile
@@ -744,9 +632,7 @@ func (h *Handler) CreateSIPProfile(ctx iris.Context) {
 
 	// Create profile WITHOUT associations (prevents GORM auto-cascade duplication)
 	if err := h.DB.Omit("Settings", "Domains").Create(&input).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create SIP profile"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create SIP profile"})
 	}
 
 	// Create settings explicitly
@@ -786,51 +672,40 @@ func (h *Handler) CreateSIPProfile(ctx iris.Context) {
 
 	// Write profile XML to disk (required for Sofia X-PRE-PROCESS)
 	if err := h.writeSIPProfileToDisk(&input); err != nil {
-		ctx.Application().Logger().Warnf("Failed to write SIP profile to disk: %v", err)
+		log.Printf("Failed to write SIP profile to disk: %v", err)
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(input)
+	return c.Status(http.StatusCreated).JSON(input)
 }
 
-func (h *Handler) GetSIPProfile(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) GetSIPProfile(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid profile ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid profile ID"})
 	}
 
 	var profile models.SIPProfile
 	if err := h.DB.Preload("Settings").Preload("Domains").First(&profile, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "SIP profile not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "SIP profile not found"})
 	}
 
-	ctx.JSON(profile)
+	return c.JSON(profile)
 }
 
-func (h *Handler) UpdateSIPProfile(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) UpdateSIPProfile(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid profile ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid profile ID"})
 	}
 
 	var profile models.SIPProfile
 	if err := h.DB.First(&profile, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "SIP profile not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "SIP profile not found"})
 	}
 
 	var input models.SIPProfile
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	// Use a transaction to ensure atomicity
@@ -889,81 +764,67 @@ func (h *Handler) UpdateSIPProfile(ctx iris.Context) {
 	})
 
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update SIP profile: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update SIP profile: " + err.Error()})
 	}
 
 	// Write updated profile XML to disk (required for Sofia X-PRE-PROCESS)
 	if err := h.writeSIPProfileToDisk(&profile); err != nil {
-		ctx.Application().Logger().Warnf("Failed to write SIP profile to disk: %v", err)
+		log.Printf("Failed to write SIP profile to disk: %v", err)
 	}
 
-	ctx.JSON(profile)
+	return c.JSON(profile)
 }
 
-func (h *Handler) DeleteSIPProfile(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) DeleteSIPProfile(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid profile ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid profile ID"})
 	}
 
 	var profile models.SIPProfile
 	if err := h.DB.First(&profile, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "SIP profile not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "SIP profile not found"})
 	}
 
 	// Prevent deletion of system profiles (internal/external)
 	if freeswitch.IsSystemProfile(profile.ProfileName) {
-		ctx.StatusCode(http.StatusForbidden)
-		ctx.JSON(iris.Map{"error": "Cannot delete system profile: " + profile.ProfileName})
-		return
+		return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "Cannot delete system profile: " + profile.ProfileName})
 	}
 
 	// Check for associated gateways
 	var gatewayCount int64
 	h.DB.Model(&models.Gateway{}).Where("sip_profile_uuid = ?", profile.UUID).Count(&gatewayCount)
 	if gatewayCount > 0 {
-		ctx.StatusCode(http.StatusConflict)
-		ctx.JSON(iris.Map{
+		return c.Status(http.StatusConflict).JSON(fiber.Map{
 			"error":   "Cannot delete profile",
 			"message": fmt.Sprintf("Profile has %d associated gateway(s). Remove them first.", gatewayCount),
 		})
-		return
 	}
 
 	// Check for associated domains
 	var domainCount int64
 	h.DB.Model(&models.SIPProfileDomain{}).Where("sip_profile_uuid = ?", profile.UUID).Count(&domainCount)
 	if domainCount > 0 {
-		ctx.StatusCode(http.StatusConflict)
-		ctx.JSON(iris.Map{
+		return c.Status(http.StatusConflict).JSON(fiber.Map{
 			"error":   "Cannot delete profile",
 			"message": fmt.Sprintf("Profile has %d associated domain(s). Remove them first.", domainCount),
 		})
-		return
 	}
 
 	// Delete related settings (safe to delete)
 	h.DB.Where("sip_profile_uuid = ?", profile.UUID).Delete(&models.SIPProfileSetting{})
 
 	if err := h.DB.Delete(&profile).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete SIP profile"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete SIP profile"})
 	}
 
 	// Delete profile XML file from disk
 	writer := freeswitch.NewProfileWriter(h.Config.SIPProfilesPath)
 	if err := writer.DeleteProfile(profile.ProfileName); err != nil {
-		ctx.Application().Logger().Warnf("Failed to delete SIP profile from disk: %v", err)
+		log.Printf("Failed to delete SIP profile from disk: %v", err)
 	}
 
-	ctx.JSON(iris.Map{"message": "SIP profile deleted successfully"})
+	return c.JSON(fiber.Map{"message": "SIP profile deleted successfully"})
 }
 
 // =====================
@@ -971,197 +832,153 @@ func (h *Handler) DeleteSIPProfile(ctx iris.Context) {
 // =====================
 
 // GetSofiaStatus returns the status of all Sofia profiles from FreeSWITCH
-func (h *Handler) GetSofiaStatus(ctx iris.Context) {
+func (h *Handler) GetSofiaStatus(c *fiber.Ctx) error {
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
 	result, err := h.ESLManager.API("sofia status")
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to get sofia status: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get sofia status: " + err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"data": result})
+	return c.JSON(fiber.Map{"data": result})
 }
 
 // GetSofiaProfileStatus returns the status of a specific Sofia profile
-func (h *Handler) GetSofiaProfileStatus(ctx iris.Context) {
-	profileName := ctx.Params().Get("name")
+func (h *Handler) GetSofiaProfileStatus(c *fiber.Ctx) error {
+	profileName := c.Params("name")
 	if profileName == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Profile name required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Profile name required"})
 	}
 
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
 	result, err := h.ESLManager.API("sofia status profile " + profileName)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to get profile status: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get profile status: " + err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"data": result, "profile": profileName})
+	return c.JSON(fiber.Map{"data": result, "profile": profileName})
 }
 
 // GetSofiaProfileRegistrations returns the registrations for a specific Sofia profile
-func (h *Handler) GetSofiaProfileRegistrations(ctx iris.Context) {
-	profileName := ctx.Params().Get("name")
+func (h *Handler) GetSofiaProfileRegistrations(c *fiber.Ctx) error {
+	profileName := c.Params("name")
 	if profileName == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Profile name required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Profile name required"})
 	}
 
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
 	result, err := h.ESLManager.API("sofia status profile " + profileName + " reg")
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to get registrations: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get registrations: " + err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"data": result, "profile": profileName})
+	return c.JSON(fiber.Map{"data": result, "profile": profileName})
 }
 
 // GetSofiaGatewayStatus returns gateway status for a profile
-func (h *Handler) GetSofiaGatewayStatus(ctx iris.Context) {
-	profileName := ctx.Params().Get("name")
+func (h *Handler) GetSofiaGatewayStatus(c *fiber.Ctx) error {
+	profileName := c.Params("name")
 	if profileName == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Profile name required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Profile name required"})
 	}
 
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
 	result, err := h.ESLManager.API("sofia status gateway")
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to get gateway status: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get gateway status: " + err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"data": result})
+	return c.JSON(fiber.Map{"data": result})
 }
 
 // RestartSofiaProfile restarts a Sofia profile
-func (h *Handler) RestartSofiaProfile(ctx iris.Context) {
-	profileName := ctx.Params().Get("name")
+func (h *Handler) RestartSofiaProfile(c *fiber.Ctx) error {
+	profileName := c.Params("name")
 	if profileName == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Profile name required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Profile name required"})
 	}
 
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
 	result, err := h.ESLManager.API("sofia profile " + profileName + " restart reloadxml")
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to restart profile: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to restart profile: " + err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"message": "Profile restarted", "data": result, "profile": profileName})
+	return c.JSON(fiber.Map{"message": "Profile restarted", "data": result, "profile": profileName})
 }
 
 // StartSofiaProfile starts a stopped Sofia profile
-func (h *Handler) StartSofiaProfile(ctx iris.Context) {
-	profileName := ctx.Params().Get("name")
+func (h *Handler) StartSofiaProfile(c *fiber.Ctx) error {
+	profileName := c.Params("name")
 	if profileName == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Profile name required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Profile name required"})
 	}
 
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
 	result, err := h.ESLManager.API("sofia profile " + profileName + " start")
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to start profile: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to start profile: " + err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"message": "Profile started", "data": result, "profile": profileName})
+	return c.JSON(fiber.Map{"message": "Profile started", "data": result, "profile": profileName})
 }
 
 // StopSofiaProfile stops a running Sofia profile
-func (h *Handler) StopSofiaProfile(ctx iris.Context) {
-	profileName := ctx.Params().Get("name")
+func (h *Handler) StopSofiaProfile(c *fiber.Ctx) error {
+	profileName := c.Params("name")
 	if profileName == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Profile name required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Profile name required"})
 	}
 
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
 	result, err := h.ESLManager.API("sofia profile " + profileName + " stop")
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to stop profile: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to stop profile: " + err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"message": "Profile stopped", "data": result, "profile": profileName})
+	return c.JSON(fiber.Map{"message": "Profile stopped", "data": result, "profile": profileName})
 }
 
 // ReloadSofiaXML reloads FreeSWITCH XML configuration
-func (h *Handler) ReloadSofiaXML(ctx iris.Context) {
+func (h *Handler) ReloadSofiaXML(c *fiber.Ctx) error {
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "FreeSWITCH ESL not connected"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
 	result, err := h.ESLManager.API("reloadxml")
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to reload XML: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to reload XML: " + err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"message": "XML configuration reloaded", "data": result})
+	return c.JSON(fiber.Map{"message": "XML configuration reloaded", "data": result})
 }
 
 // =====================
 // System Settings & Status
 // =====================
 
-func (h *Handler) GetSystemSettings(ctx iris.Context) {
-	ctx.JSON(iris.Map{
+func (h *Handler) GetSystemSettings(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{
 		"server_host":     h.Config.ServerHost,
 		"server_port":     h.Config.ServerPort,
 		"db_host":         h.Config.DBHost,
@@ -1169,17 +986,16 @@ func (h *Handler) GetSystemSettings(ctx iris.Context) {
 	})
 }
 
-func (h *Handler) UpdateSystemSettings(ctx iris.Context) {
-	ctx.StatusCode(http.StatusNotImplemented)
-	ctx.JSON(iris.Map{"error": "Not implemented"})
+func (h *Handler) UpdateSystemSettings(c *fiber.Ctx) error {
+	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Not implemented"})
 }
 
-func (h *Handler) GetSystemLogs(ctx iris.Context) {
-	ctx.JSON(iris.Map{"data": []interface{}{}, "message": "Not implemented"})
+func (h *Handler) GetSystemLogs(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{"data": []interface{}{}, "message": "Not implemented"})
 }
 
-func (h *Handler) GetSystemStatus(ctx iris.Context) {
-	status := iris.Map{
+func (h *Handler) GetSystemStatus(c *fiber.Ctx) error {
+	status := fiber.Map{
 		"status":   "operational",
 		"database": "connected",
 	}
@@ -1188,17 +1004,17 @@ func (h *Handler) GetSystemStatus(ctx iris.Context) {
 	if h.ESLManager != nil {
 		status["freeswitch"] = h.ESLManager.FreeSwitchStatus()
 	} else {
-		status["freeswitch"] = iris.Map{
+		status["freeswitch"] = fiber.Map{
 			"esl_connected": false,
 			"esl_running":   false,
 			"message":       "ESL manager not initialized",
 		}
 	}
 
-	ctx.JSON(status)
+	return c.JSON(status)
 }
 
-func (h *Handler) GetSystemStats(ctx iris.Context) {
+func (h *Handler) GetSystemStats(c *fiber.Ctx) error {
 	// Get database counts
 	var tenantCount, userCount, extensionCount, gatewayCount int64
 	h.DB.Model(&models.Tenant{}).Count(&tenantCount)
@@ -1275,11 +1091,11 @@ func (h *Handler) GetSystemStats(ctx iris.Context) {
 	h.DB.Model(&models.ClientRegistration{}).Where("endpoint_type = ? AND enabled = true", "web_client").Count(&softphones)
 	h.DB.Model(&models.ClientRegistration{}).Where("endpoint_type = ? AND enabled = true", "mobile_app").Count(&mobileApps)
 
-	deviceStats := iris.Map{
-		"desk_phones": iris.Map{"total": deskPhones, "online": 0},
-		"softphones":  iris.Map{"total": softphones, "online": 0},
-		"mobile":      iris.Map{"total": mobileApps, "online": 0},
-		"trunks":      iris.Map{"total": trunkTotal, "online": trunkOnline},
+	deviceStats := fiber.Map{
+		"desk_phones": fiber.Map{"total": deskPhones, "online": 0},
+		"softphones":  fiber.Map{"total": softphones, "online": 0},
+		"mobile":      fiber.Map{"total": mobileApps, "online": 0},
+		"trunks":      fiber.Map{"total": trunkTotal, "online": trunkOnline},
 	}
 
 	// If ESL connected, set online counts from total registrations (best-effort split)
@@ -1287,9 +1103,9 @@ func (h *Handler) GetSystemStats(ctx iris.Context) {
 		totalDevices := deskPhones + softphones + mobileApps
 		if totalDevices > 0 {
 			// Proportional split of actual registrations across device types
-			deviceStats["desk_phones"] = iris.Map{"total": deskPhones, "online": totalRegs * deskPhones / totalDevices}
-			deviceStats["softphones"] = iris.Map{"total": softphones, "online": totalRegs * softphones / totalDevices}
-			deviceStats["mobile"] = iris.Map{"total": mobileApps, "online": totalRegs * mobileApps / totalDevices}
+			deviceStats["desk_phones"] = fiber.Map{"total": deskPhones, "online": totalRegs * deskPhones / totalDevices}
+			deviceStats["softphones"] = fiber.Map{"total": softphones, "online": totalRegs * softphones / totalDevices}
+			deviceStats["mobile"] = fiber.Map{"total": mobileApps, "online": totalRegs * mobileApps / totalDevices}
 		}
 	}
 
@@ -1297,7 +1113,7 @@ func (h *Handler) GetSystemStats(ctx iris.Context) {
 	var alertCount int64
 	h.DB.Model(&models.AuditLog{}).Where("action = 'error' AND created_at > NOW() - INTERVAL '24 hours'").Count(&alertCount)
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"tenants":         tenantCount,
 		"users":           userCount,
 		"extensions":      extensionCount,
@@ -1314,538 +1130,417 @@ func (h *Handler) GetSystemStats(ctx iris.Context) {
 // Messaging Providers
 // =====================
 
-func (h *Handler) ListMessagingProviders(ctx iris.Context) {
+func (h *Handler) ListMessagingProviders(c *fiber.Ctx) error {
 	var providers []models.MessagingProvider
 	// Only get system-level providers (tenant_id is null)
 	if err := h.DB.Where("tenant_id IS NULL").Find(&providers).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve messaging providers"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve messaging providers"})
 	}
-	ctx.JSON(iris.Map{"data": providers})
+	return c.JSON(fiber.Map{"data": providers})
 }
 
-func (h *Handler) CreateMessagingProvider(ctx iris.Context) {
+func (h *Handler) CreateMessagingProvider(c *fiber.Ctx) error {
 	var provider models.MessagingProvider
-	if err := ctx.ReadJSON(&provider); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&provider); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	// Ensure it's a system-level provider
 	provider.TenantID = nil
 
 	if err := h.DB.Create(&provider).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create messaging provider"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create messaging provider"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(provider)
+	return c.Status(http.StatusCreated).JSON(provider)
 }
 
-func (h *Handler) GetMessagingProvider(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) GetMessagingProvider(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid provider ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid provider ID"})
 	}
 
 	var provider models.MessagingProvider
 	if err := h.DB.Where("tenant_id IS NULL").First(&provider, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Messaging provider not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Messaging provider not found"})
 	}
 
-	ctx.JSON(provider)
+	return c.JSON(provider)
 }
 
-func (h *Handler) UpdateMessagingProvider(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) UpdateMessagingProvider(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid provider ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid provider ID"})
 	}
 
 	var provider models.MessagingProvider
 	if err := h.DB.Where("tenant_id IS NULL").First(&provider, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Messaging provider not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Messaging provider not found"})
 	}
 
-	if err := ctx.ReadJSON(&provider); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&provider); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if err := h.DB.Save(&provider).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update messaging provider"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update messaging provider"})
 	}
 
-	ctx.JSON(provider)
+	return c.JSON(provider)
 }
 
-func (h *Handler) DeleteMessagingProvider(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) DeleteMessagingProvider(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid provider ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid provider ID"})
 	}
 
 	var provider models.MessagingProvider
 	if err := h.DB.Where("tenant_id IS NULL").First(&provider, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Messaging provider not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Messaging provider not found"})
 	}
 
 	if err := h.DB.Delete(&provider).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete messaging provider"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete messaging provider"})
 	}
 
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // =====================
 // Messaging Numbers
 // =====================
 
-func (h *Handler) ListMessagingNumbers(ctx iris.Context) {
+func (h *Handler) ListMessagingNumbers(c *fiber.Ctx) error {
 	var numbers []models.MessagingNumber
 	query := h.DB.Preload("Provider").Order("phone_number ASC")
 
 	// Optionally filter by provider
-	if providerID := ctx.URLParam("provider_id"); providerID != "" {
+	if providerID := c.Query("provider_id"); providerID != "" {
 		query = query.Where("provider_id = ?", providerID)
 	}
 
 	if err := query.Find(&numbers).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve messaging numbers"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve messaging numbers"})
 	}
-	ctx.JSON(iris.Map{"data": numbers})
+	return c.JSON(fiber.Map{"data": numbers})
 }
 
-func (h *Handler) CreateMessagingNumber(ctx iris.Context) {
+func (h *Handler) CreateMessagingNumber(c *fiber.Ctx) error {
 	var number models.MessagingNumber
-	if err := ctx.ReadJSON(&number); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&number); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	// Verify provider exists
 	var provider models.MessagingProvider
 	if err := h.DB.First(&provider, number.ProviderID).Error; err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid provider ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid provider ID"})
 	}
 
 	if err := h.DB.Create(&number).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create messaging number"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create messaging number"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(number)
+	return c.Status(http.StatusCreated).JSON(number)
 }
 
-func (h *Handler) UpdateMessagingNumber(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) UpdateMessagingNumber(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid number ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid number ID"})
 	}
 
 	var number models.MessagingNumber
 	if err := h.DB.First(&number, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Messaging number not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Messaging number not found"})
 	}
 
-	if err := ctx.ReadJSON(&number); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&number); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if err := h.DB.Save(&number).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update messaging number"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update messaging number"})
 	}
 
-	ctx.JSON(number)
+	return c.JSON(number)
 }
 
-func (h *Handler) DeleteMessagingNumber(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) DeleteMessagingNumber(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid number ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid number ID"})
 	}
 
 	var number models.MessagingNumber
 	if err := h.DB.First(&number, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Messaging number not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Messaging number not found"})
 	}
 
 	if err := h.DB.Delete(&number).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete messaging number"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete messaging number"})
 	}
 
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
-func (h *Handler) ListGlobalDialplans(ctx iris.Context) {
+func (h *Handler) ListGlobalDialplans(c *fiber.Ctx) error {
 	var dialplans []models.Dialplan
 	// Only get global dialplans (tenant_id is null)
 	if err := h.DB.Where("tenant_id IS NULL").Preload("Details").Order("dialplan_order ASC").Find(&dialplans).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve dial plans"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve dial plans"})
 	}
-	ctx.JSON(iris.Map{"data": dialplans})
+	return c.JSON(fiber.Map{"data": dialplans})
 }
 
-func (h *Handler) CreateGlobalDialplan(ctx iris.Context) {
+func (h *Handler) CreateGlobalDialplan(c *fiber.Ctx) error {
 	var dialplan models.Dialplan
-	if err := ctx.ReadJSON(&dialplan); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&dialplan); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	// Ensure it's a global dialplan
 	dialplan.TenantID = nil
 
 	if err := h.DB.Create(&dialplan).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create dial plan"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create dial plan"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(dialplan)
+	return c.Status(http.StatusCreated).JSON(dialplan)
 }
 
-func (h *Handler) GetGlobalDialplan(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) GetGlobalDialplan(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid dial plan ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid dial plan ID"})
 	}
 
 	var dialplan models.Dialplan
 	if err := h.DB.Where("tenant_id IS NULL").Preload("Details").First(&dialplan, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Dial plan not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Dial plan not found"})
 	}
 
-	ctx.JSON(dialplan)
+	return c.JSON(dialplan)
 }
 
-func (h *Handler) UpdateGlobalDialplan(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) UpdateGlobalDialplan(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid dial plan ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid dial plan ID"})
 	}
 
 	var dialplan models.Dialplan
 	if err := h.DB.Where("tenant_id IS NULL").First(&dialplan, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Dial plan not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Dial plan not found"})
 	}
 
-	if err := ctx.ReadJSON(&dialplan); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&dialplan); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if err := h.DB.Save(&dialplan).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update dial plan"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update dial plan"})
 	}
 
-	ctx.JSON(dialplan)
+	return c.JSON(dialplan)
 }
 
-func (h *Handler) DeleteGlobalDialplan(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) DeleteGlobalDialplan(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid dial plan ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid dial plan ID"})
 	}
 
 	var dialplan models.Dialplan
 	if err := h.DB.Where("tenant_id IS NULL").First(&dialplan, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Dial plan not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Dial plan not found"})
 	}
 
 	// Also delete related details
 	h.DB.Where("dialplan_uuid = ?", dialplan.UUID).Delete(&models.DialplanDetail{})
 
 	if err := h.DB.Delete(&dialplan).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete dial plan"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete dial plan"})
 	}
 
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // =====================
 // Access Control Lists (ACLs)
 // =====================
 
-func (h *Handler) ListACLs(ctx iris.Context) {
+func (h *Handler) ListACLs(c *fiber.Ctx) error {
 	var acls []models.ACL
 	if err := h.DB.Preload("Nodes", func(db *gorm.DB) *gorm.DB {
 		return db.Order("priority ASC")
 	}).Find(&acls).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve ACLs"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve ACLs"})
 	}
-	ctx.JSON(iris.Map{"data": acls})
+	return c.JSON(fiber.Map{"data": acls})
 }
 
-func (h *Handler) CreateACL(ctx iris.Context) {
+func (h *Handler) CreateACL(c *fiber.Ctx) error {
 	var acl models.ACL
-	if err := ctx.ReadJSON(&acl); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&acl); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if err := h.DB.Create(&acl).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create ACL"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create ACL"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(acl)
-
 	h.reloadACL()
+	return c.Status(http.StatusCreated).JSON(acl)
 }
 
-func (h *Handler) GetACL(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) GetACL(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid ACL ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ACL ID"})
 	}
 
 	var acl models.ACL
 	if err := h.DB.Preload("Nodes", func(db *gorm.DB) *gorm.DB {
 		return db.Order("priority ASC")
 	}).First(&acl, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "ACL not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "ACL not found"})
 	}
 
-	ctx.JSON(acl)
+	return c.JSON(acl)
 }
 
-func (h *Handler) UpdateACL(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) UpdateACL(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid ACL ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ACL ID"})
 	}
 
 	var acl models.ACL
 	if err := h.DB.First(&acl, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "ACL not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "ACL not found"})
 	}
 
-	if err := ctx.ReadJSON(&acl); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&acl); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if err := h.DB.Save(&acl).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update ACL"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update ACL"})
 	}
 
-	ctx.JSON(acl)
-
 	h.reloadACL()
+	return c.JSON(acl)
 }
 
-func (h *Handler) DeleteACL(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) DeleteACL(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid ACL ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ACL ID"})
 	}
 
 	var acl models.ACL
 	if err := h.DB.First(&acl, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "ACL not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "ACL not found"})
 	}
 
 	// Delete associated nodes
 	h.DB.Where("acl_uuid = ?", acl.UUID).Delete(&models.ACLNode{})
 
 	if err := h.DB.Delete(&acl).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete ACL"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete ACL"})
 	}
 
-	ctx.StatusCode(http.StatusNoContent)
-
 	h.reloadACL()
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
-func (h *Handler) CreateACLNode(ctx iris.Context) {
-	id, err := strconv.Atoi(ctx.Params().Get("id"))
+func (h *Handler) CreateACLNode(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid ACL ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ACL ID"})
 	}
 
 	var acl models.ACL
 	if err := h.DB.First(&acl, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "ACL not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "ACL not found"})
 	}
 
 	var node models.ACLNode
-	if err := ctx.ReadJSON(&node); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&node); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	node.ACLUUID = acl.UUID
 
 	if err := h.DB.Create(&node).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create ACL node"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create ACL node"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(node)
+	return c.Status(http.StatusCreated).JSON(node)
 }
 
-func (h *Handler) UpdateACLNode(ctx iris.Context) {
-	nodeId, err := strconv.Atoi(ctx.Params().Get("nodeId"))
+func (h *Handler) UpdateACLNode(c *fiber.Ctx) error {
+	nodeId, err := strconv.Atoi(c.Params("nodeId"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid node ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid node ID"})
 	}
 
 	var node models.ACLNode
 	if err := h.DB.First(&node, nodeId).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "ACL node not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "ACL node not found"})
 	}
 
-	if err := ctx.ReadJSON(&node); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&node); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if err := h.DB.Save(&node).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update ACL node"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update ACL node"})
 	}
 
-	ctx.JSON(node)
+	return c.JSON(node)
 }
 
-func (h *Handler) DeleteACLNode(ctx iris.Context) {
-	nodeId, err := strconv.Atoi(ctx.Params().Get("nodeId"))
+func (h *Handler) DeleteACLNode(c *fiber.Ctx) error {
+	nodeId, err := strconv.Atoi(c.Params("nodeId"))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid node ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid node ID"})
 	}
 
 	var node models.ACLNode
 	if err := h.DB.First(&node, nodeId).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "ACL node not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "ACL node not found"})
 	}
 
 	if err := h.DB.Delete(&node).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete ACL node"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete ACL node"})
 	}
 
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // =====================
 // System Numbers (All Tenants)
 // =====================
 
-func (h *Handler) ListAllNumbers(ctx iris.Context) {
+func (h *Handler) ListAllNumbers(c *fiber.Ctx) error {
 	var numbers []models.Destination
 
 	// Get all numbers across all tenants with tenant info
 	if err := h.DB.Preload("Tenant").Order("destination_number ASC").Find(&numbers).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve numbers"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve numbers"})
 	}
 
-	ctx.JSON(iris.Map{"data": numbers})
+	return c.JSON(fiber.Map{"data": numbers})
 }
 
 // =====================
@@ -1861,12 +1556,10 @@ type BannedIPRequest struct {
 }
 
 // ReportBannedIP receives reports from fail2ban when IPs are banned/unbanned
-func (h *Handler) ReportBannedIP(ctx iris.Context) {
+func (h *Handler) ReportBannedIP(c *fiber.Ctx) error {
 	var req BannedIPRequest
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	if req.Action == "unban" {
@@ -1874,8 +1567,7 @@ func (h *Handler) ReportBannedIP(ctx iris.Context) {
 		h.DB.Model(&models.BannedIP{}).
 			Where("ip = ? AND status = ?", req.IP, "banned").
 			Update("status", "unbanned")
-		ctx.JSON(iris.Map{"message": "IP unbanned", "ip": req.IP})
-		return
+		return c.JSON(fiber.Map{"message": "IP unbanned", "ip": req.IP})
 	}
 
 	// Create new ban record
@@ -1888,51 +1580,44 @@ func (h *Handler) ReportBannedIP(ctx iris.Context) {
 	}
 
 	if err := h.DB.Create(&bannedIP).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to record ban"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to record ban"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "IP banned", "data": bannedIP})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"message": "IP banned", "data": bannedIP})
 }
 
 // ListBannedIPs returns all banned IPs
-func (h *Handler) ListBannedIPs(ctx iris.Context) {
+func (h *Handler) ListBannedIPs(c *fiber.Ctx) error {
 	var bannedIPs []models.BannedIP
 
 	query := h.DB.Order("banned_at DESC")
 
 	// Filter by status
-	status := ctx.URLParamDefault("status", "banned")
+	status := c.Query("status", "banned")
 	if status != "all" {
 		query = query.Where("status = ?", status)
 	}
 
 	if err := query.Find(&bannedIPs).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve banned IPs"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve banned IPs"})
 	}
 
-	ctx.JSON(iris.Map{"data": bannedIPs})
+	return c.JSON(fiber.Map{"data": bannedIPs})
 }
 
 // UnbanIP manually unbans an IP address
-func (h *Handler) UnbanIP(ctx iris.Context) {
-	ip := ctx.Params().Get("ip")
+func (h *Handler) UnbanIP(c *fiber.Ctx) error {
+	ip := c.Params("ip")
 
 	result := h.DB.Model(&models.BannedIP{}).
 		Where("ip = ? AND status = ?", ip, "banned").
 		Update("status", "unbanned")
 
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "IP not found or already unbanned"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "IP not found or already unbanned"})
 	}
 
-	ctx.JSON(iris.Map{"message": "IP unbanned", "ip": ip})
+	return c.JSON(fiber.Map{"message": "IP unbanned", "ip": ip})
 }
 
 // =====================
@@ -1940,13 +1625,13 @@ func (h *Handler) UnbanIP(ctx iris.Context) {
 // =====================
 
 // ListSystemDeviceTemplates returns all system (global) device templates
-func (h *Handler) ListSystemDeviceTemplates(ctx iris.Context) {
+func (h *Handler) ListSystemDeviceTemplates(c *fiber.Ctx) error {
 	var templates []models.DeviceTemplate
 
 	query := h.DB.Where("tenant_id IS NULL")
 
 	// Filter by manufacturer
-	if manufacturer := ctx.URLParam("manufacturer"); manufacturer != "" {
+	if manufacturer := c.Query("manufacturer"); manufacturer != "" {
 		query = query.Where("manufacturer = ?", manufacturer)
 	}
 
@@ -1957,16 +1642,14 @@ func (h *Handler) ListSystemDeviceTemplates(ctx iris.Context) {
 		h.DB.Model(&models.Device{}).Where("template_id = ?", templates[i].ID).Count(&templates[i].DeviceCount)
 	}
 
-	ctx.JSON(iris.Map{"data": templates})
+	return c.JSON(fiber.Map{"data": templates})
 }
 
 // CreateSystemDeviceTemplate creates a new system template
-func (h *Handler) CreateSystemDeviceTemplate(ctx iris.Context) {
+func (h *Handler) CreateSystemDeviceTemplate(c *fiber.Ctx) error {
 	var tmpl models.DeviceTemplate
-	if err := ctx.ReadJSON(&tmpl); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&tmpl); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	// System templates have no tenant
@@ -1974,47 +1657,38 @@ func (h *Handler) CreateSystemDeviceTemplate(ctx iris.Context) {
 	tmpl.IsSystem = true
 
 	if err := h.DB.Create(&tmpl).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create template"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create template"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"data": tmpl, "message": "System template created"})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": tmpl, "message": "System template created"})
 }
 
 // GetSystemDeviceTemplate returns a single system template
-func (h *Handler) GetSystemDeviceTemplate(ctx iris.Context) {
-	id := ctx.Params().Get("id")
+func (h *Handler) GetSystemDeviceTemplate(c *fiber.Ctx) error {
+	id := c.Params("id")
 
 	var tmpl models.DeviceTemplate
 	if err := h.DB.Where("id = ? AND tenant_id IS NULL", id).
 		Preload("Firmware").
 		First(&tmpl).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Template not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Template not found"})
 	}
 
-	ctx.JSON(iris.Map{"data": tmpl})
+	return c.JSON(fiber.Map{"data": tmpl})
 }
 
 // UpdateSystemDeviceTemplate updates a system template
-func (h *Handler) UpdateSystemDeviceTemplate(ctx iris.Context) {
-	id := ctx.Params().Get("id")
+func (h *Handler) UpdateSystemDeviceTemplate(c *fiber.Ctx) error {
+	id := c.Params("id")
 
 	var tmpl models.DeviceTemplate
 	if err := h.DB.Where("id = ? AND tenant_id IS NULL", id).First(&tmpl).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Template not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Template not found"})
 	}
 
 	var input models.DeviceTemplate
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	updates := map[string]interface{}{
@@ -2031,30 +1705,26 @@ func (h *Handler) UpdateSystemDeviceTemplate(ctx iris.Context) {
 
 	h.DB.Model(&tmpl).Updates(updates)
 
-	ctx.JSON(iris.Map{"data": tmpl, "message": "Template updated"})
+	return c.JSON(fiber.Map{"data": tmpl, "message": "Template updated"})
 }
 
 // DeleteSystemDeviceTemplate deletes a system template
-func (h *Handler) DeleteSystemDeviceTemplate(ctx iris.Context) {
-	id := ctx.Params().Get("id")
+func (h *Handler) DeleteSystemDeviceTemplate(c *fiber.Ctx) error {
+	id := c.Params("id")
 
 	// Check if any devices are using this template
 	var count int64
 	h.DB.Model(&models.Device{}).Where("template_id = ?", id).Count(&count)
 	if count > 0 {
-		ctx.StatusCode(http.StatusConflict)
-		ctx.JSON(iris.Map{"error": "Template is in use by devices", "device_count": count})
-		return
+		return c.Status(http.StatusConflict).JSON(fiber.Map{"error": "Template is in use by devices", "device_count": count})
 	}
 
 	result := h.DB.Where("id = ? AND tenant_id IS NULL", id).Delete(&models.DeviceTemplate{})
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Template not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Template not found"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Template deleted"})
+	return c.JSON(fiber.Map{"message": "Template deleted"})
 }
 
 // =====================
@@ -2062,75 +1732,64 @@ func (h *Handler) DeleteSystemDeviceTemplate(ctx iris.Context) {
 // =====================
 
 // ListFirmware returns all firmware files
-func (h *Handler) ListFirmware(ctx iris.Context) {
+func (h *Handler) ListFirmware(c *fiber.Ctx) error {
 	var firmware []models.Firmware
 
 	query := h.DB.Where("enabled = ?", true)
 
 	// Filter by manufacturer
-	if manufacturer := ctx.URLParam("manufacturer"); manufacturer != "" {
+	if manufacturer := c.Query("manufacturer"); manufacturer != "" {
 		query = query.Where("manufacturer = ?", manufacturer)
 	}
 
 	// Filter by model/family
-	if model := ctx.URLParam("model"); model != "" {
+	if model := c.Query("model"); model != "" {
 		query = query.Where("model = ? OR family = ?", model, model)
 	}
 
 	query.Order("manufacturer, model, version DESC").Find(&firmware)
 
-	ctx.JSON(iris.Map{"data": firmware})
+	return c.JSON(fiber.Map{"data": firmware})
 }
 
 // CreateFirmware creates a new firmware entry
-func (h *Handler) CreateFirmware(ctx iris.Context) {
+func (h *Handler) CreateFirmware(c *fiber.Ctx) error {
 	var fw models.Firmware
-	if err := ctx.ReadJSON(&fw); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&fw); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	if err := h.DB.Create(&fw).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create firmware entry"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create firmware entry"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"data": fw, "message": "Firmware created"})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": fw, "message": "Firmware created"})
 }
 
 // GetFirmware returns a single firmware entry
-func (h *Handler) GetFirmware(ctx iris.Context) {
-	id := ctx.Params().Get("id")
+func (h *Handler) GetFirmware(c *fiber.Ctx) error {
+	id := c.Params("id")
 
 	var fw models.Firmware
 	if err := h.DB.First(&fw, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Firmware not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Firmware not found"})
 	}
 
-	ctx.JSON(iris.Map{"data": fw})
+	return c.JSON(fiber.Map{"data": fw})
 }
 
 // UpdateFirmware updates a firmware entry
-func (h *Handler) UpdateFirmware(ctx iris.Context) {
-	id := ctx.Params().Get("id")
+func (h *Handler) UpdateFirmware(c *fiber.Ctx) error {
+	id := c.Params("id")
 
 	var fw models.Firmware
 	if err := h.DB.First(&fw, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Firmware not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Firmware not found"})
 	}
 
 	var input models.Firmware
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	updates := map[string]interface{}{
@@ -2146,41 +1805,35 @@ func (h *Handler) UpdateFirmware(ctx iris.Context) {
 
 	h.DB.Model(&fw).Updates(updates)
 
-	ctx.JSON(iris.Map{"data": fw, "message": "Firmware updated"})
+	return c.JSON(fiber.Map{"data": fw, "message": "Firmware updated"})
 }
 
 // DeleteFirmware deletes a firmware entry
-func (h *Handler) DeleteFirmware(ctx iris.Context) {
-	id := ctx.Params().Get("id")
+func (h *Handler) DeleteFirmware(c *fiber.Ctx) error {
+	id := c.Params("id")
 
 	// Check if any templates are using this firmware
 	var count int64
 	h.DB.Model(&models.DeviceTemplate{}).Where("firmware_id = ?", id).Count(&count)
 	if count > 0 {
-		ctx.StatusCode(http.StatusConflict)
-		ctx.JSON(iris.Map{"error": "Firmware is referenced by templates", "template_count": count})
-		return
+		return c.Status(http.StatusConflict).JSON(fiber.Map{"error": "Firmware is referenced by templates", "template_count": count})
 	}
 
 	result := h.DB.Delete(&models.Firmware{}, id)
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Firmware not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Firmware not found"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Firmware deleted"})
+	return c.JSON(fiber.Map{"message": "Firmware deleted"})
 }
 
 // SetDefaultFirmware sets a firmware as the default for its model
-func (h *Handler) SetDefaultFirmware(ctx iris.Context) {
-	id := ctx.Params().Get("id")
+func (h *Handler) SetDefaultFirmware(c *fiber.Ctx) error {
+	id := c.Params("id")
 
 	var fw models.Firmware
 	if err := h.DB.First(&fw, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Firmware not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Firmware not found"})
 	}
 
 	// Clear default flag for same manufacturer/model
@@ -2191,27 +1844,27 @@ func (h *Handler) SetDefaultFirmware(ctx iris.Context) {
 	// Set this one as default
 	h.DB.Model(&fw).Update("is_default", true)
 
-	ctx.JSON(iris.Map{"message": "Firmware set as default"})
+	return c.JSON(fiber.Map{"message": "Firmware set as default"})
 }
 
 // UploadFirmware handles firmware file upload
-func (h *Handler) UploadFirmware(ctx iris.Context) {
+func (h *Handler) UploadFirmware(c *fiber.Ctx) error {
 	// Get firmware ID
-	id := ctx.Params().Get("id")
+	id := c.Params("id")
 
 	var fw models.Firmware
 	if err := h.DB.First(&fw, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Firmware not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Firmware not found"})
 	}
 
 	// Get file
-	file, header, err := ctx.FormFile("file")
+	header, err := c.FormFile("file")
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "File is required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "File is required"})
+	}
+	file, err := header.Open()
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to open file"})
 	}
 	defer file.Close()
 
@@ -2231,9 +1884,7 @@ func (h *Handler) UploadFirmware(ctx iris.Context) {
 	dirPath := filepath.Join(firmwareBasePath, safeManufacturer, safeModel)
 
 	if err := os.MkdirAll(dirPath, 0755); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create firmware directory"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create firmware directory"})
 	}
 
 	// Sanitize filename
@@ -2243,18 +1894,14 @@ func (h *Handler) UploadFirmware(ctx iris.Context) {
 	// Create destination file
 	dst, err := os.Create(fullPath)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create file"})
 	}
 	defer dst.Close()
 
 	// Copy file content
 	written, err := io.Copy(dst, file)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to save file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
 	}
 
 	// Relative path for storage (from firmware base)
@@ -2267,7 +1914,7 @@ func (h *Handler) UploadFirmware(ctx iris.Context) {
 		"file_size": written,
 	})
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"message":   "Firmware file uploaded",
 		"path":      relativePath,
 		"full_path": fullPath,

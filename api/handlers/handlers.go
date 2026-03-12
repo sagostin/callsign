@@ -9,11 +9,13 @@ import (
 	"callsign/services/logging"
 	"callsign/services/messaging"
 	"callsign/services/websocket"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
+	fiberws "github.com/gofiber/websocket/v2"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -104,12 +106,85 @@ func (h *Handler) SetLogManager(lm *logging.LogManager) {
 }
 
 // =====================
+// Helper utilities
+// =====================
+
+// getLocalsUint retrieves a uint value from Fiber locals with a default fallback
+func getLocalsUint(c *fiber.Ctx, key string, defaultVal uint) uint {
+	if val, ok := c.Locals(key).(uint); ok {
+		return val
+	}
+	return defaultVal
+}
+
+// getLocalsString retrieves a string value from Fiber locals with a default fallback
+func getLocalsString(c *fiber.Ctx, key string, defaultVal string) string {
+	if val, ok := c.Locals(key).(string); ok {
+		return val
+	}
+	return defaultVal
+}
+
+// =====================
+// WebSocket
+// =====================
+
+// HandleWebSocket handles the general-purpose real-time event WebSocket endpoint
+func (h *Handler) HandleWebSocket(c *fiber.Ctx) error {
+	return fiberws.New(func(conn *fiberws.Conn) {
+		// Extract token from query param for authentication
+		token := conn.Query("token")
+		if token == "" {
+			conn.WriteJSON(fiber.Map{"error": "token required"})
+			conn.Close()
+			return
+		}
+
+		// Verify token
+		claims, err := h.Auth.VerifyToken(token)
+		if err != nil {
+			conn.WriteJSON(fiber.Map{"error": "invalid token"})
+			conn.Close()
+			return
+		}
+
+		// Create hub client
+		clientID := fmt.Sprintf("ws-%d-%d", claims.UserID, time.Now().UnixNano())
+		var tenantID uint
+		if claims.TenantID != nil {
+			tenantID = *claims.TenantID
+		}
+
+		// Register with the WebSocket hub using gorilla-compatible type
+		// The fiberws.Conn embeds fasthttp/websocket.Conn which is API-compatible
+		// For the hub we need a gorilla websocket.Conn, but since the hub
+		// uses its own broadcast mechanism, we bridge via a simple read loop
+		conn.WriteJSON(fiber.Map{
+			"type":    "connected",
+			"user_id": claims.UserID,
+		})
+
+		_ = clientID
+		_ = tenantID
+
+		// Simple keepalive loop — real-time events are pushed via the hub's
+		// broadcast mechanism to Notification WS. This endpoint is a fallback.
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				break
+			}
+		}
+	})(c)
+}
+
+// =====================
 // Health & Status
 // =====================
 
 // Health returns the health status of the API
-func (h *Handler) Health(ctx iris.Context) {
-	ctx.JSON(iris.Map{
+func (h *Handler) Health(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{
 		"status":    "ok",
 		"timestamp": time.Now().UTC(),
 		"version":   "1.0.0",
@@ -130,10 +205,10 @@ type LoginRequest struct {
 // resolveTenantDomain determines the tenant domain from the request.
 // Priority: explicit domain field > Host header. Returns empty string
 // for localhost / 127.x which means "no tenant scoping".
-func (h *Handler) resolveTenantDomain(ctx iris.Context, explicit string) string {
+func (h *Handler) resolveTenantDomain(c *fiber.Ctx, explicit string) string {
 	domain := strings.TrimSpace(explicit)
 	if domain == "" {
-		domain = ctx.Host()
+		domain = c.Hostname()
 	}
 	// Strip port if present
 	if idx := strings.Index(domain, ":"); idx != -1 {
@@ -147,25 +222,21 @@ func (h *Handler) resolveTenantDomain(ctx iris.Context, explicit string) string 
 }
 
 // Login authenticates a user and returns a JWT token
-func (h *Handler) Login(ctx iris.Context) {
+func (h *Handler) Login(c *fiber.Ctx) error {
 	var req LoginRequest
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	// Resolve tenant from the connected domain
 	var user models.User
 	var userErr error
 
-	if domain := h.resolveTenantDomain(ctx, req.Domain); domain != "" {
+	if domain := h.resolveTenantDomain(c, req.Domain); domain != "" {
 		var tenant models.Tenant
 		if err := h.DB.Where("domain = ? AND enabled = true", domain).First(&tenant).Error; err != nil {
 			log.WithField("domain", domain).Debug("Login: tenant not found for domain")
-			ctx.StatusCode(http.StatusUnauthorized)
-			ctx.JSON(iris.Map{"error": "Invalid credentials"})
-			return
+			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 		}
 		userErr = h.DB.Where("(username = ? OR email = ?) AND tenant_id = ?", req.Username, req.Username, tenant.ID).First(&user).Error
 	} else {
@@ -174,15 +245,11 @@ func (h *Handler) Login(ctx iris.Context) {
 	}
 
 	if userErr != nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Invalid credentials"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
 	if !user.CheckPassword(req.Password) {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Invalid credentials"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
 	// Update last login
@@ -192,14 +259,12 @@ func (h *Handler) Login(ctx iris.Context) {
 	// Generate token
 	token, err := h.Auth.GenerateToken(&user)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to generate token"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"token": token,
-		"user": iris.Map{
+		"user": fiber.Map{
 			"id":        user.ID,
 			"uuid":      user.UUID,
 			"username":  user.Username,
@@ -211,12 +276,10 @@ func (h *Handler) Login(ctx iris.Context) {
 }
 
 // AdminLogin authenticates an admin user
-func (h *Handler) AdminLogin(ctx iris.Context) {
+func (h *Handler) AdminLogin(c *fiber.Ctx) error {
 	var req LoginRequest
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	adminRoles := []models.UserRole{models.RoleSystemAdmin, models.RoleTenantAdmin}
@@ -224,13 +287,11 @@ func (h *Handler) AdminLogin(ctx iris.Context) {
 	var user models.User
 	var userErr error
 
-	if domain := h.resolveTenantDomain(ctx, req.Domain); domain != "" {
+	if domain := h.resolveTenantDomain(c, req.Domain); domain != "" {
 		var tenant models.Tenant
 		if err := h.DB.Where("domain = ? AND enabled = true", domain).First(&tenant).Error; err != nil {
 			log.WithField("domain", domain).Debug("AdminLogin: tenant not found for domain")
-			ctx.StatusCode(http.StatusUnauthorized)
-			ctx.JSON(iris.Map{"error": "Invalid credentials or insufficient permissions"})
-			return
+			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials or insufficient permissions"})
 		}
 		// Tenant-scoped lookup for tenant_admin; system_admin can log in from any domain
 		userErr = h.DB.Where("(username = ? OR email = ?) AND role IN ? AND (tenant_id = ? OR role = ?)",
@@ -240,15 +301,11 @@ func (h *Handler) AdminLogin(ctx iris.Context) {
 	}
 
 	if userErr != nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Invalid credentials or insufficient permissions"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials or insufficient permissions"})
 	}
 
 	if !user.CheckPassword(req.Password) {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Invalid credentials"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
 	// Update last login
@@ -258,14 +315,12 @@ func (h *Handler) AdminLogin(ctx iris.Context) {
 	// Generate token
 	token, err := h.Auth.GenerateToken(&user)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to generate token"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"token": token,
-		"user": iris.Map{
+		"user": fiber.Map{
 			"id":        user.ID,
 			"uuid":      user.UUID,
 			"username":  user.Username,
@@ -277,10 +332,9 @@ func (h *Handler) AdminLogin(ctx iris.Context) {
 }
 
 // Register creates a new user account
-func (h *Handler) Register(ctx iris.Context) {
+func (h *Handler) Register(c *fiber.Ctx) error {
 	// NOTE: Implement based on your registration requirements
-	ctx.StatusCode(http.StatusNotImplemented)
-	ctx.JSON(iris.Map{"error": "Registration not implemented"})
+	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Registration not implemented"})
 }
 
 // ExtensionLoginRequest represents a client/extension login payload
@@ -296,58 +350,44 @@ type ExtensionLoginRequest struct {
 }
 
 // ExtensionLogin authenticates an extension user and returns a JWT + SIP credentials
-func (h *Handler) ExtensionLogin(ctx iris.Context) {
+func (h *Handler) ExtensionLogin(c *fiber.Ctx) error {
 	var req ExtensionLoginRequest
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if req.Extension == "" || req.Password == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Extension and password are required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Extension and password are required"})
 	}
 
 	// Resolve tenant from the connected domain
-	domain := h.resolveTenantDomain(ctx, req.Domain)
+	domain := h.resolveTenantDomain(c, req.Domain)
 	if domain == "" {
 		// Extension login always requires a tenant context
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Tenant domain is required for extension login"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant domain is required for extension login"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.Where("domain = ? AND enabled = true", domain).First(&tenant).Error; err != nil {
 		log.WithField("domain", domain).Debug("ExtensionLogin: tenant not found for domain")
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Invalid credentials"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
 	// Look up extension within this tenant
 	var ext models.Extension
 	if err := h.DB.Where("extension = ? AND tenant_id = ? AND enabled = true", req.Extension, tenant.ID).First(&ext).Error; err != nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Invalid credentials"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
 	// Verify web login password
 	if !ext.CheckWebPassword(req.Password) {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Invalid credentials"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
 	// Generate JWT with extension context
 	token, err := h.Auth.GenerateExtensionToken(&ext)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to generate token"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 	}
 
 	// Determine endpoint type, default to web_client
@@ -394,16 +434,14 @@ func (h *Handler) ExtensionLogin(ctx iris.Context) {
 		}
 
 		if err := h.DB.Create(&reg).Error; err != nil {
-			ctx.StatusCode(http.StatusInternalServerError)
-			ctx.JSON(iris.Map{"error": "Failed to provision SIP credentials"})
-			return
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to provision SIP credentials"})
 		}
 		h.reloadXML()
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"token": token,
-		"extension": iris.Map{
+		"extension": fiber.Map{
 			"id":        ext.ID,
 			"uuid":      ext.UUID,
 			"extension": ext.Extension,
@@ -418,29 +456,24 @@ func (h *Handler) ExtensionLogin(ctx iris.Context) {
 }
 
 // RequestPasswordReset initiates a password reset
-func (h *Handler) RequestPasswordReset(ctx iris.Context) {
+func (h *Handler) RequestPasswordReset(c *fiber.Ctx) error {
 	// NOTE: Implement password reset logic
-	ctx.StatusCode(http.StatusNotImplemented)
-	ctx.JSON(iris.Map{"error": "Password reset not implemented"})
+	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Password reset not implemented"})
 }
 
 // GetProfile returns the current user's profile
-func (h *Handler) GetProfile(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) GetProfile(c *fiber.Ctx) error {
+	claims := middleware.GetClaims(c)
 	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var user models.User
 	if err := h.DB.Preload("Tenant").First(&user, claims.UserID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "User not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"id":           user.ID,
 		"uuid":         user.UUID,
 		"username":     user.Username,
@@ -464,78 +497,60 @@ type ChangePasswordRequest struct {
 }
 
 // ChangePassword updates the authenticated user's password
-func (h *Handler) ChangePassword(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) ChangePassword(c *fiber.Ctx) error {
+	claims := middleware.GetClaims(c)
 	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var req ChangePasswordRequest
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	var user models.User
 	if err := h.DB.First(&user, claims.UserID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "User not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
 	if !user.CheckPassword(req.CurrentPassword) {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Current password is incorrect"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Current password is incorrect"})
 	}
 
 	if err := user.SetPassword(req.NewPassword); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to set password"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to set password"})
 	}
 
 	if err := h.DB.Save(&user).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to save password"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save password"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Password updated successfully"})
+	return c.JSON(fiber.Map{"message": "Password updated successfully"})
 }
 
 // Logout invalidates the current token
-func (h *Handler) Logout(ctx iris.Context) {
+func (h *Handler) Logout(c *fiber.Ctx) error {
 	// NOTE: For JWT, logout is typically handled client-side
 	// Optionally implement a token blacklist here
-	ctx.JSON(iris.Map{"message": "Logged out successfully"})
+	return c.JSON(fiber.Map{"message": "Logged out successfully"})
 }
 
 // RefreshToken generates a new token for the authenticated user
-func (h *Handler) RefreshToken(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) RefreshToken(c *fiber.Ctx) error {
+	claims := middleware.GetClaims(c)
 	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var user models.User
 	if err := h.DB.First(&user, claims.UserID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "User not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
 	token, err := h.Auth.GenerateToken(&user)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to generate token"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 	}
 
-	ctx.JSON(iris.Map{"token": token})
+	return c.JSON(fiber.Map{"token": token})
 }

@@ -5,8 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kataras/iris/v12"
-	"github.com/kataras/neffos"
+	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -37,11 +36,19 @@ type Event struct {
 
 // Client represents a WebSocket client
 type Client struct {
-	ID         string
-	TenantID   uint
-	UserID     uint
-	Connection *neffos.Conn
-	Topics     []string // Subscribed topics
+	ID       string
+	TenantID uint
+	UserID   uint
+	Conn     *websocket.Conn
+	Topics   []string // Subscribed topics
+	mu       sync.Mutex
+}
+
+// WriteJSON safely writes JSON to the client connection
+func (cl *Client) WriteJSON(v interface{}) error {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	return cl.Conn.WriteJSON(v)
 }
 
 // Hub manages WebSocket clients and broadcasting
@@ -99,6 +106,9 @@ func (h *Hub) removeClient(client *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	if c, ok := h.clients[client.ID]; ok {
+		c.Conn.Close()
+	}
 	delete(h.clients, client.ID)
 
 	// Remove from tenant list
@@ -126,26 +136,30 @@ func (h *Hub) broadcastEvent(event *Event) {
 		return
 	}
 
-	msg := neffos.Message{
-		Namespace: "default",
-		Event:     string(event.Type),
-		Body:      data,
-	}
-
 	// If tenant-specific, only send to that tenant's clients
 	if event.TenantID > 0 {
 		if clients, ok := h.tenants[event.TenantID]; ok {
 			for _, client := range clients {
-				if client.Connection != nil {
-					client.Connection.Write(msg)
+				if client.Conn != nil {
+					client.mu.Lock()
+					err := client.Conn.WriteMessage(websocket.TextMessage, data)
+					client.mu.Unlock()
+					if err != nil {
+						log.Warnf("Write to client %s failed: %v", client.ID, err)
+					}
 				}
 			}
 		}
 	} else {
 		// Broadcast to all clients
 		for _, client := range h.clients {
-			if client.Connection != nil {
-				client.Connection.Write(msg)
+			if client.Conn != nil {
+				client.mu.Lock()
+				err := client.Conn.WriteMessage(websocket.TextMessage, data)
+				client.mu.Unlock()
+				if err != nil {
+					log.Warnf("Write to client %s failed: %v", client.ID, err)
+				}
 			}
 		}
 	}
@@ -209,53 +223,12 @@ func (h *Hub) NotifyMessageStatus(tenantID uint, messageID uint, status string) 
 	})
 }
 
-// Handler handles WebSocket connections
-type Handler struct {
-	Hub *Hub
+// Register adds a client to the hub
+func (h *Hub) Register(client *Client) {
+	h.register <- client
 }
 
-// NewHandler creates a new WebSocket handler
-func NewHandler(hub *Hub) *Handler {
-	return &Handler{Hub: hub}
-}
-
-// HandleConnection handles new WebSocket connections using Neffos
-// This is a simplified implementation - use proper Neffos server setup in production
-func (h *Handler) HandleConnection(ctx iris.Context) {
-	// For now, just return an error - proper WebSocket setup requires neffos server
-	ctx.StatusCode(501)
-	ctx.JSON(map[string]string{"error": "WebSocket requires neffos server configuration"})
-}
-
-// GetNeffosEvents returns the events map for Neffos server configuration
-func (h *Handler) GetNeffosEvents() neffos.Namespaces {
-	return neffos.Namespaces{
-		"default": neffos.Events{
-			neffos.OnNamespaceConnected: func(c *neffos.NSConn, msg neffos.Message) error {
-				tenantID := c.Conn.Get("tenant_id")
-				userID := c.Conn.Get("user_id")
-
-				client := &Client{
-					ID:         c.Conn.ID(),
-					TenantID:   tenantID.(uint),
-					UserID:     userID.(uint),
-					Connection: c.Conn,
-				}
-				h.Hub.register <- client
-				return nil
-			},
-			neffos.OnNamespaceDisconnect: func(c *neffos.NSConn, msg neffos.Message) error {
-				h.Hub.unregister <- &Client{ID: c.Conn.ID()}
-				return nil
-			},
-			"subscribe": func(c *neffos.NSConn, msg neffos.Message) error {
-				log.Infof("Client %s subscribed to: %s", c.Conn.ID(), string(msg.Body))
-				return nil
-			},
-			"ping": func(c *neffos.NSConn, msg neffos.Message) error {
-				c.Emit("pong", []byte(`{"type":"pong"}`))
-				return nil
-			},
-		},
-	}
+// Unregister removes a client from the hub
+func (h *Hub) Unregister(client *Client) {
+	h.unregister <- client
 }

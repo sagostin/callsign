@@ -4,134 +4,112 @@ import (
 	"callsign/models"
 	"net/http"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 )
 
 // RequirePermission is a middleware that checks if the user has a specific permission
-func RequirePermission(perm models.Permission) iris.Handler {
-	return func(ctx iris.Context) {
-		claims := GetClaims(ctx)
+func RequirePermission(perm models.Permission) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		claims := GetClaims(c)
 		if claims == nil {
-			ctx.StatusCode(http.StatusUnauthorized)
-			ctx.JSON(iris.Map{"error": "Unauthorized"})
-			return
+			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 		}
 
 		// Get user from context
-		user, ok := ctx.Values().Get("user").(*models.User)
+		user, ok := c.Locals("user").(*models.User)
 		if !ok {
 			// If user not loaded, check role from claims
 			// System admins always have access
 			if models.UserRole(claims.Role) == models.RoleSystemAdmin {
-				ctx.Next()
-				return
+				return c.Next()
 			}
 
 			// For other roles, we need the full user object
-			ctx.StatusCode(http.StatusForbidden)
-			ctx.JSON(iris.Map{
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{
 				"error":               "Insufficient permissions",
 				"required_permission": string(perm),
 			})
-			return
 		}
 
 		if !user.HasPermission(perm) {
-			ctx.StatusCode(http.StatusForbidden)
-			ctx.JSON(iris.Map{
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{
 				"error":               "Insufficient permissions",
 				"required_permission": string(perm),
 			})
-			return
 		}
 
-		ctx.Next()
+		return c.Next()
 	}
 }
 
 // RequireAnyPermission is a middleware that checks if the user has any of the specified permissions
-func RequireAnyPermission(perms ...models.Permission) iris.Handler {
-	return func(ctx iris.Context) {
-		claims := GetClaims(ctx)
+func RequireAnyPermission(perms ...models.Permission) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		claims := GetClaims(c)
 		if claims == nil {
-			ctx.StatusCode(http.StatusUnauthorized)
-			ctx.JSON(iris.Map{"error": "Unauthorized"})
-			return
+			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 		}
 
 		// System admins always have access
 		if models.UserRole(claims.Role) == models.RoleSystemAdmin {
-			ctx.Next()
-			return
+			return c.Next()
 		}
 
 		// Get user from context
-		user, ok := ctx.Values().Get("user").(*models.User)
+		user, ok := c.Locals("user").(*models.User)
 		if !ok {
-			ctx.StatusCode(http.StatusForbidden)
-			ctx.JSON(iris.Map{"error": "Insufficient permissions"})
-			return
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "Insufficient permissions"})
 		}
 
 		if !user.HasAnyPermission(perms...) {
-			ctx.StatusCode(http.StatusForbidden)
-			ctx.JSON(iris.Map{"error": "Insufficient permissions"})
-			return
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "Insufficient permissions"})
 		}
 
-		ctx.Next()
+		return c.Next()
 	}
 }
 
 // RequireAllPermissions is a middleware that checks if the user has all of the specified permissions
-func RequireAllPermissions(perms ...models.Permission) iris.Handler {
-	return func(ctx iris.Context) {
-		claims := GetClaims(ctx)
+func RequireAllPermissions(perms ...models.Permission) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		claims := GetClaims(c)
 		if claims == nil {
-			ctx.StatusCode(http.StatusUnauthorized)
-			ctx.JSON(iris.Map{"error": "Unauthorized"})
-			return
+			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 		}
 
 		// System admins always have access
 		if models.UserRole(claims.Role) == models.RoleSystemAdmin {
-			ctx.Next()
-			return
+			return c.Next()
 		}
 
 		// Get user from context
-		user, ok := ctx.Values().Get("user").(*models.User)
+		user, ok := c.Locals("user").(*models.User)
 		if !ok {
-			ctx.StatusCode(http.StatusForbidden)
-			ctx.JSON(iris.Map{"error": "Insufficient permissions"})
-			return
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "Insufficient permissions"})
 		}
 
 		if !user.HasAllPermissions(perms...) {
-			ctx.StatusCode(http.StatusForbidden)
-			ctx.JSON(iris.Map{"error": "Insufficient permissions"})
-			return
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "Insufficient permissions"})
 		}
 
-		ctx.Next()
+		return c.Next()
 	}
 }
 
 // LoadUser is a middleware that loads the full user object into context
 func LoadUser(db interface {
 	First(dest interface{}, conds ...interface{}) interface{ Error() error }
-}) iris.Handler {
-	return func(ctx iris.Context) {
-		claims := GetClaims(ctx)
+}) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		claims := GetClaims(c)
 		if claims == nil {
-			ctx.Next()
-			return
+			return c.Next()
 		}
 
 		var user models.User
 		// This is a simplified version - in production you'd use the actual DB
 		// The interface is used to avoid import cycles
-		ctx.Values().Set("user", &user)
-		ctx.Next()
+		c.Locals("user", &user)
+		return c.Next()
 	}
 }

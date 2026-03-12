@@ -9,7 +9,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 )
 
 // ==================
@@ -17,8 +17,8 @@ import (
 // ==================
 
 // ListDevices returns all devices for the current tenant
-func (h *Handler) ListDevices(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListDevices(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var devices []models.Device
 	query := h.DB.Where("tenant_id = ?", tenantID).
@@ -28,16 +28,16 @@ func (h *Handler) ListDevices(ctx iris.Context) {
 		Preload("Lines.Extension")
 
 	// Optional filters
-	if status := ctx.URLParam("status"); status != "" {
+	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
 	}
-	if deviceType := ctx.URLParam("type"); deviceType != "" {
+	if deviceType := c.Query("type"); deviceType != "" {
 		query = query.Where("device_type = ?", deviceType)
 	}
-	if manufacturer := ctx.URLParam("manufacturer"); manufacturer != "" {
+	if manufacturer := c.Query("manufacturer"); manufacturer != "" {
 		query = query.Where("manufacturer = ?", manufacturer)
 	}
-	if userID := ctx.URLParam("user_id"); userID != "" {
+	if userID := c.Query("user_id"); userID != "" {
 		if userID == "unassigned" {
 			query = query.Where("user_id IS NULL")
 		} else {
@@ -47,34 +47,28 @@ func (h *Handler) ListDevices(ctx iris.Context) {
 
 	query.Order("created_at DESC").Find(&devices)
 
-	ctx.JSON(iris.Map{"data": devices})
+	return c.JSON(fiber.Map{"data": devices})
 }
 
 // CreateDevice creates a new device
-func (h *Handler) CreateDevice(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateDevice(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var device models.Device
-	if err := ctx.ReadJSON(&device); err != nil {
-		ctx.StatusCode(iris.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&device); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	// Normalize MAC address
 	device.MAC = strings.ToLower(models.NormalizeMAC(device.MAC))
 	if device.MAC == "" {
-		ctx.StatusCode(iris.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "MAC address is required"})
-		return
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "MAC address is required"})
 	}
 
 	// Check for duplicate MAC
 	var existing models.Device
 	if err := h.DB.Where("mac = ?", device.MAC).First(&existing).Error; err == nil {
-		ctx.StatusCode(iris.StatusConflict)
-		ctx.JSON(iris.Map{"error": "Device with this MAC address already exists"})
-		return
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Device with this MAC address already exists"})
 	}
 
 	device.TenantID = tenantID
@@ -89,9 +83,7 @@ func (h *Handler) CreateDevice(ctx iris.Context) {
 	}
 
 	if err := h.DB.Create(&device).Error; err != nil {
-		ctx.StatusCode(iris.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create device"})
-		return
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create device"})
 	}
 
 	// Create default Line 1 if extension is provided
@@ -104,13 +96,13 @@ func (h *Handler) CreateDevice(ctx iris.Context) {
 		h.DB.Create(&line)
 	}
 
-	ctx.JSON(iris.Map{"data": device, "message": "Device created"})
+	return c.JSON(fiber.Map{"data": device, "message": "Device created"})
 }
 
 // GetDevice returns a single device by ID or MAC
-func (h *Handler) GetDevice(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	idOrMac := ctx.Params().Get("id")
+func (h *Handler) GetDevice(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	idOrMac := c.Params("id")
 
 	var device models.Device
 	query := h.DB.Where("tenant_id = ?", tenantID).
@@ -124,15 +116,13 @@ func (h *Handler) GetDevice(ctx iris.Context) {
 		// Try normalized MAC
 		normalizedMAC := strings.ToLower(models.NormalizeMAC(idOrMac))
 		if err := query.Where("mac = ?", normalizedMAC).First(&device).Error; err != nil {
-			ctx.StatusCode(iris.StatusNotFound)
-			ctx.JSON(iris.Map{"error": "Device not found"})
-			return
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 		}
 	}
 
 	// Return device data with ProvisionToken exposed
-	ctx.JSON(iris.Map{
-		"data": iris.Map{
+	return c.JSON(fiber.Map{
+		"data": fiber.Map{
 			"id":                  device.ID,
 			"uuid":                device.UUID,
 			"created_at":          device.CreatedAt,
@@ -172,15 +162,13 @@ func (h *Handler) GetDevice(ctx iris.Context) {
 }
 
 // UpdateDevice updates a device
-func (h *Handler) UpdateDevice(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id := ctx.Params().Get("id")
+func (h *Handler) UpdateDevice(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id := c.Params("id")
 
 	var device models.Device
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&device).Error; err != nil {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Device not found"})
-		return
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
 	// Parse input with ProvisionToken exposed
@@ -188,10 +176,8 @@ func (h *Handler) UpdateDevice(ctx iris.Context) {
 		models.Device
 		ProvisionToken string `json:"provision_token"`
 	}
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(iris.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	// Update allowed fields
@@ -220,13 +206,13 @@ func (h *Handler) UpdateDevice(ctx iris.Context) {
 	// Reload with associations
 	h.DB.Preload("User").Preload("Template").Preload("Lines").Preload("Lines.Extension").First(&device)
 
-	ctx.JSON(iris.Map{"data": device, "message": "Device updated"})
+	return c.JSON(fiber.Map{"data": device, "message": "Device updated"})
 }
 
 // DeleteDevice deletes a device
-func (h *Handler) DeleteDevice(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id := ctx.Params().Get("id")
+func (h *Handler) DeleteDevice(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id := c.Params("id")
 
 	// Delete lines first
 	h.DB.Where("device_id = ?", id).Delete(&models.DeviceLine{})
@@ -234,26 +220,22 @@ func (h *Handler) DeleteDevice(ctx iris.Context) {
 	// Delete device
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.Device{})
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Device not found"})
-		return
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Device deleted"})
+	return c.JSON(fiber.Map{"message": "Device deleted"})
 }
 
 // AssignDeviceToUser assigns a device to a user
-func (h *Handler) AssignDeviceToUser(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id := ctx.Params().Get("id")
+func (h *Handler) AssignDeviceToUser(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id := c.Params("id")
 
 	var input struct {
 		UserID *uint `json:"user_id"`
 	}
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(iris.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	result := h.DB.Model(&models.Device{}).
@@ -261,12 +243,10 @@ func (h *Handler) AssignDeviceToUser(ctx iris.Context) {
 		Update("user_id", input.UserID)
 
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Device not found"})
-		return
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Device assigned to user"})
+	return c.JSON(fiber.Map{"message": "Device assigned to user"})
 }
 
 // ==================
@@ -274,23 +254,19 @@ func (h *Handler) AssignDeviceToUser(ctx iris.Context) {
 // ==================
 
 // UpdateDeviceLines updates lines for a device
-func (h *Handler) UpdateDeviceLines(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	deviceID := ctx.Params().Get("id")
+func (h *Handler) UpdateDeviceLines(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	deviceID := c.Params("id")
 
 	// Verify device belongs to tenant
 	var device models.Device
 	if err := h.DB.Where("id = ? AND tenant_id = ?", deviceID, tenantID).First(&device).Error; err != nil {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Device not found"})
-		return
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
 	var lines []models.DeviceLine
-	if err := ctx.ReadJSON(&lines); err != nil {
-		ctx.StatusCode(iris.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&lines); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	// Delete existing lines
@@ -308,7 +284,7 @@ func (h *Handler) UpdateDeviceLines(ctx iris.Context) {
 	// Reload
 	h.DB.Where("device_id = ?", device.ID).Preload("Extension").Find(&lines)
 
-	ctx.JSON(iris.Map{"data": lines, "message": "Device lines updated"})
+	return c.JSON(fiber.Map{"data": lines, "message": "Device lines updated"})
 }
 
 // ==================
@@ -317,12 +293,12 @@ func (h *Handler) UpdateDeviceLines(ctx iris.Context) {
 
 // GetDeviceConfigSecure returns provisioning config with tenant secret verification
 // URL: /provision/{tenant_uuid}/{secret}/{mac}.cfg
-func (h *Handler) GetDeviceConfigSecure(ctx iris.Context) {
-	tenantUUID := ctx.Params().Get("tenant")
-	secret := ctx.Params().Get("secret")
-	mac := ctx.Params().Get("mac")
-	clientIP := ctx.RemoteAddr()
-	userAgent := ctx.GetHeader("User-Agent")
+func (h *Handler) GetDeviceConfigSecure(c *fiber.Ctx) error {
+	tenantUUID := c.Params("tenant")
+	secret := c.Params("secret")
+	mac := c.Params("mac")
+	clientIP := c.IP()
+	userAgent := c.Get("User-Agent")
 
 	// Remove extension if present (.cfg, .xml, etc.)
 	if idx := strings.LastIndex(mac, "."); idx > 0 {
@@ -344,9 +320,8 @@ func (h *Handler) GetDeviceConfigSecure(ctx iris.Context) {
 			})
 		}
 
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.Text("Invalid provisioning URL")
-		return
+		c.Status(fiber.StatusNotFound)
+		return c.SendString("Invalid provisioning URL")
 	}
 
 	// Check if provisioning is enabled for tenant
@@ -360,9 +335,8 @@ func (h *Handler) GetDeviceConfigSecure(ctx iris.Context) {
 			})
 		}
 
-		ctx.StatusCode(iris.StatusForbidden)
-		ctx.Text("Provisioning disabled for this tenant")
-		return
+		c.Status(fiber.StatusForbidden)
+		return c.SendString("Provisioning disabled for this tenant")
 	}
 
 	// Verify secret
@@ -378,9 +352,8 @@ func (h *Handler) GetDeviceConfigSecure(ctx iris.Context) {
 			})
 		}
 
-		ctx.StatusCode(iris.StatusForbidden)
-		ctx.Text("Invalid provisioning URL")
-		return
+		c.Status(fiber.StatusForbidden)
+		return c.SendString("Invalid provisioning URL")
 	}
 
 	// Find device
@@ -391,15 +364,13 @@ func (h *Handler) GetDeviceConfigSecure(ctx iris.Context) {
 		Preload("Lines").
 		Preload("Lines.Extension").
 		First(&device).Error; err != nil {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.Text("Device not found")
-		return
+		c.Status(fiber.StatusNotFound)
+		return c.SendString("Device not found")
 	}
 
 	if !device.Enabled {
-		ctx.StatusCode(iris.StatusForbidden)
-		ctx.Text("Device is disabled")
-		return
+		c.Status(fiber.StatusForbidden)
+		return c.SendString("Device is disabled")
 	}
 
 	// Get template (from device, profile, or default for manufacturer)
@@ -417,19 +388,17 @@ func (h *Handler) GetDeviceConfigSecure(ctx iris.Context) {
 	}
 
 	if tmpl.ID == 0 || tmpl.ConfigTemplate == "" {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.Text("No template available for this device")
-		return
+		c.Status(fiber.StatusNotFound)
+		return c.SendString("No template available for this device")
 	}
 
 	// Verify User-Agent if pattern is set
 	if tmpl.UserAgentPattern != "" {
-		userAgent := ctx.GetHeader("User-Agent")
+		userAgent := c.Get("User-Agent")
 		matched, _ := regexp.MatchString(tmpl.UserAgentPattern, userAgent)
 		if !matched {
-			ctx.StatusCode(iris.StatusForbidden)
-			ctx.Text("Device not authorized")
-			return
+			c.Status(fiber.StatusForbidden)
+			return c.SendString("Device not authorized")
 		}
 	}
 
@@ -437,18 +406,17 @@ func (h *Handler) GetDeviceConfigSecure(ctx iris.Context) {
 	if tmpl.MACPattern != "" {
 		matched, _ := regexp.MatchString(tmpl.MACPattern, normalizedMAC)
 		if !matched {
-			ctx.StatusCode(iris.StatusForbidden)
-			ctx.Text("Device model mismatch")
-			return
+			c.Status(fiber.StatusForbidden)
+			return c.SendString("Device model mismatch")
 		}
 	}
 
-	h.renderDeviceConfig(ctx, &device, &tmpl, &tenant)
+	return h.renderDeviceConfig(c, &device, &tmpl, &tenant)
 }
 
 // GetDeviceConfig returns the provisioning configuration for a device (legacy, no auth)
-func (h *Handler) GetDeviceConfig(ctx iris.Context) {
-	mac := ctx.Params().Get("mac")
+func (h *Handler) GetDeviceConfig(c *fiber.Ctx) error {
+	mac := c.Params("mac")
 	normalizedMAC := strings.ToLower(models.NormalizeMAC(mac))
 
 	var device models.Device
@@ -458,15 +426,13 @@ func (h *Handler) GetDeviceConfig(ctx iris.Context) {
 		Preload("Lines").
 		Preload("Lines.Extension").
 		First(&device).Error; err != nil {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.Text("Device not found")
-		return
+		c.Status(fiber.StatusNotFound)
+		return c.SendString("Device not found")
 	}
 
 	if !device.Enabled {
-		ctx.StatusCode(iris.StatusForbidden)
-		ctx.Text("Device is disabled")
-		return
+		c.Status(fiber.StatusForbidden)
+		return c.SendString("Device is disabled")
 	}
 
 	// Get template
@@ -482,20 +448,19 @@ func (h *Handler) GetDeviceConfig(ctx iris.Context) {
 	}
 
 	if tmpl.ID == 0 || tmpl.ConfigTemplate == "" {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.Text("No template available for this device")
-		return
+		c.Status(fiber.StatusNotFound)
+		return c.SendString("No template available for this device")
 	}
 
 	// Get tenant for domain
 	var tenant models.Tenant
 	h.DB.First(&tenant, device.TenantID)
 
-	h.renderDeviceConfig(ctx, &device, &tmpl, &tenant)
+	return h.renderDeviceConfig(c, &device, &tmpl, &tenant)
 }
 
 // renderDeviceConfig renders the provisioning template
-func (h *Handler) renderDeviceConfig(ctx iris.Context, device *models.Device, tmpl *models.DeviceTemplate, tenant *models.Tenant) {
+func (h *Handler) renderDeviceConfig(c *fiber.Ctx, device *models.Device, tmpl *models.DeviceTemplate, tenant *models.Tenant) error {
 	// Build provisioning variables
 	vars := models.ProvisioningVariables{
 		MAC:          device.MAC,
@@ -542,27 +507,25 @@ func (h *Handler) renderDeviceConfig(ctx iris.Context, device *models.Device, tm
 	// Render template
 	t, err := template.New("config").Parse(tmpl.ConfigTemplate)
 	if err != nil {
-		ctx.StatusCode(iris.StatusInternalServerError)
-		ctx.Text("Template parse error: " + err.Error())
-		return
+		c.Status(fiber.StatusInternalServerError)
+		return c.SendString("Template parse error: " + err.Error())
 	}
 
 	// Set content type based on config type
 	switch tmpl.ConfigType {
 	case "xml":
-		ctx.ContentType("application/xml")
+		c.Set("Content-Type", "application/xml")
 	case "cfg":
-		ctx.ContentType("text/plain")
+		c.Set("Content-Type", "text/plain")
 	case "json":
-		ctx.ContentType("application/json")
+		c.Set("Content-Type", "application/json")
 	default:
-		ctx.ContentType("text/plain")
+		c.Set("Content-Type", "text/plain")
 	}
 
-	if err := t.Execute(ctx.ResponseWriter(), vars); err != nil {
-		ctx.StatusCode(iris.StatusInternalServerError)
-		ctx.Text("Template execution error: " + err.Error())
-		return
+	if err := t.Execute(c.Response().BodyWriter(), vars); err != nil {
+		c.Status(fiber.StatusInternalServerError)
+		return c.SendString("Template execution error: " + err.Error())
 	}
 
 	// Update last provision time
@@ -570,18 +533,18 @@ func (h *Handler) renderDeviceConfig(ctx iris.Context, device *models.Device, tm
 		"last_provision":  time.Now(),
 		"provision_count": device.ProvisionCount + 1,
 	})
+
+	return nil
 }
 
 // ReprovisionDevice triggers a re-provision (SIP NOTIFY)
-func (h *Handler) ReprovisionDevice(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id := ctx.Params().Get("id")
+func (h *Handler) ReprovisionDevice(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id := c.Params("id")
 
 	var device models.Device
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&device).Error; err != nil {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Device not found"})
-		return
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
 	// Send SIP NOTIFY to trigger re-provision via ESL
@@ -601,7 +564,7 @@ func (h *Handler) ReprovisionDevice(ctx iris.Context) {
 		}
 	}
 
-	ctx.JSON(iris.Map{"message": "Reprovision triggered"})
+	return c.JSON(fiber.Map{"message": "Reprovision triggered"})
 }
 
 // ==================
@@ -609,8 +572,8 @@ func (h *Handler) ReprovisionDevice(ctx iris.Context) {
 // ==================
 
 // ListDeviceTemplates returns templates available to tenant
-func (h *Handler) ListDeviceTemplates(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListDeviceTemplates(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var templates []models.DeviceTemplate
 
@@ -624,30 +587,26 @@ func (h *Handler) ListDeviceTemplates(ctx iris.Context) {
 		h.DB.Model(&models.Device{}).Where("template_id = ?", templates[i].ID).Count(&templates[i].DeviceCount)
 	}
 
-	ctx.JSON(iris.Map{"data": templates})
+	return c.JSON(fiber.Map{"data": templates})
 }
 
 // CreateDeviceTemplate creates a tenant-specific template
-func (h *Handler) CreateDeviceTemplate(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateDeviceTemplate(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var tmpl models.DeviceTemplate
-	if err := ctx.ReadJSON(&tmpl); err != nil {
-		ctx.StatusCode(iris.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&tmpl); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	tmpl.TenantID = &tenantID
 	tmpl.IsSystem = false // Tenant can't create system templates
 
 	if err := h.DB.Create(&tmpl).Error; err != nil {
-		ctx.StatusCode(iris.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create template"})
-		return
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create template"})
 	}
 
-	ctx.JSON(iris.Map{"data": tmpl, "message": "Template created"})
+	return c.JSON(fiber.Map{"data": tmpl, "message": "Template created"})
 }
 
 // ==================
@@ -655,8 +614,8 @@ func (h *Handler) CreateDeviceTemplate(ctx iris.Context) {
 // ==================
 
 // ListDeviceProfiles returns all device profiles for a tenant
-func (h *Handler) ListDeviceProfiles(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListDeviceProfiles(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var profiles []models.DeviceProfile
 	h.DB.Where("tenant_id = ?", tenantID).
@@ -670,66 +629,56 @@ func (h *Handler) ListDeviceProfiles(ctx iris.Context) {
 		h.DB.Model(&models.Device{}).Where("profile_id = ?", profiles[i].ID).Count(&profiles[i].DeviceCount)
 	}
 
-	ctx.JSON(iris.Map{"data": profiles})
+	return c.JSON(fiber.Map{"data": profiles})
 }
 
 // CreateDeviceProfile creates a new device profile
-func (h *Handler) CreateDeviceProfile(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateDeviceProfile(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var profile models.DeviceProfile
-	if err := ctx.ReadJSON(&profile); err != nil {
-		ctx.StatusCode(iris.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&profile); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	profile.TenantID = tenantID
 
 	if err := h.DB.Create(&profile).Error; err != nil {
-		ctx.StatusCode(iris.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create profile"})
-		return
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create profile"})
 	}
 
-	ctx.JSON(iris.Map{"data": profile, "message": "Device profile created"})
+	return c.JSON(fiber.Map{"data": profile, "message": "Device profile created"})
 }
 
 // GetDeviceProfile returns a single device profile
-func (h *Handler) GetDeviceProfile(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id := ctx.Params().Get("id")
+func (h *Handler) GetDeviceProfile(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id := c.Params("id")
 
 	var profile models.DeviceProfile
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).
 		Preload("Template").
 		Preload("Firmware").
 		First(&profile).Error; err != nil {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Profile not found"})
-		return
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Profile not found"})
 	}
 
-	ctx.JSON(iris.Map{"data": profile})
+	return c.JSON(fiber.Map{"data": profile})
 }
 
 // UpdateDeviceProfile updates a device profile
-func (h *Handler) UpdateDeviceProfile(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id := ctx.Params().Get("id")
+func (h *Handler) UpdateDeviceProfile(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id := c.Params("id")
 
 	var profile models.DeviceProfile
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&profile).Error; err != nil {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Profile not found"})
-		return
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Profile not found"})
 	}
 
 	var input models.DeviceProfile
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(iris.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	updates := map[string]interface{}{
@@ -770,54 +719,46 @@ func (h *Handler) UpdateDeviceProfile(ctx iris.Context) {
 			Update("is_default", false)
 	}
 
-	ctx.JSON(iris.Map{"data": profile, "message": "Device profile updated"})
+	return c.JSON(fiber.Map{"data": profile, "message": "Device profile updated"})
 }
 
 // DeleteDeviceProfile deletes a device profile
-func (h *Handler) DeleteDeviceProfile(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id := ctx.Params().Get("id")
+func (h *Handler) DeleteDeviceProfile(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id := c.Params("id")
 
 	// Check if any devices are using this profile
 	var count int64
 	h.DB.Model(&models.Device{}).Where("profile_id = ?", id).Count(&count)
 	if count > 0 {
-		ctx.StatusCode(iris.StatusConflict)
-		ctx.JSON(iris.Map{"error": "Profile is in use by devices", "device_count": count})
-		return
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Profile is in use by devices", "device_count": count})
 	}
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.DeviceProfile{})
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Profile not found"})
-		return
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Profile not found"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Device profile deleted"})
+	return c.JSON(fiber.Map{"message": "Device profile deleted"})
 }
 
 // AssignDeviceToProfile assigns a device to a profile
-func (h *Handler) AssignDeviceToProfile(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	deviceID := ctx.Params().Get("id")
+func (h *Handler) AssignDeviceToProfile(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	deviceID := c.Params("id")
 
 	var input struct {
 		ProfileID *uint `json:"profile_id"`
 	}
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(iris.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	// Verify profile belongs to tenant (if provided)
 	if input.ProfileID != nil {
 		var profile models.DeviceProfile
 		if err := h.DB.Where("id = ? AND tenant_id = ?", *input.ProfileID, tenantID).First(&profile).Error; err != nil {
-			ctx.StatusCode(iris.StatusNotFound)
-			ctx.JSON(iris.Map{"error": "Profile not found"})
-			return
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Profile not found"})
 		}
 	}
 
@@ -826,12 +767,10 @@ func (h *Handler) AssignDeviceToProfile(ctx iris.Context) {
 		Update("profile_id", input.ProfileID)
 
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Device not found"})
-		return
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Device assigned to profile"})
+	return c.JSON(fiber.Map{"message": "Device assigned to profile"})
 }
 
 // ==================
@@ -839,7 +778,7 @@ func (h *Handler) AssignDeviceToProfile(ctx iris.Context) {
 // ==================
 
 // ListDeviceManufacturers returns all device manufacturers
-func (h *Handler) ListDeviceManufacturers(ctx iris.Context) {
+func (h *Handler) ListDeviceManufacturers(c *fiber.Ctx) error {
 	var manufacturers []models.DeviceManufacturer
 	h.DB.Where("enabled = ?", true).Order("sort_order ASC, name ASC").Find(&manufacturers)
 
@@ -853,59 +792,47 @@ func (h *Handler) ListDeviceManufacturers(ctx iris.Context) {
 		manufacturers[i].SortOrder = int(count) // Reusing SortOrder for count (temporary)
 	}
 
-	ctx.JSON(iris.Map{"data": manufacturers})
+	return c.JSON(fiber.Map{"data": manufacturers})
 }
 
 // CreateDeviceManufacturer creates a new manufacturer (system admin only)
-func (h *Handler) CreateDeviceManufacturer(ctx iris.Context) {
+func (h *Handler) CreateDeviceManufacturer(c *fiber.Ctx) error {
 	var mfg models.DeviceManufacturer
-	if err := ctx.ReadJSON(&mfg); err != nil {
-		ctx.StatusCode(iris.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&mfg); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	// Normalize code to lowercase
 	mfg.Code = strings.ToLower(mfg.Code)
 	if mfg.Code == "" || mfg.Name == "" {
-		ctx.StatusCode(iris.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Code and name are required"})
-		return
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Code and name are required"})
 	}
 
 	// Check for duplicate code
 	var existing models.DeviceManufacturer
 	if err := h.DB.Where("code = ?", mfg.Code).First(&existing).Error; err == nil {
-		ctx.StatusCode(iris.StatusConflict)
-		ctx.JSON(iris.Map{"error": "Manufacturer code already exists"})
-		return
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Manufacturer code already exists"})
 	}
 
 	if err := h.DB.Create(&mfg).Error; err != nil {
-		ctx.StatusCode(iris.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create manufacturer"})
-		return
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create manufacturer"})
 	}
 
-	ctx.JSON(iris.Map{"data": mfg, "message": "Manufacturer created"})
+	return c.JSON(fiber.Map{"data": mfg, "message": "Manufacturer created"})
 }
 
 // UpdateDeviceManufacturer updates a manufacturer
-func (h *Handler) UpdateDeviceManufacturer(ctx iris.Context) {
-	id := ctx.Params().Get("id")
+func (h *Handler) UpdateDeviceManufacturer(c *fiber.Ctx) error {
+	id := c.Params("id")
 
 	var mfg models.DeviceManufacturer
 	if err := h.DB.Where("id = ?", id).First(&mfg).Error; err != nil {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Manufacturer not found"})
-		return
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Manufacturer not found"})
 	}
 
 	var input models.DeviceManufacturer
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(iris.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	updates := map[string]interface{}{
@@ -925,39 +852,33 @@ func (h *Handler) UpdateDeviceManufacturer(ctx iris.Context) {
 		var count int64
 		h.DB.Model(&models.DeviceTemplate{}).Where("LOWER(manufacturer) = ?", mfg.Code).Count(&count)
 		if count > 0 {
-			ctx.StatusCode(iris.StatusConflict)
-			ctx.JSON(iris.Map{"error": "Cannot change code while templates exist"})
-			return
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Cannot change code while templates exist"})
 		}
 		updates["code"] = strings.ToLower(input.Code)
 	}
 
 	h.DB.Model(&mfg).Updates(updates)
 
-	ctx.JSON(iris.Map{"data": mfg, "message": "Manufacturer updated"})
+	return c.JSON(fiber.Map{"data": mfg, "message": "Manufacturer updated"})
 }
 
 // DeleteDeviceManufacturer deletes a manufacturer
-func (h *Handler) DeleteDeviceManufacturer(ctx iris.Context) {
-	id := ctx.Params().Get("id")
+func (h *Handler) DeleteDeviceManufacturer(c *fiber.Ctx) error {
+	id := c.Params("id")
 
 	// Check if any templates are using this manufacturer
 	var mfg models.DeviceManufacturer
 	if err := h.DB.Where("id = ?", id).First(&mfg).Error; err != nil {
-		ctx.StatusCode(iris.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Manufacturer not found"})
-		return
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Manufacturer not found"})
 	}
 
 	var count int64
 	h.DB.Model(&models.DeviceTemplate{}).Where("LOWER(manufacturer) = ?", mfg.Code).Count(&count)
 	if count > 0 {
-		ctx.StatusCode(iris.StatusConflict)
-		ctx.JSON(iris.Map{"error": "Manufacturer has templates", "template_count": count})
-		return
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Manufacturer has templates", "template_count": count})
 	}
 
 	h.DB.Delete(&mfg)
 
-	ctx.JSON(iris.Map{"message": "Manufacturer deleted"})
+	return c.JSON(fiber.Map{"message": "Manufacturer deleted"})
 }

@@ -5,8 +5,8 @@ import (
 	"callsign/models"
 	"net/http"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/kataras/iris/v12"
 )
 
 // ===========================
@@ -14,13 +14,13 @@ import (
 // ===========================
 
 // ListClientRegistrations returns all active registrations for the current tenant
-func (h *Handler) ListClientRegistrations(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListClientRegistrations(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	// Optional filters
-	endpointType := ctx.URLParam("type")        // device, mobile_app, desktop_app, web_client
-	extensionID := ctx.URLParam("extension_id") // filter by extension
-	status := ctx.URLParam("status")            // provisioned, registered, expired, offline
+	endpointType := c.Query("type")        // device, mobile_app, desktop_app, web_client
+	extensionID := c.Query("extension_id") // filter by extension
+	status := c.Query("status")            // provisioned, registered, expired, offline
 
 	query := h.DB.Where("tenant_id = ?", tenantID).
 		Preload("User").
@@ -39,25 +39,21 @@ func (h *Handler) ListClientRegistrations(ctx iris.Context) {
 
 	var registrations []models.ClientRegistration
 	if err := query.Order("created_at DESC").Find(&registrations).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to fetch registrations"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch registrations"})
 	}
 
-	ctx.JSON(iris.Map{"registrations": registrations, "total": len(registrations)})
+	return c.JSON(fiber.Map{"registrations": registrations, "total": len(registrations)})
 }
 
 // ListExtensionRegistrations returns all active registrations for a specific extension
-func (h *Handler) ListExtensionRegistrations(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	extID := ctx.Params().GetUintDefault("id", 0)
+func (h *Handler) ListExtensionRegistrations(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	extID := c.Params("id")
 
 	// Verify the extension belongs to this tenant
 	var ext models.Extension
 	if err := h.DB.Where("id = ? AND tenant_id = ?", extID, tenantID).First(&ext).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Extension not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Extension not found"})
 	}
 
 	var registrations []models.ClientRegistration
@@ -65,12 +61,10 @@ func (h *Handler) ListExtensionRegistrations(ctx iris.Context) {
 		Preload("Device").
 		Order("endpoint_type ASC, created_at DESC").
 		Find(&registrations).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to fetch registrations"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch registrations"})
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"extension":     ext.Extension,
 		"registrations": registrations,
 		"total":         len(registrations),
@@ -79,8 +73,8 @@ func (h *Handler) ListExtensionRegistrations(ctx iris.Context) {
 
 // ProvisionClientRegistration creates a new app/web client registration
 // This generates SIP credentials for the client to register with FreeSWITCH
-func (h *Handler) ProvisionClientRegistration(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ProvisionClientRegistration(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var req struct {
 		EndpointType string `json:"endpoint_type"` // mobile_app, desktop_app, web_client
@@ -92,10 +86,8 @@ func (h *Handler) ProvisionClientRegistration(ctx iris.Context) {
 		ExtensionID  *uint  `json:"extension_id"` // Optional: link to extension
 	}
 
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	// Validate endpoint type
@@ -104,9 +96,7 @@ func (h *Handler) ProvisionClientRegistration(ctx iris.Context) {
 	case models.EndpointTypeMobileApp, models.EndpointTypeDesktopApp, models.EndpointTypeWebClient:
 		// Valid
 	default:
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid endpoint_type. Must be: mobile_app, desktop_app, or web_client"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid endpoint_type. Must be: mobile_app, desktop_app, or web_client"})
 	}
 
 	// Instance ID required for apps and web clients
@@ -118,17 +108,13 @@ func (h *Handler) ProvisionClientRegistration(ctx iris.Context) {
 	if req.UserID != nil {
 		var user models.User
 		if err := h.DB.Where("id = ? AND tenant_id = ?", *req.UserID, tenantID).First(&user).Error; err != nil {
-			ctx.StatusCode(http.StatusBadRequest)
-			ctx.JSON(iris.Map{"error": "User not found in tenant"})
-			return
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "User not found in tenant"})
 		}
 	}
 	if req.ExtensionID != nil {
 		var ext models.Extension
 		if err := h.DB.Where("id = ? AND tenant_id = ?", *req.ExtensionID, tenantID).First(&ext).Error; err != nil {
-			ctx.StatusCode(http.StatusBadRequest)
-			ctx.JSON(iris.Map{"error": "Extension not found in tenant"})
-			return
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Extension not found in tenant"})
 		}
 	}
 
@@ -160,13 +146,12 @@ func (h *Handler) ProvisionClientRegistration(ctx iris.Context) {
 			*req.UserID, req.InstanceID, endpointType, tenantID,
 		).First(&existing).Error; err == nil {
 			// Return existing credentials
-			ctx.JSON(iris.Map{
+			return c.JSON(fiber.Map{
 				"registration":        existing,
 				"sip_user":            existing.RegistrationUser,
 				"sip_password":        existing.RegistrationPass,
 				"already_provisioned": true,
 			})
-			return
 		}
 	}
 
@@ -189,16 +174,13 @@ func (h *Handler) ProvisionClientRegistration(ctx iris.Context) {
 	}
 
 	if err := h.DB.Create(&reg).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create registration: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create registration: " + err.Error()})
 	}
 
 	// Trigger FreeSWITCH XML reload for directory changes
 	h.reloadXML()
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{
+	return c.Status(http.StatusCreated).JSON(fiber.Map{
 		"registration": reg,
 		"sip_user":     reg.RegistrationUser,
 		"sip_password": reg.RegistrationPass,
@@ -206,81 +188,67 @@ func (h *Handler) ProvisionClientRegistration(ctx iris.Context) {
 }
 
 // DeleteClientRegistration removes a client registration (force-unregister)
-func (h *Handler) DeleteClientRegistration(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	regID := ctx.Params().GetUintDefault("id", 0)
+func (h *Handler) DeleteClientRegistration(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	regID := c.Params("id")
 
 	var reg models.ClientRegistration
 	if err := h.DB.Where("id = ? AND tenant_id = ?", regID, tenantID).First(&reg).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Registration not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Registration not found"})
 	}
 
 	if err := h.DB.Delete(&reg).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete registration"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete registration"})
 	}
 
 	// Trigger FreeSWITCH XML reload for directory changes
 	h.reloadXML()
 
-	ctx.JSON(iris.Map{"message": "Registration removed"})
+	return c.JSON(fiber.Map{"message": "Registration removed"})
 }
 
 // ListUnassignedRegistrations returns devices/clients that are registered but not assigned to a user
-func (h *Handler) ListUnassignedRegistrations(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListUnassignedRegistrations(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var registrations []models.ClientRegistration
 	if err := h.DB.Where(
 		"tenant_id = ? AND user_id IS NULL AND enabled = ?",
 		tenantID, true,
 	).Preload("Device").Order("created_at DESC").Find(&registrations).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to fetch registrations"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch registrations"})
 	}
 
-	ctx.JSON(iris.Map{"registrations": registrations, "total": len(registrations)})
+	return c.JSON(fiber.Map{"registrations": registrations, "total": len(registrations)})
 }
 
 // AssignRegistration assigns a client registration to a user/extension
-func (h *Handler) AssignRegistration(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	regID := ctx.Params().GetUintDefault("id", 0)
+func (h *Handler) AssignRegistration(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	regID := c.Params("id")
 
 	var req struct {
 		UserID      uint `json:"user_id"`
 		ExtensionID uint `json:"extension_id"`
 	}
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	var reg models.ClientRegistration
 	if err := h.DB.Where("id = ? AND tenant_id = ?", regID, tenantID).First(&reg).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Registration not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Registration not found"})
 	}
 
 	// Verify user and extension belong to tenant
 	var user models.User
 	if err := h.DB.Where("id = ? AND tenant_id = ?", req.UserID, tenantID).First(&user).Error; err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "User not found in tenant"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "User not found in tenant"})
 	}
 
 	var ext models.Extension
 	if err := h.DB.Where("id = ? AND tenant_id = ?", req.ExtensionID, tenantID).First(&ext).Error; err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Extension not found in tenant"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Extension not found in tenant"})
 	}
 
 	reg.UserID = &req.UserID
@@ -288,13 +256,11 @@ func (h *Handler) AssignRegistration(ctx iris.Context) {
 	reg.AllowOutbound = true
 
 	if err := h.DB.Save(&reg).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to assign registration"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to assign registration"})
 	}
 
 	// Trigger FreeSWITCH XML reload for directory changes
 	h.reloadXML()
 
-	ctx.JSON(iris.Map{"message": "Registration assigned", "registration": reg})
+	return c.JSON(fiber.Map{"message": "Registration assigned", "registration": reg})
 }

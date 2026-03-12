@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 )
 
 // =====================
@@ -14,28 +14,24 @@ import (
 // =====================
 
 // ListLocations returns all E911 locations for the current tenant
-func (h *Handler) ListLocations(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListLocations(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var locations []models.Location
 	if err := h.DB.Where("tenant_id = ?", tenantID).Order("is_default DESC, name ASC").Find(&locations).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve locations"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve locations"})
 	}
 
-	ctx.JSON(locations)
+	return c.JSON(locations)
 }
 
 // CreateLocation creates a new E911 location
-func (h *Handler) CreateLocation(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateLocation(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var location models.Location
-	if err := ctx.ReadJSON(&location); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&location); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	location.TenantID = tenantID
@@ -46,57 +42,44 @@ func (h *Handler) CreateLocation(ctx iris.Context) {
 	}
 
 	if err := h.DB.Create(&location).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create location"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create location"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(location)
+	return c.Status(http.StatusCreated).JSON(location)
 }
 
 // GetLocation returns a specific E911 location
-func (h *Handler) GetLocation(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, err := strconv.ParseUint(ctx.Params().Get("id"), 10, 64)
+func (h *Handler) GetLocation(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid location ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid location ID"})
 	}
 
 	var location models.Location
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&location).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Location not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Location not found"})
 	}
 
-	ctx.JSON(location)
+	return c.JSON(location)
 }
 
 // UpdateLocation updates an existing E911 location
-func (h *Handler) UpdateLocation(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, err := strconv.ParseUint(ctx.Params().Get("id"), 10, 64)
+func (h *Handler) UpdateLocation(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid location ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid location ID"})
 	}
 
 	var existing models.Location
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&existing).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Location not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Location not found"})
 	}
 
 	var updates models.Location
-	if err := ctx.ReadJSON(&updates); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&updates); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	// Handle default flag
@@ -108,31 +91,25 @@ func (h *Handler) UpdateLocation(ctx iris.Context) {
 	updates.ID = existing.ID
 	updates.TenantID = tenantID
 	if err := h.DB.Model(&existing).Updates(updates).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update location"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update location"})
 	}
 
 	h.DB.First(&existing, id)
-	ctx.JSON(existing)
+	return c.JSON(existing)
 }
 
 // DeleteLocation deletes an E911 location
-func (h *Handler) DeleteLocation(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, err := strconv.ParseUint(ctx.Params().Get("id"), 10, 64)
+func (h *Handler) DeleteLocation(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid location ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid location ID"})
 	}
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.Location{})
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Location not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Location not found"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Location deleted"})
+	return c.JSON(fiber.Map{"message": "Location deleted"})
 }

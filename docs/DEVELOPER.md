@@ -26,7 +26,7 @@ This guide covers the architecture, patterns, and key functions for developers w
         │                      │                      │
         ▼                      ▼                      ▼
 ┌───────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Vue.js UI   │    │   Go Iris API   │    │   FreeSWITCH    │
+│   Vue.js UI   │    │   Go Fiber API  │    │   FreeSWITCH    │
 │   (Vite)      │◄──►│   (Port 8080)   │◄──►│   (ESL/XML)     │
 └───────────────┘    └────────┬────────┘    └─────────────────┘
                               │
@@ -42,11 +42,13 @@ This guide covers the architecture, patterns, and key functions for developers w
 |-------|------------|
 | Web Server | Caddy |
 | Frontend | Vue 3 + Vite |
-| API Framework | Go Iris |
+| API Framework | Go Fiber |
 | ORM | GORM |
 | Database | PostgreSQL |
+| CDR Analytics | ClickHouse (optional) |
 | PBX Engine | FreeSWITCH |
 | Auth | JWT (HS256) |
+| Logging | Loki |
 
 ---
 
@@ -57,15 +59,20 @@ This guide covers the architecture, patterns, and key functions for developers w
 ```
 api/
 ├── config/           # Configuration loading (.env)
-├── handlers/         # HTTP request handlers
+├── handlers/         # HTTP request handlers (29 files)
 │   └── freeswitch/   # XML CURL handlers
 ├── middleware/       # Auth, CORS, audit, tenant
-├── models/           # GORM database models
-├── router/           # Route definitions
-├── services/         # Business logic
-│   ├── esl/          # FreeSWITCH ESL services
+├── models/           # GORM database models (40 files)
+├── router/           # Route definitions (~400+ endpoints)
+├── services/         # Business logic (9 packages)
+│   ├── cdr/          # ClickHouse CDR sync
 │   ├── encryption/   # AES-256-GCM encryption
+│   ├── esl/          # FreeSWITCH ESL services
+│   ├── fax/          # Fax queue processing
 │   ├── logging/      # Loki log manager
+│   ├── messaging/    # SMS/MMS messaging manager
+│   ├── tts/          # Text-to-speech caching
+│   ├── websocket/    # Real-time event hub
 │   └── xmlcache/     # XML response caching
 └── utils/            # Helper functions
 ```
@@ -79,9 +86,11 @@ All handlers are methods on the `Handler` struct:
 type Handler struct {
     DB         *gorm.DB
     Config     *config.Config
-    Auth       *middleware.AuthMiddleware
     ESLManager *esl.Manager
     LogManager *logging.LogManager
+    WSHub      *websocket.Hub
+    MsgManager *messaging.Manager
+    ClickHouse *cdr.ClickHouseClient
 }
 
 // Create handler
@@ -94,40 +103,40 @@ h := handlers.NewHandler(db, cfg)
 // api/handlers/my_handlers.go
 package handlers
 
+import (
+    "callsign/middleware"
+    "callsign/models"
+
+    "github.com/gofiber/fiber/v2"
+)
+
 // ListMyResources lists all resources for the current tenant
-func (h *Handler) ListMyResources(ctx iris.Context) {
+func (h *Handler) ListMyResources(c *fiber.Ctx) error {
     // Get tenant from context (set by middleware)
-    tenantID := middleware.GetTenantID(ctx)
-    
+    tenantID := middleware.GetTenantID(c)
+
     var resources []models.MyResource
     if err := h.DB.Where("tenant_id = ?", tenantID).Find(&resources).Error; err != nil {
-        ctx.StatusCode(http.StatusInternalServerError)
-        ctx.JSON(iris.Map{"error": "Database error"})
-        return
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database error"})
     }
-    
-    ctx.JSON(iris.Map{"data": resources})
+
+    return c.JSON(fiber.Map{"data": resources})
 }
 
 // CreateMyResource creates a new resource
-func (h *Handler) CreateMyResource(ctx iris.Context) {
+func (h *Handler) CreateMyResource(c *fiber.Ctx) error {
     var resource models.MyResource
-    if err := ctx.ReadJSON(&resource); err != nil {
-        ctx.StatusCode(http.StatusBadRequest)
-        ctx.JSON(iris.Map{"error": "Invalid request payload"})
-        return
+    if err := c.BodyParser(&resource); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
     }
-    
-    resource.TenantID = middleware.GetTenantID(ctx)
-    
+
+    resource.TenantID = middleware.GetTenantID(c)
+
     if err := h.DB.Create(&resource).Error; err != nil {
-        ctx.StatusCode(http.StatusInternalServerError)
-        ctx.JSON(iris.Map{"error": "Failed to create resource"})
-        return
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create resource"})
     }
-    
-    ctx.StatusCode(http.StatusCreated)
-    ctx.JSON(iris.Map{"data": resource, "message": "Resource created"})
+
+    return c.Status(fiber.StatusCreated).JSON(fiber.Map{"data": resource, "message": "Resource created"})
 }
 ```
 
@@ -137,18 +146,16 @@ func (h *Handler) CreateMyResource(ctx iris.Context) {
 // api/router/router.go
 func (r *Router) Init() {
     // Tenant-scoped routes (require auth + tenant)
-    tenantScoped := protected.Party("")
+    tenantScoped := protected.Group("")
     tenantScoped.Use(r.Tenant.RequireTenant())
-    {
-        myResources := tenantScoped.Party("/my-resources")
-        {
-            myResources.Get("/", r.Handler.ListMyResources)
-            myResources.Post("/", r.Handler.CreateMyResource)
-            myResources.Get("/{id}", r.Handler.GetMyResource)
-            myResources.Put("/{id}", r.Handler.UpdateMyResource)
-            myResources.Delete("/{id}", r.Handler.DeleteMyResource)
-        }
-    }
+
+    // My Resources
+    myResources := tenantScoped.Group("/my-resources")
+    myResources.Get("/", r.Handler.ListMyResources)
+    myResources.Post("/", r.Handler.CreateMyResource)
+    myResources.Get("/:id", r.Handler.GetMyResource)
+    myResources.Put("/:id", r.Handler.UpdateMyResource)
+    myResources.Delete("/:id", r.Handler.DeleteMyResource)
 }
 ```
 
@@ -156,16 +163,16 @@ func (r *Router) Init() {
 
 ```go
 // Get authenticated user's claims
-claims := middleware.GetClaims(ctx)  // Returns *Claims or nil
+claims := middleware.GetClaims(c)  // Returns *Claims or nil
 
 // Get current user ID
-userID := middleware.GetUserID(ctx)  // Returns uint
+userID := middleware.GetUserID(c)  // Returns uint
 
 // Get current tenant ID (handles X-Tenant-ID header for system admins)
-tenantID := middleware.GetTenantID(ctx)  // Returns uint
+tenantID := middleware.GetTenantID(c)  // Returns uint
 
 // Get user role
-role := middleware.GetRole(ctx)  // Returns models.UserRole
+role := middleware.GetRole(c)  // Returns models.UserRole
 ```
 
 ---
@@ -190,11 +197,11 @@ type MyResource struct {
     CreatedAt time.Time      `json:"created_at"`
     UpdatedAt time.Time      `json:"updated_at"`
     DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
-    
+
     // Tenant association (required for multi-tenancy)
     TenantID uint   `json:"tenant_id" gorm:"index;not null"`
     Tenant   Tenant `json:"-" gorm:"foreignKey:TenantID"`
-    
+
     // Resource fields
     Name        string `json:"name" gorm:"not null"`
     Description string `json:"description"`
@@ -216,10 +223,16 @@ func (r *MyResource) BeforeCreate(tx *gorm.DB) error {
 | `Tenant` | Multi-tenant organizations |
 | `Extension` | SIP extensions with call settings |
 | `Device` | Provisioned phones |
+| `ClientRegistration` | App/web client registrations |
 | `IVRMenu` | Auto-attendant menus |
 | `Queue` | Call center queues |
 | `Gateway` | SIP trunks |
 | `Dialplan` | Call routing rules |
+| `CallRecording` | Call recordings with storage config |
+| `FaxBox` / `FaxJob` | Fax management |
+| `SMSConversation` | SMS/MMS messaging |
+| `ChatThread` / `ChatRoom` | Internal chat system |
+| `Broadcast` | Call broadcast campaigns |
 
 ---
 
@@ -276,9 +289,10 @@ ui/src/
 │   ├── common/       # DataTable, StatusBadge, etc.
 │   └── layout/       # Sidebar, TopBar
 ├── views/            # Page components
-│   ├── admin/        # Tenant admin views
-│   ├── system/       # System admin views
-│   └── user/         # User portal views
+│   ├── admin/        # 64 tenant admin views
+│   ├── system/       # 26 system admin views
+│   ├── user/         # 8 user portal views
+│   └── auth/         # 2 auth views
 ├── services/         # API communication
 ├── styles/           # Global CSS
 └── router.js         # Route definitions
@@ -337,6 +351,11 @@ const createResource = async (resource) => {
 | `devicesAPI` | Device management + call control |
 | `systemAPI` | System admin operations |
 | `tenantSettingsAPI` | Tenant configuration |
+| `faxAPI` | Fax boxes, jobs, sending |
+| `reportsAPI` | Analytics and reporting |
+| `broadcastAPI` | Call broadcast campaigns |
+| `hospitalityAPI` | Room management |
+| `recordingsAPI` | Call recordings |
 
 ---
 
@@ -362,7 +381,10 @@ services/esl/
 ├── callcontrol/      # General call routing
 ├── voicemail/        # Voicemail handling
 ├── queue/            # Call center queues
-└── conference/       # Conference rooms
+├── conference/       # Conference rooms
+└── modules/          # Additional ESL modules
+    ├── conference/   # Conference live control service
+    └── blf/          # BLF/Presence tracking
 ```
 
 ---
@@ -410,6 +432,10 @@ JWT_EXPIRATION=24  # hours
 FREESWITCH_HOST=localhost
 FREESWITCH_PORT=8021
 FREESWITCH_PASSWORD=ClueCon
+
+# Encryption (for SIP passwords at rest)
+ENCRYPTION_KEY=<32-byte-hex-key>
+ENCRYPTION_SALT=<16-byte-hex-salt>
 ```
 
 ---
@@ -420,20 +446,18 @@ FREESWITCH_PASSWORD=ClueCon
 
 ```go
 // Handler error response
-ctx.StatusCode(http.StatusBadRequest)
-ctx.JSON(iris.Map{"error": "Descriptive error message"})
-return
+return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Descriptive error message"})
 
 // Success with data
-ctx.JSON(iris.Map{"data": resource, "message": "Operation successful"})
+return c.JSON(fiber.Map{"data": resource, "message": "Operation successful"})
 ```
 
 ### Pagination
 
 ```go
 // Query params: ?page=1&limit=50
-page, _ := strconv.Atoi(ctx.URLParamDefault("page", "1"))
-limit, _ := strconv.Atoi(ctx.URLParamDefault("limit", "50"))
+page, _ := strconv.Atoi(c.Query("page", "1"))
+limit, _ := strconv.Atoi(c.Query("limit", "50"))
 offset := (page - 1) * limit
 
 var total int64
@@ -445,7 +469,7 @@ h.DB.Where("tenant_id = ?", tenantID).
     Limit(limit).
     Find(&resources)
 
-ctx.JSON(iris.Map{
+return c.JSON(fiber.Map{
     "data":  resources,
     "total": total,
     "page":  page,

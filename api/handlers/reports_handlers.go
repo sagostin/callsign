@@ -7,7 +7,7 @@ import (
 
 	"callsign/middleware"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 )
 
 // =====================
@@ -15,14 +15,14 @@ import (
 // =====================
 
 // GetCallVolumeReport returns call volume statistics grouped by time interval
-func (h *Handler) GetCallVolumeReport(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) GetCallVolumeReport(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	// Parse query params
-	interval := ctx.URLParamDefault("interval", "hour") // hour, day, week
-	startDate := ctx.URLParamDefault("start", time.Now().AddDate(0, 0, -7).Format("2006-01-02"))
-	endDate := ctx.URLParamDefault("end", time.Now().Format("2006-01-02"))
-	direction := ctx.URLParam("direction") // inbound, outbound, or empty for both
+	interval := c.Query("interval", "hour") // hour, day, week
+	startDate := c.Query("start", time.Now().AddDate(0, 0, -7).Format("2006-01-02"))
+	endDate := c.Query("end", time.Now().Format("2006-01-02"))
+	direction := c.Query("direction") // inbound, outbound, or empty for both
 
 	// Build query using CDR data
 	var groupBy string
@@ -57,14 +57,14 @@ func (h *Handler) GetCallVolumeReport(ctx iris.Context) {
 
 	query.Group(groupBy).Order("period ASC").Find(&rows)
 
-	ctx.JSON(iris.Map{"data": rows, "interval": interval, "start": startDate, "end": endDate})
+	return c.JSON(fiber.Map{"data": rows, "interval": interval, "start": startDate, "end": endDate})
 }
 
 // GetAgentPerformanceReport returns agent-level performance metrics
-func (h *Handler) GetAgentPerformanceReport(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	startDate := ctx.URLParamDefault("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
-	endDate := ctx.URLParamDefault("end", time.Now().Format("2006-01-02"))
+func (h *Handler) GetAgentPerformanceReport(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	startDate := c.Query("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
+	endDate := c.Query("end", time.Now().Format("2006-01-02"))
 
 	type AgentMetrics struct {
 		AgentName     string  `json:"agent_name"`
@@ -91,12 +91,12 @@ func (h *Handler) GetAgentPerformanceReport(ctx iris.Context) {
 		Order("total_calls DESC").
 		Find(&metrics)
 
-	ctx.JSON(iris.Map{"data": metrics, "start": startDate, "end": endDate})
+	return c.JSON(fiber.Map{"data": metrics, "start": startDate, "end": endDate})
 }
 
 // GetQueueStatsReport returns queue-level statistics
-func (h *Handler) GetQueueStatsReport(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) GetQueueStatsReport(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	type QueueStats struct {
 		QueueID      uint    `json:"queue_id"`
@@ -119,14 +119,14 @@ func (h *Handler) GetQueueStatsReport(ctx iris.Context) {
 		Order("queues.name").
 		Find(&stats)
 
-	ctx.JSON(iris.Map{"data": stats})
+	return c.JSON(fiber.Map{"data": stats})
 }
 
 // GetExtensionUsageReport returns per-extension call usage statistics
-func (h *Handler) GetExtensionUsageReport(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	startDate := ctx.URLParamDefault("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
-	endDate := ctx.URLParamDefault("end", time.Now().Format("2006-01-02"))
+func (h *Handler) GetExtensionUsageReport(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	startDate := c.Query("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
+	endDate := c.Query("end", time.Now().Format("2006-01-02"))
 
 	// Try ClickHouse first for better performance on large datasets
 	if h.CHClient != nil && h.CHClient.IsEnabled() {
@@ -136,8 +136,7 @@ func (h *Handler) GetExtensionUsageReport(ctx iris.Context) {
 
 		stats, err := h.CHClient.QueryExtensionStats(tenantID, from, to)
 		if err == nil {
-			ctx.JSON(iris.Map{"data": stats, "source": "clickhouse", "start": startDate, "end": endDate})
-			return
+			return c.JSON(fiber.Map{"data": stats, "source": "clickhouse", "start": startDate, "end": endDate})
 		}
 		// Fallback to PostgreSQL
 	}
@@ -162,14 +161,14 @@ func (h *Handler) GetExtensionUsageReport(ctx iris.Context) {
 		Order("total_minutes DESC").
 		Find(&usage)
 
-	ctx.JSON(iris.Map{"data": usage, "source": "postgresql", "start": startDate, "end": endDate})
+	return c.JSON(fiber.Map{"data": usage, "source": "postgresql", "start": startDate, "end": endDate})
 }
 
 // GetKPIReport returns key performance indicators
-func (h *Handler) GetKPIReport(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	startDate := ctx.URLParamDefault("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
-	endDate := ctx.URLParamDefault("end", time.Now().Format("2006-01-02"))
+func (h *Handler) GetKPIReport(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	startDate := c.Query("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
+	endDate := c.Query("end", time.Now().Format("2006-01-02"))
 
 	// Try ClickHouse first for better performance on large datasets
 	if h.CHClient != nil && h.CHClient.IsEnabled() {
@@ -179,8 +178,7 @@ func (h *Handler) GetKPIReport(ctx iris.Context) {
 
 		kpi, err := h.CHClient.QueryKPI(tenantID, from, to)
 		if err == nil {
-			ctx.JSON(iris.Map{"data": kpi, "source": "clickhouse", "start": startDate, "end": endDate})
-			return
+			return c.JSON(fiber.Map{"data": kpi, "source": "clickhouse", "start": startDate, "end": endDate})
 		}
 		// Fallback to PostgreSQL
 	}
@@ -214,14 +212,14 @@ func (h *Handler) GetKPIReport(ctx iris.Context) {
 		kpis.AvgCallsPerDay = float64(kpis.TotalCalls) / days
 	}
 
-	ctx.JSON(iris.Map{"data": kpis, "source": "postgresql", "start": startDate, "end": endDate})
+	return c.JSON(fiber.Map{"data": kpis, "source": "postgresql", "start": startDate, "end": endDate})
 }
 
 // GetNumberUsageReport returns phone number/DID utilization statistics
-func (h *Handler) GetNumberUsageReport(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	startDate := ctx.URLParamDefault("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
-	endDate := ctx.URLParamDefault("end", time.Now().Format("2006-01-02"))
+func (h *Handler) GetNumberUsageReport(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	startDate := c.Query("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
+	endDate := c.Query("end", time.Now().Format("2006-01-02"))
 
 	type NumberUsage struct {
 		Number       string  `json:"number"`
@@ -241,23 +239,23 @@ func (h *Handler) GetNumberUsageReport(ctx iris.Context) {
 		Limit(100).
 		Find(&usage)
 
-	ctx.JSON(iris.Map{"data": usage, "start": startDate, "end": endDate})
+	return c.JSON(fiber.Map{"data": usage, "start": startDate, "end": endDate})
 }
 
 // ExportReport exports report data as CSV
-func (h *Handler) ExportReport(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	reportType := ctx.URLParamDefault("type", "call-volume")
-	startDate := ctx.URLParamDefault("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
-	endDate := ctx.URLParamDefault("end", time.Now().Format("2006-01-02"))
+func (h *Handler) ExportReport(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	reportType := c.Query("type", "call-volume")
+	startDate := c.Query("start", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
+	endDate := c.Query("end", time.Now().Format("2006-01-02"))
 
-	ctx.Header("Content-Type", "text/csv")
-	ctx.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s-report-%s.csv", reportType, startDate))
+	c.Set("Content-Type", "text/csv")
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s-report-%s.csv", reportType, startDate))
 
 	// CSV header + data based on type
 	switch reportType {
 	case "call-volume":
-		ctx.WriteString("Date,Total Calls,Answered,Missed,Avg Duration\n")
+		c.WriteString("Date,Total Calls,Answered,Missed,Avg Duration\n")
 		type Row struct {
 			Period     string
 			TotalCalls int64
@@ -275,10 +273,10 @@ func (h *Handler) ExportReport(ctx iris.Context) {
 			Group("DATE(start_stamp)").Order("period ASC").
 			Find(&rows)
 		for _, r := range rows {
-			ctx.WriteString(fmt.Sprintf("%s,%d,%d,%d,%.1f\n", r.Period, r.TotalCalls, r.Answered, r.Missed, r.AvgDur))
+			c.WriteString(fmt.Sprintf("%s,%d,%d,%d,%.1f\n", r.Period, r.TotalCalls, r.Answered, r.Missed, r.AvgDur))
 		}
 	default:
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Unknown report type"})
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Unknown report type"})
 	}
+	return nil
 }

@@ -8,9 +8,9 @@ import (
 	"callsign/config"
 	"callsign/middleware"
 
+	"github.com/gofiber/fiber/v2"
+	fiberws "github.com/gofiber/websocket/v2"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/gorilla/websocket"
-	"github.com/kataras/iris/v12"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -27,7 +27,7 @@ type NotificationMessage struct {
 
 // NotificationClient represents a connected notification WebSocket client
 type NotificationClient struct {
-	conn          *websocket.Conn
+	conn          *fiberws.Conn
 	send          chan NotificationMessage
 	manager       *NotificationManager
 	authenticated bool
@@ -154,70 +154,77 @@ func (m *NotificationManager) ValidateToken(tokenString string) (*middleware.Cla
 	return nil, jwt.ErrSignatureInvalid
 }
 
+// NotificationWebSocketUpgrade is used as a middleware guard before the WS handler.
+func NotificationWebSocketUpgrade() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		if fiberws.IsWebSocketUpgrade(c) {
+			return c.Next()
+		}
+		return c.Status(fiber.StatusUpgradeRequired).JSON(fiber.Map{"error": "WebSocket upgrade required"})
+	}
+}
+
 // NotificationWebSocket handles WebSocket connections for real-time notifications
-func (h *Handler) NotificationWebSocket(ctx iris.Context) {
-	w := ctx.ResponseWriter()
-	r := ctx.Request()
+func (h *Handler) NotificationWebSocket(c *fiber.Ctx) error {
+	return fiberws.New(func(conn *fiberws.Conn) {
+		// Check for token in query param (fallback for initial connection)
+		token := conn.Query("token")
 
-	// Check for token in query param (fallback for initial connection)
-	token := r.URL.Query().Get("token")
+		// Create notification manager if not exists
+		if h.NotificationManager == nil {
+			h.NotificationManager = NewNotificationManager(h.Config)
+			go h.NotificationManager.Run()
+		}
 
-	// Upgrade to WebSocket
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Errorf("WebSocket upgrade failed: %v", err)
-		return
-	}
+		client := &NotificationClient{
+			conn:          conn,
+			send:          make(chan NotificationMessage, 64),
+			manager:       h.NotificationManager,
+			authenticated: false,
+		}
 
-	// Create notification manager if not exists
-	if h.NotificationManager == nil {
-		h.NotificationManager = NewNotificationManager(h.Config)
-		go h.NotificationManager.Run()
-	}
+		h.NotificationManager.register <- client
 
-	client := &NotificationClient{
-		conn:          conn,
-		send:          make(chan NotificationMessage, 64),
-		manager:       h.NotificationManager,
-		authenticated: false,
-	}
+		// If token provided in query param, auto-authenticate
+		if token != "" {
+			claims, err := h.NotificationManager.ValidateToken(token)
+			if err == nil {
+				client.mu.Lock()
+				client.authenticated = true
+				client.userID = claims.UserID
+				if claims.TenantID != nil {
+					client.tenantID = *claims.TenantID
+				}
+				client.role = string(claims.Role)
+				client.mu.Unlock()
 
-	h.NotificationManager.register <- client
-
-	// If token provided in query param, auto-authenticate
-	if token != "" {
-		claims, err := h.NotificationManager.ValidateToken(token)
-		if err == nil {
-			client.mu.Lock()
-			client.authenticated = true
-			client.userID = claims.UserID
-			if claims.TenantID != nil {
-				client.tenantID = *claims.TenantID
+				client.send <- NotificationMessage{
+					Type:      "connected",
+					Timestamp: time.Now().Format(time.RFC3339),
+					Message:   "Connected to notification service",
+				}
+				log.Debugf("Notification client auto-authenticated: user=%d tenant=%d", claims.UserID, client.tenantID)
 			}
-			client.role = string(claims.Role)
-			client.mu.Unlock()
+		}
 
+		// Send auth required if not authenticated
+		if !client.authenticated {
 			client.send <- NotificationMessage{
-				Type:      "connected",
+				Type:      "auth_required",
 				Timestamp: time.Now().Format(time.RFC3339),
-				Message:   "Connected to notification service",
+				Message:   "Send auth message with token to authenticate",
 			}
-			log.Debugf("Notification client auto-authenticated: user=%d tenant=%d", claims.UserID, client.tenantID)
 		}
-	}
 
-	// Send auth required if not authenticated
-	if !client.authenticated {
-		client.send <- NotificationMessage{
-			Type:      "auth_required",
-			Timestamp: time.Now().Format(time.RFC3339),
-			Message:   "Send auth message with token to authenticate",
-		}
-	}
-
-	// Start read/write goroutines
-	go client.notificationWritePump()
-	go client.notificationReadPump()
+		// Start read/write goroutines
+		done := make(chan struct{})
+		go func() {
+			client.notificationWritePump()
+			close(done)
+		}()
+		client.notificationReadPump()
+		<-done
+	})(c)
 }
 
 // notificationWritePump pumps messages to the WebSocket connection
@@ -233,7 +240,7 @@ func (c *NotificationClient) notificationWritePump() {
 		case msg, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				c.conn.WriteMessage(fiberws.CloseMessage, []byte{})
 				return
 			}
 
@@ -243,13 +250,13 @@ func (c *NotificationClient) notificationWritePump() {
 				continue
 			}
 
-			if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			if err := c.conn.WriteMessage(fiberws.TextMessage, data); err != nil {
 				return
 			}
 
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			if err := c.conn.WriteMessage(fiberws.PingMessage, nil); err != nil {
 				return
 			}
 		}
@@ -273,7 +280,7 @@ func (c *NotificationClient) notificationReadPump() {
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			if fiberws.IsUnexpectedCloseError(err, fiberws.CloseGoingAway, fiberws.CloseAbnormalClosure) {
 				log.Debugf("Notification WebSocket closed: %v", err)
 			}
 			break

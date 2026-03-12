@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -21,16 +21,15 @@ import (
 // resolveExtension loads the Extension from claims.ExtensionID, or falls
 // back to looking it up via claims.UserID when the token was generated from
 // a traditional user login.
-func (h *Handler) resolveExtension(ctx iris.Context) (*models.Extension, bool) {
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) resolveExtension(c *fiber.Ctx) (*models.Extension, bool) {
+	claims := middleware.GetClaims(c)
 	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
+		c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 		return nil, false
 	}
 
 	var ext models.Extension
-	tenantID := middleware.GetTenantID(ctx)
+	tenantID := middleware.GetTenantID(c)
 
 	// Prefer ExtensionID from JWT (extension login)
 	if claims.ExtensionID != nil {
@@ -46,19 +45,18 @@ func (h *Handler) resolveExtension(ctx iris.Context) (*models.Extension, bool) {
 		}
 	}
 
-	ctx.StatusCode(http.StatusNotFound)
-	ctx.JSON(iris.Map{"error": "No extension associated with this session"})
+	c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "No extension associated with this session"})
 	return nil, false
 }
 
 // GetExtensionDevices returns devices/registrations for the logged-in extension.
-func (h *Handler) GetExtensionDevices(ctx iris.Context) {
-	ext, ok := h.resolveExtension(ctx)
+func (h *Handler) GetExtensionDevices(c *fiber.Ctx) error {
+	ext, ok := h.resolveExtension(c)
 	if !ok {
-		return
+		return nil
 	}
 
-	tenantID := middleware.GetTenantID(ctx)
+	tenantID := middleware.GetTenantID(c)
 
 	// Collect hardware devices linked via DeviceUUID
 	devices := make([]map[string]interface{}, 0)
@@ -83,24 +81,24 @@ func (h *Handler) GetExtensionDevices(ctx iris.Context) {
 		})
 	}
 
-	ctx.JSON(iris.Map{"data": devices})
+	return c.JSON(fiber.Map{"data": devices})
 }
 
 // GetExtensionCallHistory returns CDR records for the logged-in extension.
-func (h *Handler) GetExtensionCallHistory(ctx iris.Context) {
-	ext, ok := h.resolveExtension(ctx)
+func (h *Handler) GetExtensionCallHistory(c *fiber.Ctx) error {
+	ext, ok := h.resolveExtension(c)
 	if !ok {
-		return
+		return nil
 	}
 
 	limit := 100
-	if l := ctx.URLParam("limit"); l != "" {
+	if l := c.Query("limit"); l != "" {
 		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 500 {
 			limit = v
 		}
 	}
 
-	tenantID := middleware.GetTenantID(ctx)
+	tenantID := middleware.GetTenantID(c)
 
 	var cdrs []models.CallRecord
 	if err := h.DB.Where("tenant_id = ? AND (caller_id_number = ? OR destination_number = ?)",
@@ -108,21 +106,20 @@ func (h *Handler) GetExtensionCallHistory(ctx iris.Context) {
 		Order("start_time DESC").
 		Limit(limit).
 		Find(&cdrs).Error; err != nil {
-		ctx.JSON(iris.Map{"data": []interface{}{}})
-		return
+		return c.JSON(fiber.Map{"data": []interface{}{}})
 	}
 
-	ctx.JSON(iris.Map{"data": cdrs})
+	return c.JSON(fiber.Map{"data": cdrs})
 }
 
 // GetExtensionVoicemail returns the voicemail box and messages for the extension.
-func (h *Handler) GetExtensionVoicemail(ctx iris.Context) {
-	ext, ok := h.resolveExtension(ctx)
+func (h *Handler) GetExtensionVoicemail(c *fiber.Ctx) error {
+	ext, ok := h.resolveExtension(c)
 	if !ok {
-		return
+		return nil
 	}
 
-	tenantID := middleware.GetTenantID(ctx)
+	tenantID := middleware.GetTenantID(c)
 
 	var box models.VoicemailBox
 	if err := h.DB.Where("extension = ? AND tenant_id = ?", ext.Extension, tenantID).
@@ -130,11 +127,10 @@ func (h *Handler) GetExtensionVoicemail(ctx iris.Context) {
 			return db.Order("created_at DESC")
 		}).
 		First(&box).Error; err != nil {
-		ctx.JSON(iris.Map{"data": nil, "messages": []interface{}{}})
-		return
+		return c.JSON(fiber.Map{"data": nil, "messages": []interface{}{}})
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"data":        box,
 		"messages":    box.Messages,
 		"new_count":   box.NewMessages,
@@ -143,13 +139,13 @@ func (h *Handler) GetExtensionVoicemail(ctx iris.Context) {
 }
 
 // GetExtensionSettings returns the call settings for the logged-in extension.
-func (h *Handler) GetExtensionSettings(ctx iris.Context) {
-	ext, ok := h.resolveExtension(ctx)
+func (h *Handler) GetExtensionSettings(c *fiber.Ctx) error {
+	ext, ok := h.resolveExtension(c)
 	if !ok {
-		return
+		return nil
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"extension": map[string]interface{}{
 			"id":        ext.ID,
 			"extension": ext.Extension,
@@ -184,10 +180,10 @@ func (h *Handler) GetExtensionSettings(ctx iris.Context) {
 }
 
 // UpdateExtensionSettings updates the call settings for the logged-in extension.
-func (h *Handler) UpdateExtensionSettings(ctx iris.Context) {
-	ext, ok := h.resolveExtension(ctx)
+func (h *Handler) UpdateExtensionSettings(c *fiber.Ctx) error {
+	ext, ok := h.resolveExtension(c)
 	if !ok {
-		return
+		return nil
 	}
 
 	var req struct {
@@ -214,10 +210,8 @@ func (h *Handler) UpdateExtensionSettings(ctx iris.Context) {
 		NoAnswerForwardTo      *string `json:"no_answer_forward_to"`
 	}
 
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	// Profile fields
@@ -281,103 +275,85 @@ func (h *Handler) UpdateExtensionSettings(ctx iris.Context) {
 	}
 
 	if err := h.DB.Save(ext).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update settings"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update settings"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Settings updated"})
+	return c.JSON(fiber.Map{"message": "Settings updated"})
 }
 
 // ChangeExtensionPassword changes the web password for the logged-in extension.
-func (h *Handler) ChangeExtensionPassword(ctx iris.Context) {
-	ext, ok := h.resolveExtension(ctx)
+func (h *Handler) ChangeExtensionPassword(c *fiber.Ctx) error {
+	ext, ok := h.resolveExtension(c)
 	if !ok {
-		return
+		return nil
 	}
 
 	var req struct {
 		CurrentPassword string `json:"current_password"`
 		NewPassword     string `json:"new_password"`
 	}
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
 	}
 
 	if req.NewPassword == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "New password is required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "New password is required"})
 	}
 
 	// If web password is set, verify current password
 	if ext.WebPassword != "" {
 		if bcrypt.CompareHashAndPassword([]byte(ext.WebPassword), []byte(req.CurrentPassword)) != nil {
-			ctx.StatusCode(http.StatusForbidden)
-			ctx.JSON(iris.Map{"error": "Current password is incorrect"})
-			return
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "Current password is incorrect"})
 		}
 	}
 
 	if err := ext.SetWebPassword(req.NewPassword); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to hash password"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to hash password"})
 	}
 
 	if err := h.DB.Save(ext).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update password"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update password"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Password updated successfully"})
+	return c.JSON(fiber.Map{"message": "Password updated successfully"})
 }
 
 // GetExtensionContacts returns personal contacts for the extension's tenant.
-func (h *Handler) GetExtensionContacts(ctx iris.Context) {
-	_, ok := h.resolveExtension(ctx)
+func (h *Handler) GetExtensionContacts(c *fiber.Ctx) error {
+	_, ok := h.resolveExtension(c)
 	if !ok {
-		return
+		return nil
 	}
 
-	tenantID := middleware.GetTenantID(ctx)
+	tenantID := middleware.GetTenantID(c)
 
 	var contacts []models.Contact
 	if err := h.DB.Where("tenant_id = ?", tenantID).Find(&contacts).Error; err != nil {
-		ctx.JSON(iris.Map{"data": []interface{}{}})
-		return
+		return c.JSON(fiber.Map{"data": []interface{}{}})
 	}
 
-	ctx.JSON(iris.Map{"data": contacts})
+	return c.JSON(fiber.Map{"data": contacts})
 }
 
 // CreateExtensionContact creates a personal contact scoped to the extension.
-func (h *Handler) CreateExtensionContact(ctx iris.Context) {
-	ext, ok := h.resolveExtension(ctx)
+func (h *Handler) CreateExtensionContact(c *fiber.Ctx) error {
+	ext, ok := h.resolveExtension(c)
 	if !ok {
-		return
+		return nil
 	}
 
 	var contact models.Contact
-	if err := ctx.ReadJSON(&contact); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&contact); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
-	contact.TenantID = middleware.GetTenantID(ctx)
+	contact.TenantID = middleware.GetTenantID(c)
 	// Associate the contact with the extension if the model supports it
 	_ = ext // available for future extension_id association
 
 	if err := h.DB.Create(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create contact"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create contact"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"data": contact, "message": "Contact created"})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": contact, "message": "Contact created"})
 }

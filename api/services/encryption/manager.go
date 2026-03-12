@@ -23,22 +23,37 @@ type Manager struct {
 	key []byte
 }
 
-// NewManager creates a new encryption manager
-// masterKey should be loaded from environment/HSM
-func NewManager(masterKey string) *Manager {
-	// Derive a proper key using PBKDF2
-	salt := []byte("callsign-encryption-salt") // In production, use unique salt per tenant TODO
-	key := pbkdf2.Key([]byte(masterKey), salt, 100000, 32, sha256.New)
+// NewManager creates a new encryption manager.
+// masterKey and salt must be provided — never hardcode these values.
+func NewManager(masterKey, salt string) *Manager {
+	// Derive a proper 256-bit key using PBKDF2
+	key := pbkdf2.Key([]byte(masterKey), []byte(salt), 100000, 32, sha256.New)
 	return &Manager{key: key}
 }
 
-// NewManagerFromEnv creates a manager using ENCRYPTION_KEY env var
+// NewManagerFromConfig creates a manager using explicit key and salt values
+// (typically sourced from config.Config).
+func NewManagerFromConfig(key, salt string) (*Manager, error) {
+	if key == "" {
+		return nil, errors.New("encryption key must not be empty")
+	}
+	if salt == "" {
+		return nil, errors.New("encryption salt must not be empty")
+	}
+	return NewManager(key, salt), nil
+}
+
+// NewManagerFromEnv creates a manager using ENCRYPTION_KEY and ENCRYPTION_SALT env vars.
 func NewManagerFromEnv() (*Manager, error) {
 	key := os.Getenv("ENCRYPTION_KEY")
 	if key == "" {
 		return nil, errors.New("ENCRYPTION_KEY environment variable not set")
 	}
-	return NewManager(key), nil
+	salt := os.Getenv("ENCRYPTION_SALT")
+	if salt == "" {
+		return nil, errors.New("ENCRYPTION_SALT environment variable not set")
+	}
+	return NewManager(key, salt), nil
 }
 
 // Encrypt encrypts plaintext using AES-256-GCM

@@ -5,8 +5,9 @@ import (
 	"callsign/services/messaging"
 	"callsign/services/websocket"
 	"net/http"
+	"strconv"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
@@ -25,10 +26,10 @@ func NewChatHandler(db *gorm.DB, wsHub *websocket.Hub, msgManager *messaging.Man
 // ==================== Chat Threads ====================
 
 // ListThreads returns chat threads for a tenant
-func (h *ChatHandler) ListThreads(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	channel := ctx.URLParamDefault("channel", "")
-	status := ctx.URLParamDefault("status", "open")
+func (h *ChatHandler) ListThreads(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	channel := c.Query("channel", "")
+	status := c.Query("status", "open")
 
 	query := h.DB.Where("tenant_id = ?", tenantID)
 	if channel != "" {
@@ -40,13 +41,16 @@ func (h *ChatHandler) ListThreads(ctx iris.Context) {
 
 	var threads []models.ChatThread
 	query.Order("last_message_at DESC").Limit(50).Find(&threads)
-	ctx.JSON(threads)
+	return c.JSON(threads)
 }
 
 // GetThread returns a thread with messages
-func (h *ChatHandler) GetThread(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *ChatHandler) GetThread(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ID"})
+	}
 
 	var thread models.ChatThread
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).
@@ -55,54 +59,47 @@ func (h *ChatHandler) GetThread(ctx iris.Context) {
 		}).
 		Preload("Messages.Attachments").
 		First(&thread).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Thread not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Thread not found"})
 	}
 
-	ctx.JSON(thread)
+	return c.JSON(thread)
 }
 
 // CreateThread creates a new chat thread
-func (h *ChatHandler) CreateThread(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *ChatHandler) CreateThread(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var thread models.ChatThread
-	if err := ctx.ReadJSON(&thread); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&thread); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	thread.TenantID = tenantID
 	if err := h.DB.Create(&thread).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(thread)
+	return c.Status(http.StatusCreated).JSON(thread)
 }
 
 // SendMessage sends a message to a thread
-func (h *ChatHandler) SendMessage(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	threadID, _ := ctx.Params().GetUint("id")
+func (h *ChatHandler) SendMessage(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	threadIDu64, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid thread ID"})
+	}
+	threadID := uint(threadIDu64)
 
 	// Verify thread exists
 	var thread models.ChatThread
 	if err := h.DB.Where("id = ? AND tenant_id = ?", threadID, tenantID).First(&thread).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Thread not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Thread not found"})
 	}
 
 	var msg models.ChatMessage
-	if err := ctx.ReadJSON(&msg); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&msg); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	msg.TenantID = tenantID
@@ -114,9 +111,7 @@ func (h *ChatHandler) SendMessage(ctx iris.Context) {
 	// }
 
 	if err := h.DB.Create(&msg).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	// Update thread's last message time
@@ -138,16 +133,15 @@ func (h *ChatHandler) SendMessage(ctx iris.Context) {
 		go h.MsgManager.SendMessage(tenantID, thread.LocalNumber, thread.RemoteNumber, msg.Body, nil, 0)
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(msg)
+	return c.Status(http.StatusCreated).JSON(msg)
 }
 
 // ==================== Chat Rooms ====================
 
 // ListRooms returns chat rooms for a tenant
-func (h *ChatHandler) ListRooms(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	extensionID := ctx.Values().GetUintDefault("extension_id", 0)
+func (h *ChatHandler) ListRooms(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	extensionID := getLocalsUint(c, "extension_id", 0)
 
 	var rooms []models.ChatRoom
 	h.DB.Joins("JOIN chat_room_members ON chat_room_members.room_id = chat_rooms.id").
@@ -156,28 +150,24 @@ func (h *ChatHandler) ListRooms(ctx iris.Context) {
 		Where("chat_rooms.archived = false").
 		Find(&rooms)
 
-	ctx.JSON(rooms)
+	return c.JSON(rooms)
 }
 
 // CreateRoom creates a new chat room
-func (h *ChatHandler) CreateRoom(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	extensionID := ctx.Values().GetUintDefault("extension_id", 0)
+func (h *ChatHandler) CreateRoom(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	extensionID := getLocalsUint(c, "extension_id", 0)
 
 	var room models.ChatRoom
-	if err := ctx.ReadJSON(&room); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&room); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	room.TenantID = tenantID
 	room.CreatedByID = extensionID
 
 	if err := h.DB.Create(&room).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	// Add creator as owner
@@ -188,28 +178,28 @@ func (h *ChatHandler) CreateRoom(ctx iris.Context) {
 	}
 	h.DB.Create(&member)
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(room)
+	return c.Status(http.StatusCreated).JSON(room)
 }
 
 // JoinRoom adds an extension to a room
-func (h *ChatHandler) JoinRoom(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	roomID, _ := ctx.Params().GetUint("id")
-	extensionID := ctx.Values().GetUintDefault("extension_id", 0)
+func (h *ChatHandler) JoinRoom(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	roomIDu64, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid room ID"})
+	}
+	roomID := uint(roomIDu64)
+	extensionID := getLocalsUint(c, "extension_id", 0)
 
 	var room models.ChatRoom
 	if err := h.DB.Where("id = ? AND tenant_id = ?", roomID, tenantID).First(&room).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Room not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Room not found"})
 	}
 
 	// Check if already member
 	var existing models.ChatRoomMember
 	if err := h.DB.Where("room_id = ? AND extension_id = ?", roomID, extensionID).First(&existing).Error; err == nil {
-		ctx.JSON(iris.Map{"message": "Already a member"})
-		return
+		return c.JSON(fiber.Map{"message": "Already a member"})
 	}
 
 	member := models.ChatRoomMember{
@@ -219,42 +209,36 @@ func (h *ChatHandler) JoinRoom(ctx iris.Context) {
 	}
 	h.DB.Create(&member)
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(member)
+	return c.Status(http.StatusCreated).JSON(member)
 }
 
 // ==================== Chat Queues ====================
 
 // ListQueues returns chat queues for a tenant
-func (h *ChatHandler) ListQueues(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *ChatHandler) ListQueues(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var queues []models.ChatQueue
 	h.DB.Where("tenant_id = ?", tenantID).Preload("Agents").Find(&queues)
 
-	ctx.JSON(queues)
+	return c.JSON(queues)
 }
 
 // CreateQueue creates a new chat queue
-func (h *ChatHandler) CreateQueue(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *ChatHandler) CreateQueue(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var queue models.ChatQueue
-	if err := ctx.ReadJSON(&queue); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&queue); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	queue.TenantID = tenantID
 	if err := h.DB.Create(&queue).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(queue)
+	return c.Status(http.StatusCreated).JSON(queue)
 }
 
 // ==================== Contacts ====================
@@ -270,9 +254,9 @@ func NewContactHandler(db *gorm.DB) *ContactHandler {
 }
 
 // ListContacts returns contacts for a tenant
-func (h *ContactHandler) ListContacts(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	search := ctx.URLParam("search")
+func (h *ContactHandler) ListContacts(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	search := c.Query("search")
 
 	query := h.DB.Where("tenant_id = ?", tenantID)
 	if search != "" {
@@ -282,95 +266,89 @@ func (h *ContactHandler) ListContacts(ctx iris.Context) {
 
 	var contacts []models.Contact
 	query.Order("last_name, first_name").Limit(100).Find(&contacts)
-	ctx.JSON(contacts)
+	return c.JSON(contacts)
 }
 
 // GetContact returns a specific contact
-func (h *ContactHandler) GetContact(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *ContactHandler) GetContact(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ID"})
+	}
 
 	var contact models.Contact
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Contact not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
-	ctx.JSON(contact)
+	return c.JSON(contact)
 }
 
 // GetContactByPhone finds a contact by phone number
-func (h *ContactHandler) GetContactByPhone(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	phone := ctx.URLParam("phone")
+func (h *ContactHandler) GetContactByPhone(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	phone := c.Query("phone")
 
 	var contact models.Contact
 	if err := h.DB.Where("tenant_id = ? AND (phone = ? OR mobile_phone = ? OR phone_alt = ?)",
 		tenantID, phone, phone, phone).First(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Contact not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
-	ctx.JSON(contact)
+	return c.JSON(contact)
 }
 
 // CreateContact creates a new contact
-func (h *ContactHandler) CreateContact(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *ContactHandler) CreateContact(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var contact models.Contact
-	if err := ctx.ReadJSON(&contact); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&contact); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	contact.TenantID = tenantID
 	if err := h.DB.Create(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(contact)
+	return c.Status(http.StatusCreated).JSON(contact)
 }
 
 // UpdateContact updates a contact
-func (h *ContactHandler) UpdateContact(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *ContactHandler) UpdateContact(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ID"})
+	}
 
 	var contact models.Contact
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Contact not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
-	if err := ctx.ReadJSON(&contact); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&contact); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	contact.TenantID = tenantID
 	h.DB.Save(&contact)
-	ctx.JSON(contact)
+	return c.JSON(contact)
 }
 
 // SyncContact triggers a webhook sync for a contact
-func (h *ContactHandler) SyncContact(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *ContactHandler) SyncContact(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ID"})
+	}
 
 	var contact models.Contact
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Contact not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
 	// TODO: Implement webhook sync logic
@@ -378,29 +356,25 @@ func (h *ContactHandler) SyncContact(ctx iris.Context) {
 	// 2. Fetch data from webhook URL with ExternalID
 	// 3. Map fields and update contact
 
-	ctx.JSON(iris.Map{"message": "Sync queued", "contact_id": id})
+	return c.JSON(fiber.Map{"message": "Sync queued", "contact_id": id})
 }
 
 // WebhookIngestContact handles inbound webhook data for contacts
-func (h *ContactHandler) WebhookIngestContact(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	source := ctx.Params().GetString("source")
+func (h *ContactHandler) WebhookIngestContact(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	source := c.Params("source")
 
 	// Parse incoming data
 	var data map[string]interface{}
-	if err := ctx.ReadJSON(&data); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&data); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	// Find webhook config for this source
 	var webhook models.ContactWebhook
 	if err := h.DB.Where("tenant_id = ? AND source = ? AND enabled = true", tenantID, source).
 		First(&webhook).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Webhook source not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Webhook source not found"})
 	}
 
 	// TODO: Apply field mapping and upsert contact
@@ -410,5 +384,5 @@ func (h *ContactHandler) WebhookIngestContact(ctx iris.Context) {
 	// 4. Update contact fields
 	// 5. Save
 
-	ctx.JSON(iris.Map{"message": "Contact ingested", "source": source})
+	return c.JSON(fiber.Map{"message": "Contact ingested", "source": source})
 }

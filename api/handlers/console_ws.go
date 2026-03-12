@@ -3,7 +3,6 @@ package handlers
 import (
 	"bufio"
 	"encoding/json"
-	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -13,19 +12,11 @@ import (
 	"callsign/middleware"
 	"callsign/services/esl"
 
+	"github.com/gofiber/fiber/v2"
+	fiberws "github.com/gofiber/websocket/v2"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/gorilla/websocket"
-	"github.com/kataras/iris/v12"
 	log "github.com/sirupsen/logrus"
 )
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins - auth handled via first message
-	},
-}
 
 // ConsoleMessage represents a message to/from the console WebSocket
 type ConsoleMessage struct {
@@ -41,7 +32,7 @@ type ConsoleMessage struct {
 
 // ConsoleClient represents a connected WebSocket client
 type ConsoleClient struct {
-	conn          *websocket.Conn
+	conn          *fiberws.Conn
 	send          chan ConsoleMessage
 	manager       *ConsoleManager
 	authenticated bool
@@ -140,52 +131,57 @@ func (m *ConsoleManager) ValidateToken(tokenString string) (*middleware.Claims, 
 	return nil, jwt.ErrSignatureInvalid
 }
 
-// FreeSwitchConsole handles WebSocket connections for live FS console
-// Auth is done via first message after connection (not query param)
-func (h *Handler) FreeSwitchConsole(ctx iris.Context) {
-	// Get the underlying http.ResponseWriter and *http.Request
-	w := ctx.ResponseWriter()
-	r := ctx.Request()
-
-	// Upgrade to WebSocket (unauthenticated - auth via first message)
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Errorf("WebSocket upgrade failed: %v", err)
-		return
+// FreeSwitchConsoleUpgrade is used as a middleware guard before the WS handler.
+// It checks IsWebSocketUpgrade and rejects non-WS requests.
+func FreeSwitchConsoleUpgrade() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		if fiberws.IsWebSocketUpgrade(c) {
+			return c.Next()
+		}
+		return c.Status(fiber.StatusUpgradeRequired).JSON(fiber.Map{"error": "WebSocket upgrade required"})
 	}
-
-	// Create console manager if not exists
-	if h.ConsoleManager == nil {
-		h.ConsoleManager = NewConsoleManager(h.ESLManager, h.Config)
-		go h.ConsoleManager.Run()
-		go h.startLogStreaming()
-	}
-
-	client := &ConsoleClient{
-		conn:          conn,
-		send:          make(chan ConsoleMessage, 256),
-		manager:       h.ConsoleManager,
-		authenticated: false,
-	}
-
-	h.ConsoleManager.register <- client
-
-	// Send auth required message
-	authMsg := ConsoleMessage{
-		Type:      "auth_required",
-		Timestamp: time.Now().Format(time.RFC3339),
-		Message:   "Send auth message with token to authenticate",
-	}
-	data, _ := json.Marshal(authMsg)
-	conn.WriteMessage(websocket.TextMessage, data)
-
-	// Start read/write goroutines
-	go client.writePump()
-	go client.readPump()
 }
 
-// startLogStreaming subscribes to FS log events and broadcasts them
-// Falls back to reading the log file directly if ESL is not connected
+// FreeSwitchConsole handles WebSocket connections for live FS console
+// Auth is done via first message after connection (not query param)
+func (h *Handler) FreeSwitchConsole(c *fiber.Ctx) error {
+	return fiberws.New(func(conn *fiberws.Conn) {
+		// Create console manager if not exists
+		if h.ConsoleManager == nil {
+			h.ConsoleManager = NewConsoleManager(h.ESLManager, h.Config)
+			go h.ConsoleManager.Run()
+			go h.startLogStreaming()
+		}
+
+		client := &ConsoleClient{
+			conn:          conn,
+			send:          make(chan ConsoleMessage, 256),
+			manager:       h.ConsoleManager,
+			authenticated: false,
+		}
+
+		h.ConsoleManager.register <- client
+
+		// Send auth required message
+		authMsg := ConsoleMessage{
+			Type:      "auth_required",
+			Timestamp: time.Now().Format(time.RFC3339),
+			Message:   "Send auth message with token to authenticate",
+		}
+		data, _ := json.Marshal(authMsg)
+		conn.WriteMessage(fiberws.TextMessage, data)
+
+		// Start read/write goroutines
+		done := make(chan struct{})
+		go func() {
+			client.writePump()
+			close(done)
+		}()
+		client.readPump()
+		<-done
+	})(c)
+}
+
 // startLogStreaming subscribes to FS log events and broadcasts them
 // Always streams from log file for text logs, uses ESL for events
 func (h *Handler) startLogStreaming() {
@@ -329,7 +325,7 @@ func (c *ConsoleClient) writePump() {
 		case msg, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				c.conn.WriteMessage(fiberws.CloseMessage, []byte{})
 				return
 			}
 
@@ -339,13 +335,13 @@ func (c *ConsoleClient) writePump() {
 				continue
 			}
 
-			if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			if err := c.conn.WriteMessage(fiberws.TextMessage, data); err != nil {
 				return
 			}
 
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			if err := c.conn.WriteMessage(fiberws.PingMessage, nil); err != nil {
 				return
 			}
 		}
@@ -369,7 +365,7 @@ func (c *ConsoleClient) readPump() {
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			if fiberws.IsUnexpectedCloseError(err, fiberws.CloseGoingAway, fiberws.CloseAbnormalClosure) {
 				log.Errorf("WebSocket error: %v", err)
 			}
 			break

@@ -5,6 +5,7 @@
 | Document | Purpose |
 |----------|---------|
 | [Project Status](../PROJECT_STATUS.md) | Overall completion status |
+| [Roadmap](../ROADMAP.md) | Development roadmap & progress |
 | [Backend TODO](BACKEND_TODO.md) | Complete API endpoint list |
 | [Call Flow](CALLFLOW.MD) | Call routing diagrams |
 | [API Reference](API.md) | API documentation |

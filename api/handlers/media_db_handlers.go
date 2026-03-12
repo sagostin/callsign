@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 )
 
 // =====================
@@ -19,45 +19,41 @@ import (
 // =====================
 
 // ListMediaFiles returns a list of media files for the tenant
-func (h *Handler) ListMediaFiles(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+func (h *Handler) ListMediaFiles(c *fiber.Ctx) error {
+	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Tenant context required"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
 	var files []models.MediaFile
 	query := h.DB.Where("tenant_id = ?", tenantID)
 
 	// Filters
-	if mediaType := ctx.URLParam("type"); mediaType != "" {
+	if mediaType := c.Query("type"); mediaType != "" {
 		query = query.Where("type = ?", mediaType)
 	}
-	if category := ctx.URLParam("category"); category != "" {
+	if category := c.Query("category"); category != "" {
 		query = query.Where("category = ?", category)
 	}
-	if search := ctx.URLParam("search"); search != "" {
+	if search := c.Query("search"); search != "" {
 		search = "%" + search + "%"
 		query = query.Where("name ILIKE ? OR description ILIKE ?", search, search)
 	}
 
 	if err := query.Find(&files).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to fetch files"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch files"})
 	}
 
 	// Auto-Sync: If no files found in DB, check disk for existing files
 	// This helps with migration or manual file placement
-	if len(files) == 0 && ctx.URLParam("search") == "" && ctx.URLParam("type") == "" {
+	if len(files) == 0 && c.Query("search") == "" && c.Query("type") == "" {
 		synced, err := h.syncTenantMediaFiles(tenantID)
 		if err == nil && len(synced) > 0 {
 			files = synced
 		}
 	}
 
-	ctx.JSON(iris.Map{"data": files})
+	return c.JSON(fiber.Map{"data": files})
 }
 
 // syncTenantMediaFiles scans the tenant's media directory and adds missing files to DB
@@ -132,41 +128,37 @@ func (h *Handler) syncTenantMediaFiles(tenantID uint) ([]models.MediaFile, error
 }
 
 // UploadMediaFile handles uploading a new media file
-func (h *Handler) UploadMediaFile(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+func (h *Handler) UploadMediaFile(c *fiber.Ctx) error {
+	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Tenant context required"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
 	// Form fields
-	name := ctx.FormValue("name")
-	description := ctx.FormValue("description")
-	mediaType := ctx.FormValue("type")
-	category := ctx.FormValue("category")
+	name := c.FormValue("name")
+	description := c.FormValue("description")
+	mediaType := c.FormValue("type")
+	category := c.FormValue("category")
 
 	if name == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Name is required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Name is required"})
 	}
 
 	// File upload
-	file, header, err := ctx.FormFile("file")
+	header, err := c.FormFile("file")
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Failed to read file"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Failed to read file"})
+	}
+	file, err := header.Open()
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to open file"})
 	}
 	defer file.Close()
 
 	// Validate extension
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".wav" && ext != ".mp3" && ext != ".ogg" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid file type. Only .wav, .mp3, .ogg allowed"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file type. Only .wav, .mp3, .ogg allowed"})
 	}
 
 	// Storage path: tenants/{id}/media/{type}/
@@ -180,9 +172,7 @@ func (h *Handler) UploadMediaFile(ctx iris.Context) {
 	fullDir := filepath.Join(storageRoot, relPath)
 
 	if err := os.MkdirAll(fullDir, 0755); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create directory"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create directory"})
 	}
 
 	// Unique filename to prevent collisions? Or allow overwrite?
@@ -193,17 +183,13 @@ func (h *Handler) UploadMediaFile(ctx iris.Context) {
 
 	out, err := os.Create(dstPath)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create destination file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create destination file"})
 	}
 	defer out.Close()
 
 	written, err := io.Copy(out, file)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to save file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
 	}
 
 	// Create DB record
@@ -220,31 +206,24 @@ func (h *Handler) UploadMediaFile(ctx iris.Context) {
 	}
 
 	if err := h.DB.Create(&mediaFile).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create database record"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create database record"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "File uploaded successfully", "data": mediaFile})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"message": "File uploaded successfully", "data": mediaFile})
 }
 
 // UpdateMediaFile updates metadata for a media file
-func (h *Handler) UpdateMediaFile(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+func (h *Handler) UpdateMediaFile(c *fiber.Ctx) error {
+	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Tenant context required"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
-	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	id, _ := strconv.Atoi(c.Params("id"))
 	var mediaFile models.MediaFile
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&mediaFile).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "File not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 	}
 
 	// Update fields
@@ -255,10 +234,8 @@ func (h *Handler) UpdateMediaFile(ctx iris.Context) {
 		Type        string `json:"type"`
 	}
 
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid input"})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
 	}
 
 	mediaFile.Name = input.Name
@@ -269,30 +246,24 @@ func (h *Handler) UpdateMediaFile(ctx iris.Context) {
 	}
 
 	if err := h.DB.Save(&mediaFile).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update record"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update record"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Updated successfully", "data": mediaFile})
+	return c.JSON(fiber.Map{"message": "Updated successfully", "data": mediaFile})
 }
 
 // DeleteMediaFile removes a media file
-func (h *Handler) DeleteMediaFile(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+func (h *Handler) DeleteMediaFile(c *fiber.Ctx) error {
+	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Tenant context required"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
-	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	id, _ := strconv.Atoi(c.Params("id"))
 	var mediaFile models.MediaFile
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&mediaFile).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "File not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 	}
 
 	// Delete from disk
@@ -305,9 +276,7 @@ func (h *Handler) DeleteMediaFile(ctx iris.Context) {
 
 	if err := tx.Delete(&mediaFile).Error; err != nil {
 		tx.Rollback()
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete database record"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete database record"})
 	}
 
 	// Try removing file, but don't fail hard if missing (could be manually deleted)
@@ -318,30 +287,26 @@ func (h *Handler) DeleteMediaFile(ctx iris.Context) {
 
 	tx.Commit()
 
-	ctx.JSON(iris.Map{"message": "File deleted successfully"})
+	return c.JSON(fiber.Map{"message": "File deleted successfully"})
 }
 
 // StreamMediaFile serves an audio file for playback
-func (h *Handler) StreamMediaFile(ctx iris.Context) {
+func (h *Handler) StreamMediaFile(c *fiber.Ctx) error {
 	// Try scoped tenant ID first (set by RequireTenant middleware)
-	tenantID := middleware.GetScopedTenantID(ctx)
+	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
 		// Fallback to direct tenant ID from JWT claims
-		tenantID = middleware.GetTenantID(ctx)
+		tenantID = middleware.GetTenantID(c)
 	}
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Tenant context required"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
-	id, _ := strconv.Atoi(ctx.Params().Get("id"))
+	id, _ := strconv.Atoi(c.Params("id"))
 	var mediaFile models.MediaFile
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&mediaFile).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "File not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 	}
 
 	storageRoot := "/usr/share/freeswitch/sounds"
@@ -349,9 +314,7 @@ func (h *Handler) StreamMediaFile(ctx iris.Context) {
 
 	// Check file exists
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "File not found on disk"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found on disk"})
 	}
 
 	// Determine content type
@@ -370,8 +333,8 @@ func (h *Handler) StreamMediaFile(ctx iris.Context) {
 		}
 	}
 
-	ctx.ContentType(contentType)
-	ctx.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", mediaFile.Filename))
+	c.Set("Content-Type", contentType)
+	c.Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", mediaFile.Filename))
 
-	ctx.ServeFile(fullPath)
+	return c.SendFile(fullPath)
 }

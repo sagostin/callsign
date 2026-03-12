@@ -29,15 +29,15 @@ This document provides a technical overview of the CallSign PBX platform archite
 │   │   - Route: /* → Vue UI (static/5173)                                        │      │
 │   └───────────────────────────────────────────────────────────────────────────┘      │
 │                                                                                       │
-└──────────────────────────────────┬──────────────────────────────────────────────────┘
-                                   │
-                                   ▼
+└──────────────────────────────┬──────────────────────────────────────────────────────┘
+                               │
+                               ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
 │                              APPLICATION LAYER                                        │
 ├─────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                       │
 │   ┌─────────────────────────────────────────────────────────────────────────────┐    │
-│   │                           Go Iris API (Port 8080)                             │    │
+│   │                         Go Fiber API (Port 8080)                             │    │
 │   │                                                                               │    │
 │   │   ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌──────────────┐  │    │
 │   │   │  Auth Handler  │ │ Tenant Handler │ │ System Handler │ │ User Handler │  │    │
@@ -45,6 +45,14 @@ This document provides a technical overview of the CallSign PBX platform archite
 │   │                                                                               │    │
 │   │   ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌──────────────┐  │    │
 │   │   │ Device Handler │ │ Routing Handler│ │  CDR Handler   │ │  FS Handler  │  │    │
+│   │   └────────────────┘ └────────────────┘ └────────────────┘ └──────────────┘  │    │
+│   │                                                                               │    │
+│   │   ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌──────────────┐  │    │
+│   │   │  Fax Handler   │ │ Reports Handler│ │ Broadcast Hndlr│ │ Chat Handler │  │    │
+│   │   └────────────────┘ └────────────────┘ └────────────────┘ └──────────────┘  │    │
+│   │                                                                               │    │
+│   │   ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌──────────────┐  │    │
+│   │   │Conference Hndlr│ │ Live Ops Hndlr │ │Hospitality Hndl│ │Webhook Hndlr │  │    │
 │   │   └────────────────┘ └────────────────┘ └────────────────┘ └──────────────┘  │    │
 │   │                                                                               │    │
 │   ├─────────────────────────────────────────────────────────────────────────────┤    │
@@ -58,6 +66,15 @@ This document provides a technical overview of the CallSign PBX platform archite
 │   │   ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐    │    │
 │   │   │ ESL Manager │ │   Logging   │ │ Encryption  │ │    XML Cache        │    │    │
 │   │   └─────────────┘ └─────────────┘ └─────────────┘ └─────────────────────┘    │    │
+│   │                                                                               │    │
+│   │   ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐    │    │
+│   │   │ Fax Manager │ │  Messaging  │ │ TTS Service │ │  WebSocket Hub      │    │    │
+│   │   └─────────────┘ └─────────────┘ └─────────────┘ └─────────────────────┘    │    │
+│   │                                                                               │    │
+│   │   ┌─────────────┐                                                             │    │
+│   │   │  CDR Sync   │                                                             │    │
+│   │   │ (ClickHouse)│                                                             │    │
+│   │   └─────────────┘                                                             │    │
 │   └─────────────────────────────────────────────────────────────────────────────┘    │
 │                                                                                       │
 └──────────────────────────────────┬──────────────────────────────────────────────────┘
@@ -76,17 +93,19 @@ This document provides a technical overview of the CallSign PBX platform archite
 │   - Dialplans     │   │                   │   │   └──────────────────────────┘    │
 │   - CDR           │   │                   │   │                                   │
 │   - Recordings    │   │                   │   │   ┌──────────────────────────┐    │
-│                   │   │                   │   │   │     mod_xml_cdr          │    │
-│                   │   │                   │   │   │   (POST to /freeswitch/  │    │
-│                   │   │                   │   │   │    cdr)                  │    │
+│   - Fax           │   │                   │   │   │     mod_xml_cdr          │    │
+│   - Chat          │   │                   │   │   │   (POST to /freeswitch/  │    │
+│   - Messaging     │   │                   │   │   │    cdr)                  │    │
 │                   │   │                   │   │   └──────────────────────────┘    │
-│                   │   │                   │   │                                   │
-│                   │   │                   │   │   ┌──────────────────────────┐    │
-│                   │   │                   │   │   │    ESL (Event Socket)    │    │
-│                   │   │                   │   │   │   - Call Control         │    │
+│   ┌─────────────┐ │   │                   │   │                                   │
+│   │ ClickHouse  │ │   │                   │   │   ┌──────────────────────────┐    │
+│   │ (CDR sync)  │ │   │                   │   │   │    ESL (Event Socket)    │    │
+│   └─────────────┘ │   │                   │   │   │   - Call Control         │    │
 │                   │   │                   │   │   │   - Voicemail            │    │
 │                   │   │                   │   │   │   - Conference           │    │
 │                   │   │                   │   │   │   - Queue                │    │
+│                   │   │                   │   │   │   - Feature Codes        │    │
+│                   │   │                   │   │   │   - BLF/Presence         │    │
 │                   │   │                   │   │   └──────────────────────────┘    │
 └───────────────────┘   └───────────────────┘   └───────────────────────────────────┘
 ```
@@ -119,6 +138,9 @@ All data is scoped by `tenant_id`:
 │ - Queues          │   │ - Queues          │   │ - Queues          │
 │ - Numbers/DIDs    │   │ - Numbers/DIDs    │   │ - Numbers/DIDs    │
 │ - Users           │   │ - Users           │   │ - Users           │
+│ - Fax Boxes       │   │ - Fax Boxes       │   │ - Fax Boxes       │
+│ - Recordings      │   │ - Recordings      │   │ - Recordings      │
+│ - Chat            │   │ - Chat            │   │ - Chat            │
 │                   │   │                   │   │                   │
 │ tenant_id = 1     │   │ tenant_id = 2     │   │ tenant_id = 3     │
 └───────────────────┘   └───────────────────┘   └───────────────────┘
@@ -197,6 +219,26 @@ Tenant profiles define limits and features:
       │◄─────────────────│                  │                  │
 ```
 
+### Messaging Flow (SMS/MMS)
+
+```
+┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐
+│   Telnyx   │     │  Webhook   │     │  Messaging │     │  WebSocket │
+│   API      │     │  Handler   │     │  Manager   │     │  Hub       │
+└─────┬──────┘     └─────┬──────┘     └─────┬──────┘     └─────┬──────┘
+      │                  │                  │                  │
+      │  POST /webhooks/ │                  │                  │
+      │  telnyx/inbound  │                  │                  │
+      │─────────────────►│                  │                  │
+      │                  │  Route message   │                  │
+      │                  │─────────────────►│                  │
+      │                  │                  │  Store in DB     │
+      │                  │                  │  ─────────       │
+      │                  │                  │  Notify client   │
+      │                  │                  │─────────────────►│
+      │                  │                  │                  │
+```
+
 ---
 
 ## Service Architecture
@@ -219,10 +261,10 @@ Each ESL service binds to a unique loopback IP:
 │   │  127.0.0.4:9001     │  │  127.0.0.5:9001     │             │
 │   └─────────────────────┘  └─────────────────────┘             │
 │                                                                  │
-│   ┌─────────────────────┐                                       │
-│   │  Feature Codes      │                                       │
-│   │  127.0.0.6:9001     │                                       │
-│   └─────────────────────┘                                       │
+│   ┌─────────────────────┐  ┌─────────────────────┐             │
+│   │  Feature Codes      │  │  BLF/Presence       │             │
+│   │  127.0.0.6:9001     │  │  (event monitoring) │             │
+│   └─────────────────────┘  └─────────────────────┘             │
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -236,6 +278,35 @@ FreeSWITCH routes calls to these services via `socket` application:
 </extension>
 ```
 
+### Background Services
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                     Background Services                          │
+│                                                                  │
+│   ┌─────────────────────┐  ┌─────────────────────┐             │
+│   │  Fax Manager        │  │  Messaging Manager  │             │
+│   │  - Queue processing │  │  - Provider routing  │             │
+│   │  - Retry strategy   │  │  - Webhook handling  │             │
+│   │  - SpanDSP via ESL  │  │  - WebSocket events  │             │
+│   └─────────────────────┘  └─────────────────────┘             │
+│                                                                  │
+│   ┌─────────────────────┐  ┌─────────────────────┐             │
+│   │  TTS Cache Service  │  │  CDR Sync Job       │             │
+│   │  - Phrase rendering │  │  - PG → ClickHouse  │             │
+│   │  - Cache warming    │  │  - Periodic (5 min)  │             │
+│   │  - System phrases   │  │  - Cleanup (90 days) │             │
+│   └─────────────────────┘  └─────────────────────┘             │
+│                                                                  │
+│   ┌─────────────────────┐                                       │
+│   │  WebSocket Hub      │                                       │
+│   │  - Client tracking  │                                       │
+│   │  - Event broadcast  │                                       │
+│   │  - ESL event bridge │                                       │
+│   └─────────────────────┘                                       │
+└────────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## Security
@@ -246,12 +317,14 @@ FreeSWITCH routes calls to these services via `socket` application:
 |--------|-------|
 | JWT Bearer | API requests |
 | Basic Auth | FreeSWITCH XML CURL |
-| X-Internal-Key | Internal service calls |
+| X-Internal-Key | Internal service calls (fail2ban) |
 | MAC Address | Device provisioning |
+| Tenant Secret | Secure provisioning URL |
 
 ### Data Protection
 
 - Passwords: bcrypt hashed
-- SIP passwords: AES-256-GCM encrypted at rest
+- SIP passwords: AES-256-GCM encrypted at rest (env-configured keys)
 - JWT: HS256 signed, configurable expiration
 - HTTPS: Caddy with Let's Encrypt
+- Secrets managed via environment variables (no hardcoded defaults)

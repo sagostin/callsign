@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 )
 
 // APIResponse represents a standardized API response
@@ -13,16 +13,16 @@ type APIResponse struct {
 }
 
 // Success sends a successful response with data
-func Success(ctx iris.Context, data interface{}) {
-	ctx.JSON(APIResponse{
+func Success(c *fiber.Ctx, data interface{}) error {
+	return c.JSON(APIResponse{
 		Success: true,
 		Data:    data,
 	})
 }
 
 // SuccessWithMessage sends a successful response with a message
-func SuccessWithMessage(ctx iris.Context, message string, data interface{}) {
-	ctx.JSON(APIResponse{
+func SuccessWithMessage(c *fiber.Ctx, message string, data interface{}) error {
+	return c.JSON(APIResponse{
 		Success: true,
 		Message: message,
 		Data:    data,
@@ -30,46 +30,45 @@ func SuccessWithMessage(ctx iris.Context, message string, data interface{}) {
 }
 
 // Error sends an error response
-func Error(ctx iris.Context, statusCode int, message string) {
-	ctx.StatusCode(statusCode)
-	ctx.JSON(APIResponse{
+func Error(c *fiber.Ctx, statusCode int, message string) error {
+	return c.Status(statusCode).JSON(APIResponse{
 		Success: false,
 		Error:   message,
 	})
 }
 
 // ValidationError sends a 400 Bad Request with the validation error
-func ValidationError(ctx iris.Context, message string) {
-	Error(ctx, iris.StatusBadRequest, message)
+func ValidationError(c *fiber.Ctx, message string) error {
+	return Error(c, fiber.StatusBadRequest, message)
 }
 
 // NotFoundError sends a 404 Not Found error
-func NotFoundError(ctx iris.Context, resource string) {
-	Error(ctx, iris.StatusNotFound, resource+" not found")
+func NotFoundError(c *fiber.Ctx, resource string) error {
+	return Error(c, fiber.StatusNotFound, resource+" not found")
 }
 
 // UnauthorizedError sends a 401 Unauthorized error
-func UnauthorizedError(ctx iris.Context, message string) {
+func UnauthorizedError(c *fiber.Ctx, message string) error {
 	if message == "" {
 		message = "Unauthorized"
 	}
-	Error(ctx, iris.StatusUnauthorized, message)
+	return Error(c, fiber.StatusUnauthorized, message)
 }
 
 // ForbiddenError sends a 403 Forbidden error
-func ForbiddenError(ctx iris.Context, message string) {
+func ForbiddenError(c *fiber.Ctx, message string) error {
 	if message == "" {
 		message = "Forbidden"
 	}
-	Error(ctx, iris.StatusForbidden, message)
+	return Error(c, fiber.StatusForbidden, message)
 }
 
 // InternalServerError sends a 500 Internal Server Error
-func InternalServerError(ctx iris.Context, message string) {
+func InternalServerError(c *fiber.Ctx, message string) error {
 	if message == "" {
 		message = "Internal server error"
 	}
-	Error(ctx, iris.StatusInternalServerError, message)
+	return Error(c, fiber.StatusInternalServerError, message)
 }
 
 // PaginatedResponse represents a paginated API response
@@ -83,13 +82,13 @@ type PaginatedResponse struct {
 }
 
 // Paginated sends a paginated response
-func Paginated(ctx iris.Context, data interface{}, page, limit int, total int64) {
+func Paginated(c *fiber.Ctx, data interface{}, page, limit int, total int64) error {
 	totalPages := int(total) / limit
 	if int(total)%limit > 0 {
 		totalPages++
 	}
 
-	ctx.JSON(PaginatedResponse{
+	return c.JSON(PaginatedResponse{
 		Success:    true,
 		Data:       data,
 		Page:       page,

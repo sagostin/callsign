@@ -3,8 +3,9 @@ package handlers
 import (
 	"callsign/models"
 	"net/http"
+	"strconv"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
@@ -19,26 +20,24 @@ func NewSMSNumberHandler(db *gorm.DB) *SMSNumberHandler {
 }
 
 // ListSMSNumbers returns SMS-enabled DIDs for the tenant
-func (h *SMSNumberHandler) ListSMSNumbers(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *SMSNumberHandler) ListSMSNumbers(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var numbers []models.Destination
 	h.DB.Where("tenant_id = ? AND sms_enabled = true", tenantID).
 		Order("destination_number").Find(&numbers)
 
-	ctx.JSON(iris.Map{"data": numbers})
+	return c.JSON(fiber.Map{"data": numbers})
 }
 
 // ConfigureSMSNumber enables/disables SMS and sets the mode for a DID
-func (h *SMSNumberHandler) ConfigureSMSNumber(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *SMSNumberHandler) ConfigureSMSNumber(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var dest models.Destination
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&dest).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Number not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number not found"})
 	}
 
 	var input struct {
@@ -46,10 +45,8 @@ func (h *SMSNumberHandler) ConfigureSMSNumber(ctx iris.Context) {
 		SMSMode       string `json:"sms_mode"` // disabled, shared, dedicated
 		SMSProviderID *uint  `json:"sms_provider_id"`
 	}
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	updates := map[string]interface{}{}
@@ -62,18 +59,14 @@ func (h *SMSNumberHandler) ConfigureSMSNumber(ctx iris.Context) {
 		case "disabled", "shared", "dedicated":
 			updates["sms_mode"] = input.SMSMode
 		default:
-			ctx.StatusCode(http.StatusBadRequest)
-			ctx.JSON(iris.Map{"error": "Invalid SMS mode. Must be: disabled, shared, or dedicated"})
-			return
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid SMS mode. Must be: disabled, shared, or dedicated"})
 		}
 	}
 	if input.SMSProviderID != nil {
 		// Verify provider exists
 		var provider models.MessagingProvider
 		if err := h.DB.First(&provider, *input.SMSProviderID).Error; err != nil {
-			ctx.StatusCode(http.StatusBadRequest)
-			ctx.JSON(iris.Map{"error": "Messaging provider not found"})
-			return
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Messaging provider not found"})
 		}
 		updates["sms_provider_id"] = input.SMSProviderID
 	}
@@ -82,64 +75,54 @@ func (h *SMSNumberHandler) ConfigureSMSNumber(ctx iris.Context) {
 
 	// Reload
 	h.DB.First(&dest, id)
-	ctx.JSON(iris.Map{"data": dest})
+	return c.JSON(fiber.Map{"data": dest})
 }
 
 // ListNumberAssignments returns extension assignments for an SMS number
-func (h *SMSNumberHandler) ListNumberAssignments(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *SMSNumberHandler) ListNumberAssignments(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	// Verify the destination exists and belongs to tenant
 	var dest models.Destination
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&dest).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Number not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number not found"})
 	}
 
 	var assignments []models.SMSNumberAssignment
 	h.DB.Where("destination_id = ? AND tenant_id = ?", id, tenantID).Find(&assignments)
 
-	ctx.JSON(iris.Map{"data": assignments})
+	return c.JSON(fiber.Map{"data": assignments})
 }
 
 // AssignNumber assigns a dedicated SMS number to an extension
-func (h *SMSNumberHandler) AssignNumber(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *SMSNumberHandler) AssignNumber(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	// Verify the destination exists and is SMS-enabled
 	var dest models.Destination
 	if err := h.DB.Where("id = ? AND tenant_id = ? AND sms_enabled = true", id, tenantID).First(&dest).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "SMS-enabled number not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "SMS-enabled number not found"})
 	}
 
 	var input struct {
 		ExtensionID uint `json:"extension_id"`
 		IsDefault   bool `json:"is_default"`
 	}
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	if input.ExtensionID == 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "extension_id is required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "extension_id is required"})
 	}
 
 	// Check for existing assignment
 	var existing models.SMSNumberAssignment
 	if err := h.DB.Where("destination_id = ? AND extension_id = ? AND tenant_id = ?",
 		id, input.ExtensionID, tenantID).First(&existing).Error; err == nil {
-		ctx.StatusCode(http.StatusConflict)
-		ctx.JSON(iris.Map{"error": "This number is already assigned to this extension"})
-		return
+		return c.Status(http.StatusConflict).JSON(fiber.Map{"error": "This number is already assigned to this extension"})
 	}
 
 	// If setting as default, unset other defaults for this extension
@@ -151,35 +134,31 @@ func (h *SMSNumberHandler) AssignNumber(ctx iris.Context) {
 
 	assignment := models.SMSNumberAssignment{
 		TenantID:      tenantID,
-		DestinationID: id,
+		DestinationID: uint(id),
 		ExtensionID:   input.ExtensionID,
 		IsDefault:     input.IsDefault,
 		Enabled:       true,
 	}
 
 	if err := h.DB.Create(&assignment).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"data": assignment})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": assignment})
 }
 
 // UnassignNumber removes an SMS number assignment
-func (h *SMSNumberHandler) UnassignNumber(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	assignID, _ := ctx.Params().GetUint("assignId")
+func (h *SMSNumberHandler) UnassignNumber(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	assignID, _ := strconv.ParseUint(c.Params("assignId"), 10, 64)
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", assignID, tenantID).
 		Delete(&models.SMSNumberAssignment{})
 
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Assignment not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Assignment not found"})
 	}
 
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }

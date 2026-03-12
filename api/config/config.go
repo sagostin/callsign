@@ -79,6 +79,10 @@ type Config struct {
 
 	// TTS caching
 	TTSCachePath string // Directory for cached TTS audio files
+
+	// Encryption settings
+	EncryptionKey  string // Master key for data-at-rest encryption (required)
+	EncryptionSalt string // Salt for key derivation (required)
 }
 
 // Load reads configuration from environment variables
@@ -97,7 +101,7 @@ func Load() *Config {
 		DBSSLMode:  getEnv("POSTGRES_SSLMODE", "disable"),
 
 		// JWT
-		JWTSecret:     getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTSecret:     getEnv("JWT_SECRET", ""),
 		JWTExpiration: getEnvAsInt("JWT_EXPIRATION_HOURS", 24),
 
 		// CORS
@@ -135,7 +139,7 @@ func Load() *Config {
 		LokiJob:      getEnv("LOKI_JOB", "callsign-api"),
 
 		// Internal API
-		InternalAPIKey: getEnv("INTERNAL_API_KEY", "callsign-internal-key"),
+		InternalAPIKey: getEnv("INTERNAL_API_KEY", ""),
 
 		// Storage Paths
 		FirmwarePath:       getEnv("FIRMWARE_PATH", "/usr/share/freeswitch/firmware"),
@@ -156,6 +160,10 @@ func Load() *Config {
 
 		// TTS cache
 		TTSCachePath: getEnv("TTS_CACHE_PATH", getEnv("MEDIA_PATH", "/usr/share/freeswitch/sounds")+"/tts_cache"),
+
+		// Encryption
+		EncryptionKey:  getEnv("ENCRYPTION_KEY", ""),
+		EncryptionSalt: getEnv("ENCRYPTION_SALT", ""),
 	}
 }
 

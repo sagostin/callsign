@@ -5,195 +5,172 @@ import (
 	"callsign/models"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"text/template"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 )
 
 // =====================
 // Paging Groups
 // =====================
 
-func (h *Handler) ListPageGroups(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListPageGroups(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var groups []models.PageGroup
 	h.DB.Where("tenant_id = ?", tenantID).Preload("Destinations").Order("name").Find(&groups)
 
-	ctx.JSON(groups)
+	return c.JSON(groups)
 }
 
-func (h *Handler) CreatePageGroup(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreatePageGroup(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var group models.PageGroup
-	if err := ctx.ReadJSON(&group); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&group); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	group.TenantID = tenantID
 
 	if err := h.DB.Create(&group).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(group)
+	return c.Status(http.StatusCreated).JSON(group)
 }
 
-func (h *Handler) GetPageGroup(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) GetPageGroup(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var group models.PageGroup
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).
 		Preload("Destinations").First(&group).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Page group not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Page group not found"})
 	}
 
-	ctx.JSON(group)
+	return c.JSON(group)
 }
 
-func (h *Handler) UpdatePageGroup(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) UpdatePageGroup(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var group models.PageGroup
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&group).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Page group not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Page group not found"})
 	}
 
-	if err := ctx.ReadJSON(&group); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&group); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	group.TenantID = tenantID
 	h.DB.Save(&group)
-	ctx.JSON(group)
+	return c.JSON(group)
 }
 
-func (h *Handler) DeletePageGroup(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) DeletePageGroup(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var group models.PageGroup
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&group).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Page group not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Page group not found"})
 	}
 
 	h.DB.Delete(&group)
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // =====================
 // Provisioning Templates
 // =====================
 
-func (h *Handler) ListProvisioningTemplates(ctx iris.Context) {
+func (h *Handler) ListProvisioningTemplates(c *fiber.Ctx) error {
 	var templates []models.ProvisioningTemplate
 
 	// System templates (tenant_id is null) + tenant-specific
-	tenantID := middleware.GetTenantID(ctx)
+	tenantID := middleware.GetTenantID(c)
 	h.DB.Where("tenant_id IS NULL OR tenant_id = ?", tenantID).Order("vendor, priority").Find(&templates)
 
-	ctx.JSON(templates)
+	return c.JSON(templates)
 }
 
-func (h *Handler) CreateProvisioningTemplate(ctx iris.Context) {
+func (h *Handler) CreateProvisioningTemplate(c *fiber.Ctx) error {
 	var tmpl models.ProvisioningTemplate
-	if err := ctx.ReadJSON(&tmpl); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&tmpl); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	// System admin can create system templates (nil tenant_id)
-	claims := middleware.GetClaims(ctx)
+	claims := middleware.GetClaims(c)
 	if claims != nil && claims.Role != "system_admin" {
-		tenantID := middleware.GetTenantID(ctx)
+		tenantID := middleware.GetTenantID(c)
 		tmpl.TenantID = &tenantID
 	}
 
 	if err := h.DB.Create(&tmpl).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(tmpl)
+	return c.Status(http.StatusCreated).JSON(tmpl)
 }
 
-func (h *Handler) GetProvisioningTemplate(ctx iris.Context) {
-	id, _ := ctx.Params().GetUint("id")
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) GetProvisioningTemplate(c *fiber.Ctx) error {
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
+	tenantID := middleware.GetTenantID(c)
 
 	var tmpl models.ProvisioningTemplate
 	if err := h.DB.Where("id = ? AND (tenant_id IS NULL OR tenant_id = ?)", id, tenantID).
 		First(&tmpl).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Template not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Template not found"})
 	}
 
-	ctx.JSON(tmpl)
+	return c.JSON(tmpl)
 }
 
-func (h *Handler) UpdateProvisioningTemplate(ctx iris.Context) {
-	id, _ := ctx.Params().GetUint("id")
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) UpdateProvisioningTemplate(c *fiber.Ctx) error {
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
+	tenantID := middleware.GetTenantID(c)
 
 	var tmpl models.ProvisioningTemplate
 	if err := h.DB.Where("id = ? AND (tenant_id IS NULL OR tenant_id = ?)", id, tenantID).
 		First(&tmpl).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Template not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Template not found"})
 	}
 
-	if err := ctx.ReadJSON(&tmpl); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&tmpl); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	h.DB.Save(&tmpl)
-	ctx.JSON(tmpl)
+	return c.JSON(tmpl)
 }
 
-func (h *Handler) DeleteProvisioningTemplate(ctx iris.Context) {
-	id, _ := ctx.Params().GetUint("id")
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) DeleteProvisioningTemplate(c *fiber.Ctx) error {
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
+	tenantID := middleware.GetTenantID(c)
 
 	var tmpl models.ProvisioningTemplate
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&tmpl).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Template not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Template not found"})
 	}
 
 	h.DB.Delete(&tmpl)
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // ServeProvisioningConfig handles device config requests
 // GET /provisioning/{mac}/{filename}
-func (h *Handler) ServeProvisioningConfig(ctx iris.Context) {
-	mac := ctx.Params().Get("mac")
-	filename := ctx.Params().Get("filename")
+func (h *Handler) ServeProvisioningConfig(c *fiber.Ctx) error {
+	mac := c.Params("mac")
+	filename := c.Params("filename")
 
 	// Normalize MAC address
 	mac = strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(mac, ":", ""), "-", ""))
@@ -219,9 +196,8 @@ func (h *Handler) ServeProvisioningConfig(ctx iris.Context) {
 		First(&device).Error
 
 	if err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.Text("Device not found")
-		return
+		c.Status(http.StatusNotFound)
+		return c.SendString("Device not found")
 	}
 
 	// Find matching template
@@ -232,9 +208,8 @@ func (h *Handler) ServeProvisioningConfig(ctx iris.Context) {
 		First(&tmpl).Error
 
 	if err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.Text("No template found for this device")
-		return
+		c.Status(http.StatusNotFound)
+		return c.SendString("No template found for this device")
 	}
 
 	// Get provisioning variables
@@ -259,45 +234,41 @@ func (h *Handler) ServeProvisioningConfig(ctx iris.Context) {
 	// Process template
 	t, err := template.New("config").Parse(tmpl.Content)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.Text("Template parse error: " + err.Error())
-		return
+		c.Status(http.StatusInternalServerError)
+		return c.SendString("Template parse error: " + err.Error())
 	}
 
 	var output strings.Builder
 	if err := t.Execute(&output, vars); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.Text("Template execution error: " + err.Error())
-		return
+		c.Status(http.StatusInternalServerError)
+		return c.SendString("Template execution error: " + err.Error())
 	}
 
 	// Set content type based on file type
 	switch tmpl.FileType {
 	case "xml":
-		ctx.ContentType("application/xml")
+		c.Set("Content-Type", "application/xml")
 	case "cfg":
-		ctx.ContentType("text/plain")
+		c.Set("Content-Type", "text/plain")
 	default:
-		ctx.ContentType("application/octet-stream")
+		c.Set("Content-Type", "application/octet-stream")
 	}
 
-	ctx.Text(output.String())
+	return c.SendString(output.String())
 }
 
 // =====================
 // Device Call Control
 // =====================
 
-func (h *Handler) DeviceHangup(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	mac := ctx.Params().Get("mac")
+func (h *Handler) DeviceHangup(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	mac := c.Params("mac")
 
 	// Find device's current call UUID
 	deviceCallUUID, err := h.getDeviceActiveCallUUID(tenantID, mac)
 	if err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "No active call found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "No active call found"})
 	}
 
 	// Use ESL to kill the call
@@ -305,31 +276,27 @@ func (h *Handler) DeviceHangup(ctx iris.Context) {
 		h.ESLManager.API(fmt.Sprintf("uuid_kill %s", deviceCallUUID))
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"message":   "Hangup command sent",
 		"call_uuid": deviceCallUUID,
 	})
 }
 
-func (h *Handler) DeviceTransfer(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	mac := ctx.Params().Get("mac")
+func (h *Handler) DeviceTransfer(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	mac := c.Params("mac")
 
 	var req struct {
 		Destination string `json:"destination"`
 		Type        string `json:"type"` // "blind" or "attended"
 	}
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	deviceCallUUID, err := h.getDeviceActiveCallUUID(tenantID, mac)
 	if err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "No active call found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "No active call found"})
 	}
 
 	// Use ESL to transfer the call
@@ -341,27 +308,25 @@ func (h *Handler) DeviceTransfer(ctx iris.Context) {
 		}
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"message":     "Transfer command sent",
 		"call_uuid":   deviceCallUUID,
 		"destination": req.Destination,
 	})
 }
 
-func (h *Handler) DeviceHold(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	mac := ctx.Params().Get("mac")
+func (h *Handler) DeviceHold(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	mac := c.Params("mac")
 
 	var req struct {
 		Hold bool `json:"hold"`
 	}
-	ctx.ReadJSON(&req)
+	c.BodyParser(&req)
 
 	deviceCallUUID, err := h.getDeviceActiveCallUUID(tenantID, mac)
 	if err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "No active call found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "No active call found"})
 	}
 
 	// Use ESL to hold/unhold the call
@@ -373,24 +338,22 @@ func (h *Handler) DeviceHold(ctx iris.Context) {
 		}
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"message":   "Hold command sent",
 		"call_uuid": deviceCallUUID,
 		"hold":      req.Hold,
 	})
 }
 
-func (h *Handler) DeviceDial(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	mac := ctx.Params().Get("mac")
+func (h *Handler) DeviceDial(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	mac := c.Params("mac")
 
 	var req struct {
 		Number string `json:"number"`
 	}
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	// Get device extension
@@ -408,9 +371,7 @@ func (h *Handler) DeviceDial(ctx iris.Context) {
 		First(&device).Error
 
 	if err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Device not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
 	// Use ESL to originate the call
@@ -420,23 +381,22 @@ func (h *Handler) DeviceDial(ctx iris.Context) {
 		h.ESLManager.Client.Originate(dialString, bridge, "")
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"message": "Dial command sent",
 		"from":    device.Extension,
 		"to":      req.Number,
 	})
 }
 
-func (h *Handler) DeviceCallStatus(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	mac := ctx.Params().Get("mac")
+func (h *Handler) DeviceCallStatus(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	mac := c.Params("mac")
 
 	deviceCallUUID, err := h.getDeviceActiveCallUUID(tenantID, mac)
 	if err != nil {
-		ctx.JSON(iris.Map{
+		return c.JSON(fiber.Map{
 			"active": false,
 		})
-		return
 	}
 
 	// Get call details from ESL if available
@@ -448,7 +408,7 @@ func (h *Handler) DeviceCallStatus(ctx iris.Context) {
 		callState, _ = h.ESLManager.API(fmt.Sprintf("uuid_getvar %s channel_call_state", deviceCallUUID))
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"active":      true,
 		"call_uuid":   deviceCallUUID,
 		"direction":   strings.TrimSpace(direction),

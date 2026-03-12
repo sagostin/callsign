@@ -5,12 +5,12 @@ import (
 	"callsign/models"
 	"net/http"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 )
 
 // DebugXML allows system admins to simulate any XML CURL request
-func (h *FSHandler) DebugXML(ctx iris.Context) {
-	section := ctx.URLParam("section")
+func (h *FSHandler) DebugXML(c *fiber.Ctx) error {
+	section := c.Query("section")
 	if section == "" {
 		section = "dialplan" // Default
 	}
@@ -24,21 +24,21 @@ func (h *FSHandler) DebugXML(ctx iris.Context) {
 	// Populate specific fields based on section
 	switch section {
 	case "dialplan":
-		req.Context = ctx.URLParam("context")
+		req.Context = c.Query("context")
 		if req.Context == "" {
 			req.Context = "default"
 		}
-		req.DestinationNumber = ctx.URLParam("destination_number")
-		req.Domain = ctx.URLParam("domain")
+		req.DestinationNumber = c.Query("destination_number")
+		req.Domain = c.Query("domain")
 
 	case "directory":
-		req.User = ctx.URLParam("user")
-		req.Domain = ctx.URLParam("domain")
-		req.Action = ctx.URLParam("action") // e.g. message-count, sip_auth
+		req.User = c.Query("user")
+		req.Domain = c.Query("domain")
+		req.Action = c.Query("action") // e.g. message-count, sip_auth
 
 	case "configuration":
 		req.KeyName = "name"
-		req.KeyValue = ctx.URLParam("config_name") // e.g. sofia.conf
+		req.KeyValue = c.Query("config_name") // e.g. sofia.conf
 		// Some configs need other params, simplistic for now
 	}
 
@@ -61,27 +61,25 @@ func (h *FSHandler) DebugXML(ctx iris.Context) {
 		xml = "<!-- Unknown section -->"
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"xml":     xml,
 		"request": req,
 	})
 }
 
 // DebugDialplanTenant allows tenant admins to debug their own routing
-func (h *FSHandler) DebugDialplanTenant(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *FSHandler) DebugDialplanTenant(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	// Get tenant domain to force correct context/domain
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	// Force domain to tenant's domain
 	domain := tenant.Domain
-	context := ctx.URLParam("context")
+	context := c.Query("context")
 
 	// Tenant can only debug 'public' (inbound) or their domain context (outbound/internal)
 	if context != "public" && context != domain {
@@ -89,7 +87,7 @@ func (h *FSHandler) DebugDialplanTenant(ctx iris.Context) {
 		context = domain
 	}
 
-	dest := ctx.URLParam("destination_number")
+	dest := c.Query("destination_number")
 
 	req := XMLCurlRequest{
 		Section:            "dialplan",
@@ -101,7 +99,7 @@ func (h *FSHandler) DebugDialplanTenant(ctx iris.Context) {
 
 	xml := h.handleDialplan(&req)
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"xml":                xml,
 		"destination_number": dest,
 		"context":            context,

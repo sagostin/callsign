@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
@@ -24,22 +24,22 @@ func DefaultPagination() PaginationParams {
 }
 
 // GetPagination extracts pagination parameters from the request
-func GetPagination(ctx iris.Context) PaginationParams {
+func GetPagination(c *fiber.Ctx) PaginationParams {
 	p := DefaultPagination()
 
-	if page := ctx.URLParamIntDefault("page", 1); page > 0 {
+	if page := c.QueryInt("page", 1); page > 0 {
 		p.Page = page
 	}
 
-	if limit := ctx.URLParamIntDefault("limit", 20); limit > 0 && limit <= 100 {
+	if limit := c.QueryInt("limit", 20); limit > 0 && limit <= 100 {
 		p.Limit = limit
 	}
 
-	if sort := ctx.URLParam("sort"); sort != "" {
+	if sort := c.Query("sort"); sort != "" {
 		p.Sort = sort
 	}
 
-	if order := ctx.URLParam("order"); order == "desc" || order == "asc" {
+	if order := c.Query("order"); order == "desc" || order == "asc" {
 		p.Order = order
 	}
 

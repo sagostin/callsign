@@ -41,6 +41,16 @@ POST /api/auth/admin/login
 }
 ```
 
+### Extension Login
+```
+POST /api/auth/extension/login
+{
+  "extension": "1001",
+  "password": "secret",
+  "tenant_domain": "example.com"
+}
+```
+
 ---
 
 ## Roles & Permissions
@@ -70,17 +80,26 @@ protected.Use(auth.RequireAllPermissions(models.PermRecordingView, models.PermRe
 
 ### Tenant Settings
 ```
-GET    /api/tenant/settings      # Get all tenant settings
-PUT    /api/tenant/settings      # Update settings
-GET    /api/tenant/branding      # Get branding config
-PUT    /api/tenant/branding      # Update branding
-GET    /api/tenant/smtp          # Get SMTP config
-PUT    /api/tenant/smtp          # Update SMTP
-POST   /api/tenant/smtp/test     # Test SMTP connection
-GET    /api/tenant/messaging     # Get messaging config
-PUT    /api/tenant/messaging     # Update messaging
-GET    /api/tenant/hospitality   # Get hospitality config
-PUT    /api/tenant/hospitality   # Update hospitality
+GET    /api/tenant/settings
+PUT    /api/tenant/settings
+GET    /api/tenant/branding
+PUT    /api/tenant/branding
+GET    /api/tenant/smtp
+PUT    /api/tenant/smtp
+POST   /api/tenant/smtp/test
+GET    /api/tenant/messaging
+PUT    /api/tenant/messaging
+GET    /api/tenant/hospitality
+PUT    /api/tenant/hospitality
+```
+
+### E911 Locations
+```
+GET    /api/tenant/locations
+POST   /api/tenant/locations
+GET    /api/tenant/locations/{id}
+PUT    /api/tenant/locations/{id}
+DELETE /api/tenant/locations/{id}
 ```
 
 ### Extensions
@@ -136,14 +155,33 @@ POST   /api/devices/{mac}/dial
 GET    /api/devices/{mac}/call-status
 ```
 
+### Client Registrations
+```
+GET    /api/registrations
+POST   /api/registrations/provision
+DELETE /api/registrations/{id}
+GET    /api/registrations/unassigned
+POST   /api/registrations/{id}/assign
+GET    /api/registrations/extension/{id}
+```
+
+### Device Profiles
+```
+GET    /api/device-profiles
+POST   /api/device-profiles
+GET    /api/device-profiles/{id}
+PUT    /api/device-profiles/{id}
+DELETE /api/device-profiles/{id}
+```
+
 ### Feature Codes
 ```
-GET    /api/feature-codes          # List all
-POST   /api/feature-codes          # Create (with validation)
+GET    /api/feature-codes
+POST   /api/feature-codes
 GET    /api/feature-codes/{id}
-PUT    /api/feature-codes/{id}     # Cannot modify system codes
-DELETE /api/feature-codes/{id}     # Cannot delete system codes
-GET    /api/feature-codes/system   # List reserved codes
+PUT    /api/feature-codes/{id}
+DELETE /api/feature-codes/{id}
+GET    /api/feature-codes/system
 ```
 
 ### Conferences
@@ -153,6 +191,25 @@ POST   /api/conferences
 GET    /api/conferences/{id}
 PUT    /api/conferences/{id}
 DELETE /api/conferences/{id}
+GET    /api/conferences/{id}/stats
+GET    /api/conferences/{id}/sessions
+GET    /api/conferences/sessions/{sessionId}/participants
+
+# Live Conference Control
+GET    /api/conferences/live
+GET    /api/conferences/live/{name}
+POST   /api/conferences/live/{name}/mute/{memberId}
+POST   /api/conferences/live/{name}/unmute/{memberId}
+POST   /api/conferences/live/{name}/deaf/{memberId}
+POST   /api/conferences/live/{name}/undeaf/{memberId}
+POST   /api/conferences/live/{name}/kick/{memberId}
+POST   /api/conferences/live/{name}/lock
+POST   /api/conferences/live/{name}/unlock
+POST   /api/conferences/live/{name}/record/start
+POST   /api/conferences/live/{name}/record/stop
+POST   /api/conferences/live/{name}/mute-all
+POST   /api/conferences/live/{name}/unmute-all
+POST   /api/conferences/live/{name}/floor/{memberId}
 ```
 
 ### Queues
@@ -162,6 +219,13 @@ POST   /api/queues
 GET    /api/queues/{id}
 PUT    /api/queues/{id}
 DELETE /api/queues/{id}
+
+# Queue Agent Management
+GET    /api/queues/{id}/agents
+POST   /api/queues/{id}/agents
+DELETE /api/queues/{id}/agents/{agentId}
+POST   /api/queues/{id}/agents/{agentId}/pause
+POST   /api/queues/{id}/agents/{agentId}/unpause
 ```
 
 ### Ring Groups
@@ -222,11 +286,22 @@ DELETE /api/numbers/{id}
 
 ### Routing
 ```
+# Inbound Routes
 GET    /api/routing/inbound
 POST   /api/routing/inbound
+GET    /api/routing/inbound/{id}
+PUT    /api/routing/inbound/{id}
+DELETE /api/routing/inbound/{id}
+POST   /api/routing/inbound/reorder
+
+# Outbound Routes
 GET    /api/routing/outbound
 POST   /api/routing/outbound
-POST   /api/routing/outbound/defaults  # Create US/CAN defaults
+GET    /api/routing/outbound/{id}
+PUT    /api/routing/outbound/{id}
+DELETE /api/routing/outbound/{id}
+POST   /api/routing/outbound/reorder
+POST   /api/routing/outbound/defaults
 
 # Call Blocks
 GET    /api/routing/blocks
@@ -236,6 +311,9 @@ DELETE /api/routing/blocks/{id}
 
 # Debug
 GET    /api/routing/debug
+
+# Dial Code Check
+POST   /api/check-dial-code
 ```
 
 ### Dial Plans
@@ -261,6 +339,18 @@ GET    /api/voicemail/messages/{id}
 DELETE /api/voicemail/messages/{id}
 POST   /api/voicemail/messages/{id}/read
 GET    /api/voicemail/messages/{id}/stream
+```
+
+### Recordings
+```
+GET    /api/recordings
+GET    /api/recordings/config
+GET    /api/recordings/{id}
+DELETE /api/recordings/{id}
+GET    /api/recordings/{id}/stream
+GET    /api/recordings/{id}/download
+PUT    /api/recordings/{id}/notes
+GET    /api/recordings/{id}/transcription
 ```
 
 ### Audio Library
@@ -293,11 +383,18 @@ GET    /api/cdr/export
 GET    /api/audit-logs
 ```
 
-### Messaging
+### Messaging (SMS/MMS)
 ```
 GET    /api/messaging/conversations
 GET    /api/messaging/conversations/{id}
 POST   /api/messaging/send
+
+# SMS Number Management
+GET    /api/messaging/numbers
+PUT    /api/messaging/numbers/{id}/sms
+GET    /api/messaging/numbers/{id}/assignments
+POST   /api/messaging/numbers/{id}/assignments
+DELETE /api/messaging/numbers/{id}/assignments/{assignId}
 ```
 
 ### Contacts
@@ -342,6 +439,103 @@ PUT    /api/speed-dials/{id}
 DELETE /api/speed-dials/{id}
 ```
 
+### Provisioning Templates
+```
+GET    /api/provisioning-templates
+POST   /api/provisioning-templates
+GET    /api/provisioning-templates/{id}
+PUT    /api/provisioning-templates/{id}
+DELETE /api/provisioning-templates/{id}
+```
+
+### Tenant Media
+```
+GET    /api/media/sounds
+POST   /api/media/sounds
+DELETE /api/media/sounds
+GET    /api/media/music
+POST   /api/media/music
+DELETE /api/media/music
+```
+
+### Fax
+```
+# Fax Boxes
+GET    /api/fax/boxes
+POST   /api/fax/boxes
+GET    /api/fax/boxes/{boxId}
+PUT    /api/fax/boxes/{boxId}
+DELETE /api/fax/boxes/{boxId}
+
+# Fax Jobs
+GET    /api/fax/jobs
+GET    /api/fax/jobs/{jobId}
+DELETE /api/fax/jobs/{jobId}
+GET    /api/fax/jobs/{jobId}/download
+POST   /api/fax/jobs/{jobId}/retry
+
+# Fax Actions
+POST   /api/fax/send
+GET    /api/fax/active
+GET    /api/fax/stats
+
+# Fax Endpoints
+GET    /api/fax/endpoints
+POST   /api/fax/endpoints
+PUT    /api/fax/endpoints/{epId}
+DELETE /api/fax/endpoints/{epId}
+```
+
+### Reports & Analytics
+```
+GET    /api/reports/call-volume
+GET    /api/reports/agent-performance
+GET    /api/reports/queue-stats
+GET    /api/reports/extension-usage
+GET    /api/reports/kpi
+GET    /api/reports/number-usage
+GET    /api/reports/export
+```
+
+### Hospitality
+```
+GET    /api/hospitality/rooms
+POST   /api/hospitality/rooms
+GET    /api/hospitality/rooms/{id}
+PUT    /api/hospitality/rooms/{id}
+DELETE /api/hospitality/rooms/{id}
+POST   /api/hospitality/rooms/{id}/checkin
+POST   /api/hospitality/rooms/{id}/checkout
+POST   /api/hospitality/rooms/{id}/wakeup
+```
+
+### Call Broadcast
+```
+GET    /api/broadcast
+POST   /api/broadcast
+GET    /api/broadcast/{id}
+PUT    /api/broadcast/{id}
+DELETE /api/broadcast/{id}
+POST   /api/broadcast/{id}/start
+POST   /api/broadcast/{id}/stop
+GET    /api/broadcast/{id}/stats
+```
+
+### Operator Panel
+```
+GET    /api/operator-panel
+```
+
+### Live Operations
+```
+POST   /api/live/recording/start
+POST   /api/live/recording/stop
+GET    /api/live/calls
+GET    /api/live/queue-stats
+POST   /api/live/wakeup/schedule
+GET    /api/live/registrations
+```
+
 ---
 
 ## System Admin Endpoints
@@ -362,6 +556,11 @@ POST   /api/system/tenant-profiles
 GET    /api/system/tenant-profiles/{id}
 PUT    /api/system/tenant-profiles/{id}
 DELETE /api/system/tenant-profiles/{id}
+```
+
+### System Numbers
+```
+GET    /api/system/numbers
 ```
 
 ### Gateways
@@ -489,11 +688,19 @@ PUT    /api/system/messaging-providers/{id}
 DELETE /api/system/messaging-providers/{id}
 ```
 
+### Messaging Numbers
+```
+GET    /api/system/messaging-numbers
+POST   /api/system/messaging-numbers
+PUT    /api/system/messaging-numbers/{id}
+DELETE /api/system/messaging-numbers/{id}
+```
+
 ### Config Inspector
 ```
-GET    /api/system/xml/debug       # Debug XML generation
-GET    /api/system/config/files    # List config files
-GET    /api/system/config/file     # Read config file
+GET    /api/system/xml/debug
+GET    /api/system/config/files
+GET    /api/system/config/file
 ```
 
 ---
@@ -512,14 +719,41 @@ POST   /api/user/contacts
 
 ---
 
+## Extension Portal Endpoints
+
+```
+GET    /api/extension/portal/devices
+GET    /api/extension/portal/call-history
+GET    /api/extension/portal/voicemail
+GET    /api/extension/portal/settings
+PUT    /api/extension/portal/settings
+PUT    /api/extension/portal/password
+GET    /api/extension/portal/contacts
+POST   /api/extension/portal/contacts
+```
+
+---
+
+## Tenant Users
+
+```
+GET    /api/users
+POST   /api/users
+GET    /api/users/{id}
+PUT    /api/users/{id}
+DELETE /api/users/{id}
+```
+
+---
+
 ## FreeSWITCH Integration
 
 ### XML Curl (mod_xml_curl)
 ```
-POST /api/freeswitch/directory      # SIP directory
-POST /api/freeswitch/dialplan       # Call routing
-POST /api/freeswitch/configuration  # Module configs
-POST /api/freeswitch/xmlapi         # Legacy combined
+POST /api/freeswitch/directory
+POST /api/freeswitch/dialplan
+POST /api/freeswitch/configuration
+POST /api/freeswitch/xmlapi          # Legacy combined
 ```
 
 ### CDR (mod_xml_cdr)
@@ -531,6 +765,42 @@ POST /api/freeswitch/cdr
 ```
 GET /api/freeswitch/cache/flush
 GET /api/freeswitch/cache/stats
+```
+
+---
+
+## Webhooks
+
+```
+POST /api/webhooks/telnyx/inbound    # Telnyx inbound SMS
+POST /api/webhooks/telnyx/status     # Telnyx delivery status
+```
+
+---
+
+## Provisioning
+
+```
+GET /api/provision/{tenant}/{secret}/{mac}   # Secure (API)
+GET /provisioning/{mac}/{filename}           # Public (device)
+```
+
+---
+
+## Internal API
+
+```
+POST /api/internal/fail2ban/report   # X-Internal-Key auth
+```
+
+---
+
+## WebSocket Endpoints
+
+```
+WSS /api/ws/notifications    # Real-time notifications
+WSS /api/system/console      # FreeSWITCH console
+WSS /api/ws                  # Generic WebSocket
 ```
 
 ---

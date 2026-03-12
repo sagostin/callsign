@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 )
 
 // =====================
@@ -30,13 +30,11 @@ type FileNode struct {
 }
 
 // ListSystemSounds returns the directory structure of /usr/share/freeswitch/sounds
-func (h *Handler) ListSystemSounds(ctx iris.Context) {
+func (h *Handler) ListSystemSounds(c *fiber.Ctx) error {
 	root := "/usr/share/freeswitch/sounds"
 	tree, err := buildFileTree(root, root)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to scan sounds directory: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to scan sounds directory: " + err.Error()})
 	}
 
 	// Filter out "music" directory from sounds listing as it has its own endpoint
@@ -48,72 +46,58 @@ func (h *Handler) ListSystemSounds(ctx iris.Context) {
 	}
 	tree.Children = filteredChildren
 
-	ctx.JSON(iris.Map{"data": tree.Children})
+	return c.JSON(fiber.Map{"data": tree.Children})
 }
 
 // ListSystemMusic returns the directory structure of /usr/share/freeswitch/sounds/music
-func (h *Handler) ListSystemMusic(ctx iris.Context) {
+func (h *Handler) ListSystemMusic(c *fiber.Ctx) error {
 	root := "/usr/share/freeswitch/sounds/music"
 	tree, err := buildFileTree(root, root)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to scan music directory: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to scan music directory: " + err.Error()})
 	}
-	ctx.JSON(iris.Map{"data": tree.Children})
+	return c.JSON(fiber.Map{"data": tree.Children})
 }
 
 // StreamSystemSound serves a system sound file for playback
-func (h *Handler) StreamSystemSound(ctx iris.Context) {
-	path := ctx.URLParam("path")
+func (h *Handler) StreamSystemSound(c *fiber.Ctx) error {
+	path := c.Query("path")
 	if path == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Path is required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Path is required"})
 	}
 
 	// Security: prevent directory traversal
 	if strings.Contains(path, "..") {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid path"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
 	fullPath := filepath.Join("/usr/share/freeswitch/sounds", path)
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "File not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 	}
 
-	ctx.ServeFile(fullPath)
+	return c.SendFile(fullPath)
 }
 
 // StreamSystemMusic serves a system music file for playback
-func (h *Handler) StreamSystemMusic(ctx iris.Context) {
-	path := ctx.URLParam("path")
+func (h *Handler) StreamSystemMusic(c *fiber.Ctx) error {
+	path := c.Query("path")
 	if path == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Path is required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Path is required"})
 	}
 
 	if strings.Contains(path, "..") {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid path"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
 	fullPath := filepath.Join("/usr/share/freeswitch/sounds/music", path)
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "File not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 	}
 
-	ctx.ServeFile(fullPath)
+	return c.SendFile(fullPath)
 }
 
 func buildFileTree(root, currentPath string) (*FileNode, error) {
@@ -181,45 +165,39 @@ func generateUniqueFilename(dir, filename string) string {
 }
 
 // UploadSystemSound handles uploading a sound file to a specific path
-func (h *Handler) UploadSystemSound(ctx iris.Context) {
+func (h *Handler) UploadSystemSound(c *fiber.Ctx) error {
 	// Path should be relative to /usr/share/freeswitch/sounds (e.g., "en/us/callie/ivr")
-	targetPath := ctx.FormValue("path")
+	targetPath := c.FormValue("path")
 	if targetPath == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Target path is required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Target path is required"})
 	}
 
 	// Prevent directory traversal
 	if strings.Contains(targetPath, "..") {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid path"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
-	file, header, err := ctx.FormFile("file")
+	header, err := c.FormFile("file")
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Failed to read file"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Failed to read file"})
+	}
+	file, err := header.Open()
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to open file"})
 	}
 	defer file.Close()
 
 	// Validate extension
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".wav" && ext != ".mp3" && ext != ".ogg" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid file type. Only .wav, .mp3, .ogg allowed"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file type. Only .wav, .mp3, .ogg allowed"})
 	}
 
 	fullPath := filepath.Join("/usr/share/freeswitch/sounds", targetPath)
 
 	// Ensure directory exists
 	if err := os.MkdirAll(fullPath, 0755); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create directory"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create directory"})
 	}
 
 	// Generate unique filename if one already exists
@@ -227,53 +205,44 @@ func (h *Handler) UploadSystemSound(ctx iris.Context) {
 	dstPath := filepath.Join(fullPath, finalFilename)
 	out, err := os.Create(dstPath)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create destination file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create destination file"})
 	}
 	defer out.Close()
 
 	if _, err := io.Copy(out, file); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to save file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": filepath.Join(targetPath, finalFilename), "filename": finalFilename})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"message": "File uploaded successfully", "path": filepath.Join(targetPath, finalFilename), "filename": finalFilename})
 }
 
 // UploadSystemMusic handles uploading a music file to a specific rate directory
-func (h *Handler) UploadSystemMusic(ctx iris.Context) {
+func (h *Handler) UploadSystemMusic(c *fiber.Ctx) error {
 	// Rate folder (e.g., "8000", "16000", "32000", "48000")
-	rate := ctx.FormValue("rate")
+	rate := c.FormValue("rate")
 	if rate != "8000" && rate != "16000" && rate != "32000" && rate != "48000" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid sample rate. Must be 8000, 16000, 32000, or 48000"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid sample rate. Must be 8000, 16000, 32000, or 48000"})
 	}
 
-	file, header, err := ctx.FormFile("file")
+	header, err := c.FormFile("file")
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Failed to read file"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Failed to read file"})
+	}
+	file, err := header.Open()
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to open file"})
 	}
 	defer file.Close()
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".wav" && ext != ".mp3" && ext != ".ogg" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid file type. Only .wav, .mp3, .ogg allowed"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file type. Only .wav, .mp3, .ogg allowed"})
 	}
 
 	// Optional folder/genre parameter
-	folder := ctx.FormValue("folder")
+	folder := c.FormValue("folder")
 	if folder != "" && strings.Contains(folder, "..") {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid folder name"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid folder name"})
 	}
 
 	// Build path: /music/{rate} or /music/{rate}/{folder}
@@ -284,9 +253,7 @@ func (h *Handler) UploadSystemMusic(ctx iris.Context) {
 
 	// Ensure directory exists
 	if err := os.MkdirAll(fullPath, 0755); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create directory"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create directory"})
 	}
 
 	// Generate unique filename if one already exists
@@ -294,16 +261,12 @@ func (h *Handler) UploadSystemMusic(ctx iris.Context) {
 	dstPath := filepath.Join(fullPath, finalFilename)
 	out, err := os.Create(dstPath)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create destination file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create destination file"})
 	}
 	defer out.Close()
 
 	if _, err := io.Copy(out, file); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to save file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
 	}
 
 	resultPath := filepath.Join(rate, finalFilename)
@@ -311,17 +274,14 @@ func (h *Handler) UploadSystemMusic(ctx iris.Context) {
 		resultPath = filepath.Join(rate, folder, finalFilename)
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": resultPath, "filename": finalFilename})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"message": "File uploaded successfully", "path": resultPath, "filename": finalFilename})
 }
 
 // ListTenantSounds merges system sounds with tenant overrides
-func (h *Handler) ListTenantSounds(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+func (h *Handler) ListTenantSounds(c *fiber.Ctx) error {
+	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Tenant context required"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
 	systemRoot := "/usr/share/freeswitch/sounds"
@@ -330,9 +290,7 @@ func (h *Handler) ListTenantSounds(ctx iris.Context) {
 	// systemTree will be the base
 	systemTree, err := buildFileTree(systemRoot, systemRoot)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to scan system sounds: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to scan system sounds: " + err.Error()})
 	}
 	markSource(systemTree, "system")
 
@@ -352,7 +310,7 @@ func (h *Handler) ListTenantSounds(ctx iris.Context) {
 	}
 	systemTree.Children = filteredChildren
 
-	ctx.JSON(iris.Map{"data": systemTree.Children})
+	return c.JSON(fiber.Map{"data": systemTree.Children})
 }
 
 // Helper to recursively mark source on all nodes
@@ -399,41 +357,35 @@ func mergeTrees(systemNode, tenantNode *FileNode) {
 }
 
 // UploadTenantSound handles uploading a sound file to the tenant directory
-func (h *Handler) UploadTenantSound(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+func (h *Handler) UploadTenantSound(c *fiber.Ctx) error {
+	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Tenant context required"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
 	// Path relative to sounds root (e.g., "en/us/callie/ivr")
-	targetPath := ctx.FormValue("path")
+	targetPath := c.FormValue("path")
 	if targetPath == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Target path is required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Target path is required"})
 	}
 
 	if strings.Contains(targetPath, "..") {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid path"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
-	file, header, err := ctx.FormFile("file")
+	header, err := c.FormFile("file")
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Failed to read file"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Failed to read file"})
+	}
+	file, err := header.Open()
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to open file"})
 	}
 	defer file.Close()
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".wav" && ext != ".mp3" && ext != ".ogg" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid file type"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file type"})
 	}
 
 	// Save to /usr/share/freeswitch/sounds/tenants/{id}/{path}
@@ -441,9 +393,7 @@ func (h *Handler) UploadTenantSound(ctx iris.Context) {
 	fullDirPath := filepath.Join(baseDir, targetPath)
 
 	if err := os.MkdirAll(fullDirPath, 0755); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create tenant directory"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create tenant directory"})
 	}
 
 	// Generate unique filename if one already exists
@@ -451,43 +401,32 @@ func (h *Handler) UploadTenantSound(ctx iris.Context) {
 	dstPath := filepath.Join(fullDirPath, finalFilename)
 	out, err := os.Create(dstPath)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create destination file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create destination file"})
 	}
 	defer out.Close()
 
 	if _, err := io.Copy(out, file); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to save file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": filepath.Join(targetPath, finalFilename), "filename": finalFilename, "is_override": true})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"message": "File uploaded successfully", "path": filepath.Join(targetPath, finalFilename), "filename": finalFilename, "is_override": true})
 }
 
 // DeleteTenantSound removes a tenant sound/override
-func (h *Handler) DeleteTenantSound(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+func (h *Handler) DeleteTenantSound(c *fiber.Ctx) error {
+	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Tenant context required"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
 	// Full logical path relative to sounds root, e.g. "en/us/callie/ivr/welcome.wav"
-	targetPath := ctx.URLParam("path")
+	targetPath := c.Query("path")
 	if targetPath == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Path required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Path required"})
 	}
 
 	if strings.Contains(targetPath, "..") {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid path"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
 	baseDir := fmt.Sprintf("/usr/share/freeswitch/sounds/tenants/%d", tenantID)
@@ -495,25 +434,19 @@ func (h *Handler) DeleteTenantSound(ctx iris.Context) {
 
 	if err := os.Remove(fullPath); err != nil {
 		if os.IsNotExist(err) {
-			ctx.StatusCode(http.StatusNotFound)
-			ctx.JSON(iris.Map{"error": "File not found"})
-			return
+			return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 		}
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete file"})
 	}
 
-	ctx.JSON(iris.Map{"message": "File deleted, revert to system sound if applicable"})
+	return c.JSON(fiber.Map{"message": "File deleted, revert to system sound if applicable"})
 }
 
 // ListTenantMusic merges system music with tenant overrides
-func (h *Handler) ListTenantMusic(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+func (h *Handler) ListTenantMusic(c *fiber.Ctx) error {
+	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Tenant context required"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
 	systemRoot := "/usr/share/freeswitch/sounds/music"
@@ -521,9 +454,7 @@ func (h *Handler) ListTenantMusic(ctx iris.Context) {
 
 	systemTree, err := buildFileTree(systemRoot, systemRoot)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to scan system music: " + err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to scan system music: " + err.Error()})
 	}
 	markSource(systemTree, "system")
 
@@ -543,47 +474,41 @@ func (h *Handler) ListTenantMusic(ctx iris.Context) {
 	}
 	systemTree.Children = filteredChildren
 
-	ctx.JSON(iris.Map{"data": systemTree.Children})
+	return c.JSON(fiber.Map{"data": systemTree.Children})
 }
 
 // UploadTenantMusic handles uploading a music file to a specific rate directory for a tenant
-func (h *Handler) UploadTenantMusic(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+func (h *Handler) UploadTenantMusic(c *fiber.Ctx) error {
+	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Tenant context required"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
 	// Rate folder (e.g., "8000", "16000", "32000", "48000")
-	rate := ctx.FormValue("rate")
+	rate := c.FormValue("rate")
 	if rate != "8000" && rate != "16000" && rate != "32000" && rate != "48000" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid sample rate"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid sample rate"})
 	}
 
-	file, header, err := ctx.FormFile("file")
+	header, err := c.FormFile("file")
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Failed to read file"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Failed to read file"})
+	}
+	file, err := header.Open()
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to open file"})
 	}
 	defer file.Close()
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".wav" && ext != ".mp3" && ext != ".ogg" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid file type"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file type"})
 	}
 
 	// Optional folder/genre parameter
-	folder := ctx.FormValue("folder")
+	folder := c.FormValue("folder")
 	if folder != "" && strings.Contains(folder, "..") {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid folder name"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid folder name"})
 	}
 
 	// Save to /usr/share/freeswitch/sounds/music/tenants/{id}/{rate} or {rate}/{folder}
@@ -594,9 +519,7 @@ func (h *Handler) UploadTenantMusic(ctx iris.Context) {
 	}
 
 	if err := os.MkdirAll(fullRatePath, 0755); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create tenant directory"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create tenant directory"})
 	}
 
 	// Generate unique filename if one already exists
@@ -604,16 +527,12 @@ func (h *Handler) UploadTenantMusic(ctx iris.Context) {
 	dstPath := filepath.Join(fullRatePath, finalFilename)
 	out, err := os.Create(dstPath)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create destination file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create destination file"})
 	}
 	defer out.Close()
 
 	if _, err := io.Copy(out, file); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to save file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
 	}
 
 	resultPath := filepath.Join(rate, finalFilename)
@@ -621,31 +540,24 @@ func (h *Handler) UploadTenantMusic(ctx iris.Context) {
 		resultPath = filepath.Join(rate, folder, finalFilename)
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "File uploaded successfully", "path": resultPath, "filename": finalFilename, "is_override": true})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"message": "File uploaded successfully", "path": resultPath, "filename": finalFilename, "is_override": true})
 }
 
 // DeleteTenantMusic removes a tenant music file
-func (h *Handler) DeleteTenantMusic(ctx iris.Context) {
-	tenantID := middleware.GetScopedTenantID(ctx)
+func (h *Handler) DeleteTenantMusic(c *fiber.Ctx) error {
+	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Tenant context required"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
 	// Path relative to music/tenant root (e.g. "8000/music.wav")
-	targetPath := ctx.URLParam("path")
+	targetPath := c.Query("path")
 	if targetPath == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Path required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Path required"})
 	}
 
 	if strings.Contains(targetPath, "..") {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid path"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
 	baseDir := fmt.Sprintf("/usr/share/freeswitch/sounds/music/tenants/%d", tenantID)
@@ -653,14 +565,10 @@ func (h *Handler) DeleteTenantMusic(ctx iris.Context) {
 
 	if err := os.Remove(fullPath); err != nil {
 		if os.IsNotExist(err) {
-			ctx.StatusCode(http.StatusNotFound)
-			ctx.JSON(iris.Map{"error": "File not found"})
-			return
+			return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 		}
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete file"})
 	}
 
-	ctx.JSON(iris.Map{"message": "File deleted"})
+	return c.JSON(fiber.Map{"message": "File deleted"})
 }

@@ -4,8 +4,9 @@ import (
 	"callsign/middleware"
 	"callsign/models"
 	"net/http"
+	"strconv"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
@@ -13,8 +14,8 @@ import (
 // Messaging (SMS/MMS)
 // =====================
 
-func (h *Handler) ListConversations(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListConversations(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var conversations []models.Conversation
 	h.DB.Where("tenant_id = ?", tenantID).
@@ -22,33 +23,29 @@ func (h *Handler) ListConversations(ctx iris.Context) {
 		Limit(50).
 		Find(&conversations)
 
-	ctx.JSON(conversations)
+	return c.JSON(conversations)
 }
 
-func (h *Handler) GetConversation(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) GetConversation(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var conversation models.Conversation
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).
 		Preload("Messages").
 		First(&conversation).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Conversation not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Conversation not found"})
 	}
 
-	ctx.JSON(conversation)
+	return c.JSON(conversation)
 }
 
-func (h *Handler) SendMessage(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) SendMessage(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var msg models.Message
-	if err := ctx.ReadJSON(&msg); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&msg); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	msg.TenantID = tenantID
@@ -56,9 +53,7 @@ func (h *Handler) SendMessage(ctx iris.Context) {
 	msg.Status = "pending"
 
 	if err := h.DB.Create(&msg).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	// Queue for delivery via messaging provider
@@ -66,17 +61,16 @@ func (h *Handler) SendMessage(ctx iris.Context) {
 		go h.MsgManager.SendMessage(tenantID, msg.From, msg.To, msg.Body, nil, msg.ProviderID)
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(msg)
+	return c.Status(http.StatusCreated).JSON(msg)
 }
 
 // =====================
 // Contacts
 // =====================
 
-func (h *Handler) ListContacts(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	search := ctx.URLParam("search")
+func (h *Handler) ListContacts(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	search := c.Query("search")
 
 	query := h.DB.Where("tenant_id = ?", tenantID)
 	if search != "" {
@@ -86,120 +80,104 @@ func (h *Handler) ListContacts(ctx iris.Context) {
 
 	var contacts []models.Contact
 	query.Order("last_name, first_name").Limit(100).Find(&contacts)
-	ctx.JSON(contacts)
+	return c.JSON(contacts)
 }
 
-func (h *Handler) CreateContact(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateContact(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var contact models.Contact
-	if err := ctx.ReadJSON(&contact); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&contact); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	contact.TenantID = tenantID
 
 	if err := h.DB.Create(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(contact)
+	return c.Status(http.StatusCreated).JSON(contact)
 }
 
-func (h *Handler) GetContact(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) GetContact(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var contact models.Contact
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Contact not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
-	ctx.JSON(contact)
+	return c.JSON(contact)
 }
 
-func (h *Handler) UpdateContact(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) UpdateContact(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var contact models.Contact
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Contact not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
-	if err := ctx.ReadJSON(&contact); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&contact); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	contact.TenantID = tenantID
 	h.DB.Save(&contact)
-	ctx.JSON(contact)
+	return c.JSON(contact)
 }
 
-func (h *Handler) DeleteContact(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) DeleteContact(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var contact models.Contact
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Contact not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
 	h.DB.Delete(&contact)
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
-func (h *Handler) SyncContact(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) SyncContact(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var contact models.Contact
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Contact not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
 	// TODO: Implement webhook sync logic
-	ctx.JSON(iris.Map{"message": "Sync queued", "contact_id": id})
+	return c.JSON(fiber.Map{"message": "Sync queued", "contact_id": id})
 }
 
-func (h *Handler) GetContactByPhone(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	phone := ctx.URLParam("phone")
+func (h *Handler) GetContactByPhone(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	phone := c.Query("phone")
 
 	var contact models.Contact
 	if err := h.DB.Where("tenant_id = ? AND (phone = ? OR mobile_phone = ? OR phone_alt = ?)",
 		tenantID, phone, phone, phone).First(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Contact not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
-	ctx.JSON(contact)
+	return c.JSON(contact)
 }
 
 // =====================
 // Chat System
 // =====================
 
-func (h *Handler) ListChatThreads(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	channel := ctx.URLParamDefault("channel", "")
-	status := ctx.URLParamDefault("status", "open")
+func (h *Handler) ListChatThreads(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	channel := c.Query("channel", "")
+	status := c.Query("status", "open")
 
 	query := h.DB.Where("tenant_id = ?", tenantID)
 	if channel != "" {
@@ -211,34 +189,29 @@ func (h *Handler) ListChatThreads(ctx iris.Context) {
 
 	var threads []models.ChatThread
 	query.Order("last_message_at DESC").Limit(50).Find(&threads)
-	ctx.JSON(threads)
+	return c.JSON(threads)
 }
 
-func (h *Handler) CreateChatThread(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateChatThread(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var thread models.ChatThread
-	if err := ctx.ReadJSON(&thread); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&thread); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	thread.TenantID = tenantID
 
 	if err := h.DB.Create(&thread).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(thread)
+	return c.Status(http.StatusCreated).JSON(thread)
 }
 
-func (h *Handler) GetChatThread(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) GetChatThread(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var thread models.ChatThread
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).
@@ -247,67 +220,57 @@ func (h *Handler) GetChatThread(ctx iris.Context) {
 		}).
 		Preload("Messages.Attachments").
 		First(&thread).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Thread not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Thread not found"})
 	}
 
-	ctx.JSON(thread)
+	return c.JSON(thread)
 }
 
-func (h *Handler) SendChatMessage(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	threadID, _ := ctx.Params().GetUint("id")
+func (h *Handler) SendChatMessage(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	threadIDu64, _ := strconv.ParseUint(c.Params("id"), 10, 64)
+	threadID := uint(threadIDu64)
 
 	// Verify thread exists
 	var thread models.ChatThread
 	if err := h.DB.Where("id = ? AND tenant_id = ?", threadID, tenantID).First(&thread).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Thread not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Thread not found"})
 	}
 
 	var msg models.ChatMessage
-	if err := ctx.ReadJSON(&msg); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&msg); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	msg.TenantID = tenantID
 	msg.ThreadID = threadID
 
 	if err := h.DB.Create(&msg).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	// Update thread's last message time
 	h.DB.Model(&thread).Update("last_message_at", msg.CreatedAt)
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(msg)
+	return c.Status(http.StatusCreated).JSON(msg)
 }
 
-func (h *Handler) ListChatRooms(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListChatRooms(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var rooms []models.ChatRoom
 	h.DB.Where("tenant_id = ? AND archived = false", tenantID).Find(&rooms)
 
-	ctx.JSON(rooms)
+	return c.JSON(rooms)
 }
 
-func (h *Handler) CreateChatRoom(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) CreateChatRoom(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	claims := middleware.GetClaims(c)
 
 	var room models.ChatRoom
-	if err := ctx.ReadJSON(&room); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&room); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	room.TenantID = tenantID
@@ -316,32 +279,27 @@ func (h *Handler) CreateChatRoom(ctx iris.Context) {
 	}
 
 	if err := h.DB.Create(&room).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(room)
+	return c.Status(http.StatusCreated).JSON(room)
 }
 
-func (h *Handler) JoinChatRoom(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	roomID, _ := ctx.Params().GetUint("id")
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) JoinChatRoom(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	roomIDu64, _ := strconv.ParseUint(c.Params("id"), 10, 64)
+	roomID := uint(roomIDu64)
+	claims := middleware.GetClaims(c)
 
 	var room models.ChatRoom
 	if err := h.DB.Where("id = ? AND tenant_id = ?", roomID, tenantID).First(&room).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Room not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Room not found"})
 	}
 
 	// Check if already member
 	var existing models.ChatRoomMember
 	if err := h.DB.Where("room_id = ? AND extension_id = ?", roomID, claims.UserID).First(&existing).Error; err == nil {
-		ctx.JSON(iris.Map{"message": "Already a member"})
-		return
+		return c.JSON(fiber.Map{"message": "Already a member"})
 	}
 
 	member := models.ChatRoomMember{
@@ -351,37 +309,31 @@ func (h *Handler) JoinChatRoom(ctx iris.Context) {
 	}
 	h.DB.Create(&member)
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(member)
+	return c.Status(http.StatusCreated).JSON(member)
 }
 
-func (h *Handler) ListChatQueues(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListChatQueues(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var queues []models.ChatQueue
 	h.DB.Where("tenant_id = ?", tenantID).Preload("Agents").Find(&queues)
 
-	ctx.JSON(queues)
+	return c.JSON(queues)
 }
 
-func (h *Handler) CreateChatQueue(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateChatQueue(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var queue models.ChatQueue
-	if err := ctx.ReadJSON(&queue); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&queue); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	queue.TenantID = tenantID
 
 	if err := h.DB.Create(&queue).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(queue)
+	return c.Status(http.StatusCreated).JSON(queue)
 }

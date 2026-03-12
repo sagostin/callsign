@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/kataras/iris/v12"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -80,19 +80,18 @@ type XMLTimes struct {
 
 // HandleXMLCDR processes incoming CDR posts from FreeSWITCH mod_xml_cdr
 // POST /freeswitch/cdr
-func (h *FSHandler) HandleXMLCDR(ctx iris.Context) {
+func (h *FSHandler) HandleXMLCDR(c *fiber.Ctx) error {
 	// Get the CDR data - can be form param or raw body
 	var cdrXML string
 
 	// Check if it's form-encoded (cdr variable)
-	cdrXML = ctx.FormValue("cdr")
+	cdrXML = c.FormValue("cdr")
 	if cdrXML == "" {
 		// Try raw body
-		body, err := ctx.GetBody()
-		if err != nil || len(body) == 0 {
+		body := c.Body()
+		if len(body) == 0 {
 			log.Warn("CDR: empty request body")
-			ctx.StatusCode(http.StatusBadRequest)
-			return
+			return c.SendStatus(http.StatusBadRequest)
 		}
 		cdrXML = string(body)
 	}
@@ -106,8 +105,7 @@ func (h *FSHandler) HandleXMLCDR(ctx iris.Context) {
 	var xmlCDR XMLCDRData
 	if err := xml.Unmarshal([]byte(cdrXML), &xmlCDR); err != nil {
 		log.Warnf("CDR: failed to parse XML: %v", err)
-		ctx.StatusCode(http.StatusBadRequest)
-		return
+		return c.SendStatus(http.StatusBadRequest)
 	}
 
 	// Convert to CallRecord
@@ -116,8 +114,7 @@ func (h *FSHandler) HandleXMLCDR(ctx iris.Context) {
 	// Save to PostgreSQL
 	if err := h.DB.Create(record).Error; err != nil {
 		log.Errorf("CDR: database save failed: %v", err)
-		ctx.StatusCode(http.StatusInternalServerError)
-		return
+		return c.SendStatus(http.StatusInternalServerError)
 	}
 
 	log.WithFields(log.Fields{
@@ -129,7 +126,7 @@ func (h *FSHandler) HandleXMLCDR(ctx iris.Context) {
 	}).Info("CDR: received and stored")
 
 	// Return 200 OK to indicate successful receipt
-	ctx.StatusCode(http.StatusOK)
+	return c.SendStatus(http.StatusOK)
 }
 
 // xmlToCallRecord converts XML CDR to CallRecord model

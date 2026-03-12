@@ -8,8 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testSalt = "test-salt-value"
+
 func TestEncryptDecrypt(t *testing.T) {
-	mgr := encryption.NewManager("test-encryption-key-32bytes!!")
+	mgr := encryption.NewManager("test-encryption-key-32bytes!!", testSalt)
 
 	// Test basic encrypt/decrypt
 	plaintext := "Hello, World! This is a secret message."
@@ -24,7 +26,7 @@ func TestEncryptDecrypt(t *testing.T) {
 }
 
 func TestEncryptEmpty(t *testing.T) {
-	mgr := encryption.NewManager("test-key")
+	mgr := encryption.NewManager("test-key", testSalt)
 
 	// Empty string should return empty
 	encrypted, err := mgr.Encrypt("")
@@ -37,7 +39,7 @@ func TestEncryptEmpty(t *testing.T) {
 }
 
 func TestDecryptInvalid(t *testing.T) {
-	mgr := encryption.NewManager("test-key")
+	mgr := encryption.NewManager("test-key", testSalt)
 
 	// Invalid base64
 	_, err := mgr.Decrypt("not-valid-base64!!!")
@@ -49,7 +51,7 @@ func TestDecryptInvalid(t *testing.T) {
 }
 
 func TestEncryptBytes(t *testing.T) {
-	mgr := encryption.NewManager("test-key")
+	mgr := encryption.NewManager("test-key", testSalt)
 
 	data := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
 
@@ -63,7 +65,7 @@ func TestEncryptBytes(t *testing.T) {
 }
 
 func TestHashForLookup(t *testing.T) {
-	mgr := encryption.NewManager("test-key")
+	mgr := encryption.NewManager("test-key", testSalt)
 
 	// Same input should always produce same hash
 	hash1 := mgr.HashForLookup("test-value")
@@ -76,8 +78,8 @@ func TestHashForLookup(t *testing.T) {
 }
 
 func TestDifferentKeysProduceDifferentCiphertext(t *testing.T) {
-	mgr1 := encryption.NewManager("key-one")
-	mgr2 := encryption.NewManager("key-two")
+	mgr1 := encryption.NewManager("key-one", testSalt)
+	mgr2 := encryption.NewManager("key-two", testSalt)
 
 	plaintext := "same message"
 
@@ -89,5 +91,20 @@ func TestDifferentKeysProduceDifferentCiphertext(t *testing.T) {
 
 	// Cannot decrypt with wrong key
 	_, err := mgr2.Decrypt(enc1)
+	assert.Error(t, err)
+}
+
+func TestNewManagerFromConfig(t *testing.T) {
+	// Both key and salt provided — should succeed
+	mgr, err := encryption.NewManagerFromConfig("my-key", "my-salt")
+	assert.NoError(t, err)
+	assert.NotNil(t, mgr)
+
+	// Missing key — should fail
+	_, err = encryption.NewManagerFromConfig("", "my-salt")
+	assert.Error(t, err)
+
+	// Missing salt — should fail
+	_, err = encryption.NewManagerFromConfig("my-key", "")
 	assert.Error(t, err)
 }

@@ -5,7 +5,7 @@ import (
 	"callsign/models"
 	"net/http"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 )
 
 // =====================
@@ -14,16 +14,14 @@ import (
 
 // GetOperatorPanelData returns real-time extension states and active calls
 // for the operator panel view
-func (h *Handler) GetOperatorPanelData(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) GetOperatorPanelData(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	// Get all extensions with their presence state
 	var extensions []models.Extension
 	if err := h.DB.Where("tenant_id = ?", tenantID).
 		Order("extension ASC").Find(&extensions).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve extensions"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve extensions"})
 	}
 
 	// Get active call data from ESL if available
@@ -80,7 +78,7 @@ func (h *Handler) GetOperatorPanelData(ctx iris.Context) {
 		}
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"extensions":   panelData,
 		"active_calls": activeCalls,
 		"queues":       queueSummary,

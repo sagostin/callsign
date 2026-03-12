@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
@@ -26,311 +26,267 @@ func NewConferenceHandler(db *gorm.DB, svc *conference.Service) *ConferenceHandl
 }
 
 // ListConferences returns all conference rooms for a tenant
-func (h *ConferenceHandler) ListConferences(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *ConferenceHandler) ListConferences(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var conferences []models.Conference
 	h.DB.Where("tenant_id = ? AND enabled = ?", tenantID, true).Find(&conferences)
 
-	ctx.JSON(conferences)
+	return c.JSON(conferences)
 }
 
 // GetConference returns a specific conference
-func (h *ConferenceHandler) GetConference(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *ConferenceHandler) GetConference(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var conf models.Conference
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).
 		Preload("Members").First(&conf).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Conference not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Conference not found"})
 	}
 
-	ctx.JSON(conf)
+	return c.JSON(conf)
 }
 
 // CreateConference creates a new conference room
-func (h *ConferenceHandler) CreateConference(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *ConferenceHandler) CreateConference(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var conf models.Conference
-	if err := ctx.ReadJSON(&conf); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&conf); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	conf.TenantID = tenantID
 	if err := h.DB.Create(&conf).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(conf)
+	return c.Status(http.StatusCreated).JSON(conf)
 }
 
 // UpdateConference updates a conference room
-func (h *ConferenceHandler) UpdateConference(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *ConferenceHandler) UpdateConference(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var conf models.Conference
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&conf).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Conference not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Conference not found"})
 	}
 
-	if err := ctx.ReadJSON(&conf); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&conf); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	conf.TenantID = tenantID
 	h.DB.Save(&conf)
-	ctx.JSON(conf)
+	return c.JSON(conf)
 }
 
 // DeleteConference deletes a conference room
-func (h *ConferenceHandler) DeleteConference(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *ConferenceHandler) DeleteConference(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.Conference{})
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Conference not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Conference not found"})
 	}
 
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // ========== Live Conference Control ==========
 
 // ListLiveConferences returns active conferences from FreeSWITCH
-func (h *ConferenceHandler) ListLiveConferences(ctx iris.Context) {
+func (h *ConferenceHandler) ListLiveConferences(c *fiber.Ctx) error {
 	if h.Service == nil {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "Conference service not available"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "Conference service not available"})
 	}
 
 	conferences, err := h.Service.ListLive()
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(conferences)
+	return c.JSON(conferences)
 }
 
 // GetLiveConference returns live conference with members
-func (h *ConferenceHandler) GetLiveConference(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
+func (h *ConferenceHandler) GetLiveConference(c *fiber.Ctx) error {
+	confName := c.Params("name")
 
 	if h.Service == nil {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "Conference service not available"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "Conference service not available"})
 	}
 
 	info, err := h.Service.GetLiveConference(confName)
 	if err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(info)
+	return c.JSON(info)
 }
 
 // MuteMember mutes a conference member
-func (h *ConferenceHandler) MuteMember(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
-	memberID, _ := strconv.Atoi(ctx.Params().Get("member"))
+func (h *ConferenceHandler) MuteMember(c *fiber.Ctx) error {
+	confName := c.Params("name")
+	memberID, _ := strconv.Atoi(c.Params("member"))
 
 	if err := h.Service.MuteMember(confName, memberID); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"status": "ok", "action": "mute", "member": memberID})
+	return c.JSON(fiber.Map{"status": "ok", "action": "mute", "member": memberID})
 }
 
 // UnmuteMember unmutes a conference member
-func (h *ConferenceHandler) UnmuteMember(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
-	memberID, _ := strconv.Atoi(ctx.Params().Get("member"))
+func (h *ConferenceHandler) UnmuteMember(c *fiber.Ctx) error {
+	confName := c.Params("name")
+	memberID, _ := strconv.Atoi(c.Params("member"))
 
 	if err := h.Service.UnmuteMember(confName, memberID); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"status": "ok", "action": "unmute", "member": memberID})
+	return c.JSON(fiber.Map{"status": "ok", "action": "unmute", "member": memberID})
 }
 
 // DeafMember makes a member deaf
-func (h *ConferenceHandler) DeafMember(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
-	memberID, _ := strconv.Atoi(ctx.Params().Get("member"))
+func (h *ConferenceHandler) DeafMember(c *fiber.Ctx) error {
+	confName := c.Params("name")
+	memberID, _ := strconv.Atoi(c.Params("member"))
 
 	if err := h.Service.DeafMember(confName, memberID); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"status": "ok", "action": "deaf", "member": memberID})
+	return c.JSON(fiber.Map{"status": "ok", "action": "deaf", "member": memberID})
 }
 
 // UndeafMember removes deaf from member
-func (h *ConferenceHandler) UndeafMember(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
-	memberID, _ := strconv.Atoi(ctx.Params().Get("member"))
+func (h *ConferenceHandler) UndeafMember(c *fiber.Ctx) error {
+	confName := c.Params("name")
+	memberID, _ := strconv.Atoi(c.Params("member"))
 
 	if err := h.Service.UndeafMember(confName, memberID); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"status": "ok", "action": "undeaf", "member": memberID})
+	return c.JSON(fiber.Map{"status": "ok", "action": "undeaf", "member": memberID})
 }
 
 // KickMember kicks a member from conference
-func (h *ConferenceHandler) KickMember(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
-	memberID, _ := strconv.Atoi(ctx.Params().Get("member"))
+func (h *ConferenceHandler) KickMember(c *fiber.Ctx) error {
+	confName := c.Params("name")
+	memberID, _ := strconv.Atoi(c.Params("member"))
 
 	if err := h.Service.KickMember(confName, memberID); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"status": "ok", "action": "kick", "member": memberID})
+	return c.JSON(fiber.Map{"status": "ok", "action": "kick", "member": memberID})
 }
 
 // LockConference locks the conference
-func (h *ConferenceHandler) LockConference(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
+func (h *ConferenceHandler) LockConference(c *fiber.Ctx) error {
+	confName := c.Params("name")
 
 	if err := h.Service.LockConference(confName); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"status": "ok", "action": "lock", "conference": confName})
+	return c.JSON(fiber.Map{"status": "ok", "action": "lock", "conference": confName})
 }
 
 // UnlockConference unlocks the conference
-func (h *ConferenceHandler) UnlockConference(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
+func (h *ConferenceHandler) UnlockConference(c *fiber.Ctx) error {
+	confName := c.Params("name")
 
 	if err := h.Service.UnlockConference(confName); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"status": "ok", "action": "unlock", "conference": confName})
+	return c.JSON(fiber.Map{"status": "ok", "action": "unlock", "conference": confName})
 }
 
 // StartRecording starts recording the conference
-func (h *ConferenceHandler) StartRecording(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
+func (h *ConferenceHandler) StartRecording(c *fiber.Ctx) error {
+	confName := c.Params("name")
 
 	var body struct {
 		Path string `json:"path"`
 	}
-	ctx.ReadJSON(&body)
+	c.BodyParser(&body)
 
 	if body.Path == "" {
 		body.Path = "/var/lib/freeswitch/recordings/" + confName + "_" + time.Now().Format("20060102_150405") + ".wav"
 	}
 
 	if err := h.Service.StartRecording(confName, body.Path); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"status": "ok", "action": "recording_start", "path": body.Path})
+	return c.JSON(fiber.Map{"status": "ok", "action": "recording_start", "path": body.Path})
 }
 
 // StopRecording stops recording
-func (h *ConferenceHandler) StopRecording(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
+func (h *ConferenceHandler) StopRecording(c *fiber.Ctx) error {
+	confName := c.Params("name")
 
 	if err := h.Service.StopRecording(confName); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"status": "ok", "action": "recording_stop"})
+	return c.JSON(fiber.Map{"status": "ok", "action": "recording_stop"})
 }
 
 // MuteAll mutes all participants
-func (h *ConferenceHandler) MuteAll(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
+func (h *ConferenceHandler) MuteAll(c *fiber.Ctx) error {
+	confName := c.Params("name")
 
 	if err := h.Service.MuteAll(confName); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"status": "ok", "action": "mute_all"})
+	return c.JSON(fiber.Map{"status": "ok", "action": "mute_all"})
 }
 
 // UnmuteAll unmutes all participants
-func (h *ConferenceHandler) UnmuteAll(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
+func (h *ConferenceHandler) UnmuteAll(c *fiber.Ctx) error {
+	confName := c.Params("name")
 
 	if err := h.Service.UnmuteAll(confName); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"status": "ok", "action": "unmute_all"})
+	return c.JSON(fiber.Map{"status": "ok", "action": "unmute_all"})
 }
 
 // SetFloor gives floor to a member
-func (h *ConferenceHandler) SetFloor(ctx iris.Context) {
-	confName := ctx.Params().Get("name")
-	memberID, _ := strconv.Atoi(ctx.Params().Get("member"))
+func (h *ConferenceHandler) SetFloor(c *fiber.Ctx) error {
+	confName := c.Params("name")
+	memberID, _ := strconv.Atoi(c.Params("member"))
 
 	if err := h.Service.SetFloor(confName, memberID); err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(iris.Map{"status": "ok", "action": "floor", "member": memberID})
+	return c.JSON(fiber.Map{"status": "ok", "action": "floor", "member": memberID})
 }
 
 // ========== Conference Stats ==========
 
 // GetConferenceStats returns conference statistics
-func (h *ConferenceHandler) GetConferenceStats(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *ConferenceHandler) GetConferenceStats(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	// Parse date range
-	startStr := ctx.URLParam("start")
-	endStr := ctx.URLParam("end")
+	startStr := c.Query("start")
+	endStr := c.Query("end")
 
 	var startDate, endDate time.Time
 	var err error
@@ -355,18 +311,16 @@ func (h *ConferenceHandler) GetConferenceStats(ctx iris.Context) {
 
 	stats, err := models.GetConferenceStats(h.DB, tenantID, startDate, endDate)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.JSON(stats)
+	return c.JSON(stats)
 }
 
 // GetConferenceSessions returns conference session history
-func (h *ConferenceHandler) GetConferenceSessions(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	confID, _ := ctx.Params().GetUint("id")
+func (h *ConferenceHandler) GetConferenceSessions(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	confID, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var sessions []models.ConferenceSession
 	query := h.DB.Where("tenant_id = ?", tenantID)
@@ -376,15 +330,15 @@ func (h *ConferenceHandler) GetConferenceSessions(ctx iris.Context) {
 	}
 
 	query.Order("start_time DESC").Limit(50).Find(&sessions)
-	ctx.JSON(sessions)
+	return c.JSON(sessions)
 }
 
 // GetSessionParticipants returns participants for a session
-func (h *ConferenceHandler) GetSessionParticipants(ctx iris.Context) {
-	sessionID, _ := ctx.Params().GetUint("session_id")
+func (h *ConferenceHandler) GetSessionParticipants(c *fiber.Ctx) error {
+	sessionID, _ := strconv.ParseUint(c.Params("session_id"), 10, 64)
 
 	var participants []models.ConferenceParticipant
 	h.DB.Where("session_id = ?", sessionID).Order("join_time ASC").Find(&participants)
 
-	ctx.JSON(participants)
+	return c.JSON(participants)
 }

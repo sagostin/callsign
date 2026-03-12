@@ -5,7 +5,7 @@ import (
 	"callsign/models"
 	"net/http"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
@@ -13,27 +13,22 @@ import (
 // User Portal Handlers
 // =====================
 
-func (h *Handler) GetUserDevices(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) GetUserDevices(c *fiber.Ctx) error {
+	claims := middleware.GetClaims(c)
 	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	// Get user's extension
 	var user models.User
 	if err := h.DB.First(&user, claims.UserID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "User not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
 	// Find extensions assigned to this user
 	var extensions []models.Extension
-	if err := h.DB.Where("user_id = ? AND tenant_id = ?", claims.UserID, middleware.GetTenantID(ctx)).Find(&extensions).Error; err != nil {
-		ctx.JSON(iris.Map{"data": []interface{}{}})
-		return
+	if err := h.DB.Where("user_id = ? AND tenant_id = ?", claims.UserID, middleware.GetTenantID(c)).Find(&extensions).Error; err != nil {
+		return c.JSON(fiber.Map{"data": []interface{}{}})
 	}
 
 	// Map to device-like structure
@@ -48,67 +43,57 @@ func (h *Handler) GetUserDevices(ctx iris.Context) {
 		}
 	}
 
-	ctx.JSON(iris.Map{"data": devices})
+	return c.JSON(fiber.Map{"data": devices})
 }
 
-func (h *Handler) GetUserCallHistory(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) GetUserCallHistory(c *fiber.Ctx) error {
+	claims := middleware.GetClaims(c)
 	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	// Get user's extension number
 	var user models.User
 	if err := h.DB.First(&user, claims.UserID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "User not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
 	// Fetch CDR for the user's extension
 	var cdrs []models.CallRecord
 	if err := h.DB.Where("tenant_id = ? AND (caller_id_number = ? OR destination_number = ?)",
-		middleware.GetTenantID(ctx), user.Extension, user.Extension).
+		middleware.GetTenantID(c), user.Extension, user.Extension).
 		Order("start_time DESC").
 		Limit(100).
 		Find(&cdrs).Error; err != nil {
-		ctx.JSON(iris.Map{"data": []interface{}{}})
-		return
+		return c.JSON(fiber.Map{"data": []interface{}{}})
 	}
 
-	ctx.JSON(iris.Map{"data": cdrs})
+	return c.JSON(fiber.Map{"data": cdrs})
 }
 
-func (h *Handler) GetUserVoicemail(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) GetUserVoicemail(c *fiber.Ctx) error {
+	claims := middleware.GetClaims(c)
 	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	// Get user's extension
 	var user models.User
 	if err := h.DB.First(&user, claims.UserID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "User not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
 	// Find voicemail box for user's extension
 	var box models.VoicemailBox
-	if err := h.DB.Where("extension = ? AND tenant_id = ?", user.Extension, middleware.GetTenantID(ctx)).
+	if err := h.DB.Where("extension = ? AND tenant_id = ?", user.Extension, middleware.GetTenantID(c)).
 		Preload("Messages", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at DESC")
 		}).
 		First(&box).Error; err != nil {
-		ctx.JSON(iris.Map{"data": nil, "messages": []interface{}{}})
-		return
+		return c.JSON(fiber.Map{"data": nil, "messages": []interface{}{}})
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"data":        box,
 		"messages":    box.Messages,
 		"new_count":   box.NewMessages,
@@ -116,26 +101,22 @@ func (h *Handler) GetUserVoicemail(ctx iris.Context) {
 	})
 }
 
-func (h *Handler) GetUserSettings(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) GetUserSettings(c *fiber.Ctx) error {
+	claims := middleware.GetClaims(c)
 	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var user models.User
 	if err := h.DB.First(&user, claims.UserID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "User not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
 	// Get associated extension settings
 	var ext models.Extension
-	h.DB.Where("user_id = ? AND tenant_id = ?", claims.UserID, middleware.GetTenantID(ctx)).First(&ext)
+	h.DB.Where("user_id = ? AND tenant_id = ?", claims.UserID, middleware.GetTenantID(c)).First(&ext)
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"user": map[string]interface{}{
 			"id":         user.ID,
 			"username":   user.Username,
@@ -161,12 +142,10 @@ func (h *Handler) GetUserSettings(ctx iris.Context) {
 	})
 }
 
-func (h *Handler) UpdateUserSettings(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) UpdateUserSettings(c *fiber.Ctx) error {
+	claims := middleware.GetClaims(c)
 	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var req struct {
@@ -183,17 +162,13 @@ func (h *Handler) UpdateUserSettings(ctx iris.Context) {
 		VoicemailEnabled       *bool   `json:"voicemail_enabled"`
 	}
 
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	var user models.User
 	if err := h.DB.First(&user, claims.UserID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "User not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
 	// Update user fields
@@ -211,14 +186,12 @@ func (h *Handler) UpdateUserSettings(ctx iris.Context) {
 	}
 
 	if err := h.DB.Save(&user).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update user"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update user"})
 	}
 
 	// Update extension settings if user has one
 	var ext models.Extension
-	if err := h.DB.Where("user_id = ? AND tenant_id = ?", claims.UserID, middleware.GetTenantID(ctx)).First(&ext).Error; err == nil {
+	if err := h.DB.Where("user_id = ? AND tenant_id = ?", claims.UserID, middleware.GetTenantID(c)).First(&ext).Error; err == nil {
 		if req.DoNotDisturb != nil {
 			ext.DoNotDisturb = *req.DoNotDisturb
 		}
@@ -240,49 +213,39 @@ func (h *Handler) UpdateUserSettings(ctx iris.Context) {
 		h.DB.Save(&ext)
 	}
 
-	ctx.JSON(iris.Map{"message": "Settings updated"})
+	return c.JSON(fiber.Map{"message": "Settings updated"})
 }
 
-func (h *Handler) GetUserContacts(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) GetUserContacts(c *fiber.Ctx) error {
+	claims := middleware.GetClaims(c)
 	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var contacts []models.Contact
-	if err := h.DB.Where("user_id = ? AND tenant_id = ?", claims.UserID, middleware.GetTenantID(ctx)).Find(&contacts).Error; err != nil {
-		ctx.JSON(iris.Map{"data": []interface{}{}})
-		return
+	if err := h.DB.Where("user_id = ? AND tenant_id = ?", claims.UserID, middleware.GetTenantID(c)).Find(&contacts).Error; err != nil {
+		return c.JSON(fiber.Map{"data": []interface{}{}})
 	}
 
-	ctx.JSON(iris.Map{"data": contacts})
+	return c.JSON(fiber.Map{"data": contacts})
 }
 
-func (h *Handler) CreateUserContact(ctx iris.Context) {
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) CreateUserContact(c *fiber.Ctx) error {
+	claims := middleware.GetClaims(c)
 	if claims == nil {
-		ctx.StatusCode(http.StatusUnauthorized)
-		ctx.JSON(iris.Map{"error": "Not authenticated"})
-		return
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var contact models.Contact
-	if err := ctx.ReadJSON(&contact); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&contact); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
-	contact.TenantID = middleware.GetTenantID(ctx)
+	contact.TenantID = middleware.GetTenantID(c)
 
 	if err := h.DB.Create(&contact).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create contact"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create contact"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"data": contact, "message": "Contact created"})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": contact, "message": "Contact created"})
 }

@@ -5,10 +5,11 @@ import (
 	"callsign/models"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/smtp"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 )
 
 // TenantSettings represents the JSONB settings column structure
@@ -47,19 +48,15 @@ type TenantSettings struct {
 }
 
 // GetTenantSettings returns the current tenant's settings
-func (h *Handler) GetTenantSettings(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) GetTenantSettings(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Tenant ID required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	// Parse settings from JSONB
@@ -68,8 +65,8 @@ func (h *Handler) GetTenantSettings(ctx iris.Context) {
 		json.Unmarshal([]byte(tenant.Settings), &settings)
 	}
 
-	ctx.JSON(iris.Map{
-		"data": iris.Map{
+	return c.JSON(fiber.Map{
+		"data": fiber.Map{
 			"id":                   tenant.ID,
 			"uuid":                 tenant.UUID.String(),
 			"name":                 tenant.Name,
@@ -84,19 +81,15 @@ func (h *Handler) GetTenantSettings(ctx iris.Context) {
 }
 
 // UpdateTenantSettings updates the current tenant's settings
-func (h *Handler) UpdateTenantSettings(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) UpdateTenantSettings(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Tenant ID required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	// Parse incoming settings
@@ -109,17 +102,15 @@ func (h *Handler) UpdateTenantSettings(ctx iris.Context) {
 		SSLEnabled     *bool   `json:"ssl_enabled"`
 	}
 
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	ctx.Application().Logger().Infof("UpdateTenantSettings: Payload received: %+v", req)
+	log.Printf("UpdateTenantSettings: Payload received: %+v", req)
 
 	// Update top-level tenant fields if provided
 	if req.TenantName != nil {
-		ctx.Application().Logger().Infof("UpdateTenantSettings: Updating Name to %s", *req.TenantName)
+		log.Printf("UpdateTenantSettings: Updating Name to %s", *req.TenantName)
 		tenant.Name = *req.TenantName
 	}
 	if req.Domain != nil {
@@ -139,32 +130,26 @@ func (h *Handler) UpdateTenantSettings(ctx iris.Context) {
 	tenant.Settings = string(settingsJSON)
 
 	if err := h.DB.Save(&tenant).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to save settings"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save settings"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Settings updated", "data": req})
+	return c.JSON(fiber.Map{"message": "Settings updated", "data": req})
 }
 
 // GetTenantBranding returns branding settings for the current tenant
-func (h *Handler) GetTenantBranding(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) GetTenantBranding(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Tenant ID required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
-	ctx.JSON(iris.Map{
-		"data": iris.Map{
+	return c.JSON(fiber.Map{
+		"data": fiber.Map{
 			"whitelabel_enabled": tenant.WhitelabelEnabled,
 			"name":               tenant.WhitelabelName,
 			"logo_url":           tenant.WhitelabelLogo,
@@ -174,19 +159,15 @@ func (h *Handler) GetTenantBranding(ctx iris.Context) {
 }
 
 // UpdateTenantBranding updates branding settings
-func (h *Handler) UpdateTenantBranding(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) UpdateTenantBranding(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Tenant ID required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	var req struct {
@@ -195,10 +176,8 @@ func (h *Handler) UpdateTenantBranding(ctx iris.Context) {
 		LogoURL           string `json:"logo_url"`
 		PrimaryColor      string `json:"primary_color"`
 	}
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	tenant.WhitelabelEnabled = req.WhitelabelEnabled
@@ -207,28 +186,22 @@ func (h *Handler) UpdateTenantBranding(ctx iris.Context) {
 	tenant.WhitelabelPrimary = req.PrimaryColor
 
 	if err := h.DB.Save(&tenant).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to save branding"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save branding"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Branding updated"})
+	return c.JSON(fiber.Map{"message": "Branding updated"})
 }
 
 // GetTenantSMTP returns SMTP settings for the current tenant
-func (h *Handler) GetTenantSMTP(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) GetTenantSMTP(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Tenant ID required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	var settings TenantSettings
@@ -236,8 +209,8 @@ func (h *Handler) GetTenantSMTP(ctx iris.Context) {
 		json.Unmarshal([]byte(tenant.Settings), &settings)
 	}
 
-	ctx.JSON(iris.Map{
-		"data": iris.Map{
+	return c.JSON(fiber.Map{
+		"data": fiber.Map{
 			"override":   settings.SMTPOverride,
 			"host":       settings.SMTPHost,
 			"port":       settings.SMTPPort,
@@ -249,19 +222,15 @@ func (h *Handler) GetTenantSMTP(ctx iris.Context) {
 }
 
 // UpdateTenantSMTP updates SMTP settings
-func (h *Handler) UpdateTenantSMTP(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) UpdateTenantSMTP(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Tenant ID required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	var settings TenantSettings
@@ -278,10 +247,8 @@ func (h *Handler) UpdateTenantSMTP(ctx iris.Context) {
 		FromEmail  string `json:"from_email"`
 		Encryption string `json:"encryption"`
 	}
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	settings.SMTPOverride = req.Override
@@ -298,25 +265,21 @@ func (h *Handler) UpdateTenantSMTP(ctx iris.Context) {
 	tenant.Settings = string(settingsJSON)
 
 	if err := h.DB.Save(&tenant).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to save SMTP settings"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save SMTP settings"})
 	}
 
-	ctx.JSON(iris.Map{"message": "SMTP settings updated"})
+	return c.JSON(fiber.Map{"message": "SMTP settings updated"})
 }
 
 // TestTenantSMTP sends a test email
-func (h *Handler) TestTenantSMTP(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	claims := middleware.GetClaims(ctx)
+func (h *Handler) TestTenantSMTP(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	claims := middleware.GetClaims(c)
 
 	// Get tenant SMTP settings
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	// Parse settings to get SMTP config
@@ -326,9 +289,7 @@ func (h *Handler) TestTenantSMTP(ctx iris.Context) {
 	}
 
 	if settings.SMTPHost == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "SMTP not configured"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "SMTP not configured"})
 	}
 
 	// Build SMTP address
@@ -347,9 +308,7 @@ func (h *Handler) TestTenantSMTP(ctx iris.Context) {
 	}
 
 	if recipient == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "No recipient email available"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "No recipient email available"})
 	}
 
 	// Compose test message
@@ -370,34 +329,28 @@ func (h *Handler) TestTenantSMTP(ctx iris.Context) {
 
 	err := smtp.SendMail(smtpAddr, auth, from, []string{recipient}, []byte(msg))
 	if err != nil {
-		ctx.StatusCode(http.StatusBadGateway)
-		ctx.JSON(iris.Map{
+		return c.Status(http.StatusBadGateway).JSON(fiber.Map{
 			"error":   "SMTP test failed",
 			"details": err.Error(),
 		})
-		return
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"message":   "Test email sent successfully",
 		"recipient": recipient,
 	})
 }
 
 // GetTenantMessaging returns messaging/SMS settings
-func (h *Handler) GetTenantMessaging(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) GetTenantMessaging(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Tenant ID required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	var settings TenantSettings
@@ -405,8 +358,8 @@ func (h *Handler) GetTenantMessaging(ctx iris.Context) {
 		json.Unmarshal([]byte(tenant.Settings), &settings)
 	}
 
-	ctx.JSON(iris.Map{
-		"data": iris.Map{
+	return c.JSON(fiber.Map{
+		"data": fiber.Map{
 			"provider":    settings.MessagingProvider,
 			"account_sid": settings.MessagingAccountSID,
 		},
@@ -414,19 +367,15 @@ func (h *Handler) GetTenantMessaging(ctx iris.Context) {
 }
 
 // UpdateTenantMessaging updates messaging settings
-func (h *Handler) UpdateTenantMessaging(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) UpdateTenantMessaging(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Tenant ID required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	var settings TenantSettings
@@ -439,10 +388,8 @@ func (h *Handler) UpdateTenantMessaging(ctx iris.Context) {
 		AccountSID string `json:"account_sid"`
 		AuthToken  string `json:"auth_token"`
 	}
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	settings.MessagingProvider = req.Provider
@@ -455,28 +402,22 @@ func (h *Handler) UpdateTenantMessaging(ctx iris.Context) {
 	tenant.Settings = string(settingsJSON)
 
 	if err := h.DB.Save(&tenant).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to save messaging settings"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save messaging settings"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Messaging settings updated"})
+	return c.JSON(fiber.Map{"message": "Messaging settings updated"})
 }
 
 // GetTenantHospitality returns hospitality settings
-func (h *Handler) GetTenantHospitality(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) GetTenantHospitality(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Tenant ID required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	var settings TenantSettings
@@ -484,27 +425,23 @@ func (h *Handler) GetTenantHospitality(ctx iris.Context) {
 		json.Unmarshal([]byte(tenant.Settings), &settings)
 	}
 
-	ctx.JSON(iris.Map{
-		"data": iris.Map{
+	return c.JSON(fiber.Map{
+		"data": fiber.Map{
 			"enabled": settings.HospitalityEnabled,
 		},
 	})
 }
 
 // UpdateTenantHospitality updates hospitality settings
-func (h *Handler) UpdateTenantHospitality(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) UpdateTenantHospitality(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Tenant ID required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Tenant not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	var settings TenantSettings
@@ -515,10 +452,8 @@ func (h *Handler) UpdateTenantHospitality(ctx iris.Context) {
 	var req struct {
 		Enabled bool `json:"enabled"`
 	}
-	if err := ctx.ReadJSON(&req); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request body"})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	settings.HospitalityEnabled = req.Enabled
@@ -527,10 +462,8 @@ func (h *Handler) UpdateTenantHospitality(ctx iris.Context) {
 	tenant.Settings = string(settingsJSON)
 
 	if err := h.DB.Save(&tenant).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to save hospitality settings"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save hospitality settings"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Hospitality settings updated"})
+	return c.JSON(fiber.Map{"message": "Hospitality settings updated"})
 }

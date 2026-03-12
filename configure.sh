@@ -143,6 +143,14 @@ collect_security_config() {
     log_info "Generating encryption key..."
     ENCRYPTION_KEY=$(generate_random_string 32)
     log_success "Encryption key generated"
+    
+    log_info "Generating encryption salt..."
+    ENCRYPTION_SALT=$(generate_random_string 16)
+    log_success "Encryption salt generated"
+    
+    log_info "Generating internal API key..."
+    INTERNAL_API_KEY=$(generate_random_string 32)
+    log_success "Internal API key generated"
 }
 
 collect_freeswitch_config() {
@@ -329,6 +337,12 @@ FREESWITCH_XML_CURL_URL=http://api:8080/api/freeswitch
 # Encryption
 # ===================================
 ENCRYPTION_KEY=$ENCRYPTION_KEY
+ENCRYPTION_SALT=$ENCRYPTION_SALT
+
+# ===================================
+# Internal API Security
+# ===================================
+INTERNAL_API_KEY=$INTERNAL_API_KEY
 
 # ===================================
 # Monitoring
@@ -542,6 +556,8 @@ services:
       - REDIS_PORT=${REDIS_PORT:-6379}
       - JWT_SECRET=${JWT_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - ENCRYPTION_SALT=${ENCRYPTION_SALT}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       - FREESWITCH_HOST=${FREESWITCH_HOST:-host.docker.internal}
       - FREESWITCH_ESL_PORT=${FREESWITCH_ESL_PORT:-8021}
       - FREESWITCH_ESL_PASSWORD=${FREESWITCH_ESL_PASSWORD:-ClueCon}

@@ -4,8 +4,9 @@ import (
 	"callsign/models"
 	"callsign/services/messaging"
 	"net/http"
+	"strconv"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
@@ -21,8 +22,8 @@ func NewSMSHandler(db *gorm.DB, msgManager *messaging.Manager) *SMSHandler {
 }
 
 // ListConversations returns message conversations for a tenant
-func (h *SMSHandler) ListConversations(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *SMSHandler) ListConversations(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var conversations []models.Conversation
 	h.DB.Where("tenant_id = ?", tenantID).
@@ -30,34 +31,30 @@ func (h *SMSHandler) ListConversations(ctx iris.Context) {
 		Limit(50).
 		Find(&conversations)
 
-	ctx.JSON(conversations)
+	return c.JSON(conversations)
 }
 
 // GetConversation returns a specific conversation with messages
-func (h *SMSHandler) GetConversation(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *SMSHandler) GetConversation(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var conv models.Conversation
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).
 		Preload("Messages").First(&conv).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Conversation not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Conversation not found"})
 	}
 
-	ctx.JSON(conv)
+	return c.JSON(conv)
 }
 
 // SendMessage sends a new SMS/MMS message
-func (h *SMSHandler) SendMessage(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *SMSHandler) SendMessage(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var msg models.Message
-	if err := ctx.ReadJSON(&msg); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&msg); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	msg.TenantID = tenantID
@@ -71,9 +68,7 @@ func (h *SMSHandler) SendMessage(ctx iris.Context) {
 	// msg.BodyEncrypted = encMgr.Encrypt(msg.Body)
 
 	if err := h.DB.Create(&msg).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	// Queue for delivery via provider
@@ -81,8 +76,7 @@ func (h *SMSHandler) SendMessage(ctx iris.Context) {
 		go h.MsgManager.SendMessage(tenantID, msg.From, msg.To, msg.Body, nil, 0)
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(msg)
+	return c.Status(http.StatusCreated).JSON(msg)
 }
 
 // SoundHandler handles sound/audio file API requests
@@ -96,68 +90,60 @@ func NewSoundHandler(db *gorm.DB) *SoundHandler {
 }
 
 // ListSounds returns all sounds for a tenant (+ system sounds)
-func (h *SoundHandler) ListSounds(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *SoundHandler) ListSounds(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var sounds []models.Sound
 	h.DB.Where("tenant_id = ? OR tenant_id = 0 OR tenant_id IS NULL", tenantID).
 		Order("category, name").Find(&sounds)
 
-	ctx.JSON(sounds)
+	return c.JSON(sounds)
 }
 
 // GetSound returns a specific sound
-func (h *SoundHandler) GetSound(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *SoundHandler) GetSound(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var sound models.Sound
 	if err := h.DB.Where("id = ? AND (tenant_id = ? OR tenant_id = 0)", id, tenantID).
 		First(&sound).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Sound not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Sound not found"})
 	}
 
-	ctx.JSON(sound)
+	return c.JSON(sound)
 }
 
 // CreateSound creates a new sound
-func (h *SoundHandler) CreateSound(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *SoundHandler) CreateSound(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var sound models.Sound
-	if err := ctx.ReadJSON(&sound); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&sound); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	sound.TenantID = tenantID
 	if err := h.DB.Create(&sound).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(sound)
+	return c.Status(http.StatusCreated).JSON(sound)
 }
 
 // DeleteSound deletes a sound
-func (h *SoundHandler) DeleteSound(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *SoundHandler) DeleteSound(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	// Cannot delete system sounds
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.Sound{})
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Sound not found or cannot delete system sound"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Sound not found or cannot delete system sound"})
 	}
 
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // PhraseHandler handles phrase API requests
@@ -171,36 +157,31 @@ func NewPhraseHandler(db *gorm.DB) *PhraseHandler {
 }
 
 // ListPhrases returns all phrases
-func (h *PhraseHandler) ListPhrases(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *PhraseHandler) ListPhrases(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var phrases []models.Phrase
 	h.DB.Where("tenant_id = ? OR tenant_id = 0 OR tenant_id IS NULL", tenantID).
 		Order("macro_name").Find(&phrases)
 
-	ctx.JSON(phrases)
+	return c.JSON(phrases)
 }
 
 // CreatePhrase creates a new phrase
-func (h *PhraseHandler) CreatePhrase(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *PhraseHandler) CreatePhrase(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var phrase models.Phrase
-	if err := ctx.ReadJSON(&phrase); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&phrase); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	phrase.TenantID = tenantID
 	if err := h.DB.Create(&phrase).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(phrase)
+	return c.Status(http.StatusCreated).JSON(phrase)
 }
 
 // ChatplanHandler handles chatplan API requests
@@ -214,74 +195,64 @@ func NewChatplanHandler(db *gorm.DB) *ChatplanHandler {
 }
 
 // ListChatplans returns all chatplans for a tenant
-func (h *ChatplanHandler) ListChatplans(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *ChatplanHandler) ListChatplans(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var chatplans []models.Chatplan
 	h.DB.Where("tenant_id = ? OR tenant_id = 0", tenantID).
 		Order("\"order\" ASC").Find(&chatplans)
 
-	ctx.JSON(chatplans)
+	return c.JSON(chatplans)
 }
 
 // CreateChatplan creates a new chatplan
-func (h *ChatplanHandler) CreateChatplan(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
+func (h *ChatplanHandler) CreateChatplan(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
 
 	var chatplan models.Chatplan
-	if err := ctx.ReadJSON(&chatplan); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&chatplan); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	chatplan.TenantID = tenantID
 	if err := h.DB.Create(&chatplan).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(chatplan)
+	return c.Status(http.StatusCreated).JSON(chatplan)
 }
 
 // UpdateChatplan updates a chatplan
-func (h *ChatplanHandler) UpdateChatplan(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *ChatplanHandler) UpdateChatplan(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var existing models.Chatplan
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&existing).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Chatplan not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Chatplan not found"})
 	}
 
-	if err := ctx.ReadJSON(&existing); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&existing); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	existing.TenantID = tenantID
 	h.DB.Save(&existing)
-	ctx.JSON(existing)
+	return c.JSON(existing)
 }
 
 // DeleteChatplan deletes a chatplan
-func (h *ChatplanHandler) DeleteChatplan(ctx iris.Context) {
-	tenantID := ctx.Values().GetUintDefault("tenant_id", 0)
-	id, _ := ctx.Params().GetUint("id")
+func (h *ChatplanHandler) DeleteChatplan(c *fiber.Ctx) error {
+	tenantID := getLocalsUint(c, "tenant_id", 0)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.Chatplan{})
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Chatplan not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Chatplan not found"})
 	}
 
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // DefaultOutboundRouteHandler handles system-level outbound routing
@@ -295,62 +266,52 @@ func NewDefaultOutboundRouteHandler(db *gorm.DB) *DefaultOutboundRouteHandler {
 }
 
 // ListRoutes returns all default outbound routes
-func (h *DefaultOutboundRouteHandler) ListRoutes(ctx iris.Context) {
+func (h *DefaultOutboundRouteHandler) ListRoutes(c *fiber.Ctx) error {
 	var routes []models.DefaultOutboundRoute
 	h.DB.Order("\"order\" ASC").Find(&routes)
-	ctx.JSON(routes)
+	return c.JSON(routes)
 }
 
 // CreateRoute creates a new default route (system admin only)
-func (h *DefaultOutboundRouteHandler) CreateRoute(ctx iris.Context) {
+func (h *DefaultOutboundRouteHandler) CreateRoute(c *fiber.Ctx) error {
 	var route models.DefaultOutboundRoute
-	if err := ctx.ReadJSON(&route); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&route); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	if err := h.DB.Create(&route).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(route)
+	return c.Status(http.StatusCreated).JSON(route)
 }
 
 // UpdateRoute updates a default route
-func (h *DefaultOutboundRouteHandler) UpdateRoute(ctx iris.Context) {
-	id, _ := ctx.Params().GetUint("id")
+func (h *DefaultOutboundRouteHandler) UpdateRoute(c *fiber.Ctx) error {
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var route models.DefaultOutboundRoute
 	if err := h.DB.First(&route, id).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Route not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Route not found"})
 	}
 
-	if err := ctx.ReadJSON(&route); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&route); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	h.DB.Save(&route)
-	ctx.JSON(route)
+	return c.JSON(route)
 }
 
 // DeleteRoute deletes a default route
-func (h *DefaultOutboundRouteHandler) DeleteRoute(ctx iris.Context) {
-	id, _ := ctx.Params().GetUint("id")
+func (h *DefaultOutboundRouteHandler) DeleteRoute(c *fiber.Ctx) error {
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	result := h.DB.Delete(&models.DefaultOutboundRoute{}, id)
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Route not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Route not found"})
 	}
 
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }

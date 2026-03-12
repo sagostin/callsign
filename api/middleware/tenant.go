@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
@@ -19,20 +19,18 @@ func NewTenantMiddleware(db *gorm.DB) *TenantMiddleware {
 }
 
 // RequireTenant ensures requests are scoped to a specific tenant
-func (t *TenantMiddleware) RequireTenant() iris.Handler {
-	return func(ctx iris.Context) {
-		claims := GetClaims(ctx)
+func (t *TenantMiddleware) RequireTenant() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		claims := GetClaims(c)
 		if claims == nil {
-			ctx.StatusCode(http.StatusUnauthorized)
-			ctx.JSON(iris.Map{"error": "Authentication required"})
-			return
+			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Authentication required"})
 		}
 
 		// System admins can optionally specify a tenant via query param or header
 		if claims.Role == "system_admin" {
 			// Check for X-Tenant-ID header or tenant_id query param
-			tenantIDHeader := ctx.GetHeader("X-Tenant-ID")
-			tenantIDQuery := ctx.URLParam("tenant_id")
+			tenantIDHeader := c.Get("X-Tenant-ID")
+			tenantIDQuery := c.Query("tenant_id")
 
 			tenantIDStr := tenantIDHeader
 			if tenantIDStr == "" {
@@ -43,19 +41,16 @@ func (t *TenantMiddleware) RequireTenant() iris.Handler {
 				// Parse string to uint and store as uint (not string)
 				var tenantID uint64
 				if _, err := fmt.Sscanf(tenantIDStr, "%d", &tenantID); err == nil && tenantID > 0 {
-					ctx.Values().Set("scoped_tenant_id", uint(tenantID))
+					c.Locals("scoped_tenant_id", uint(tenantID))
 				}
 			}
 			// System admins can proceed without tenant scope for global operations
-			ctx.Next()
-			return
+			return c.Next()
 		}
 
 		// Regular users must have a tenant ID
 		if claims.TenantID == nil {
-			ctx.StatusCode(http.StatusForbidden)
-			ctx.JSON(iris.Map{"error": "Tenant association required"})
-			return
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "Tenant association required"})
 		}
 
 		// Verify tenant exists and is active
@@ -65,28 +60,26 @@ func (t *TenantMiddleware) RequireTenant() iris.Handler {
 			Count(&count)
 
 		if count == 0 {
-			ctx.StatusCode(http.StatusForbidden)
-			ctx.JSON(iris.Map{"error": "Tenant not found or disabled"})
-			return
+			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "Tenant not found or disabled"})
 		}
 
-		ctx.Values().Set("scoped_tenant_id", *claims.TenantID)
-		ctx.Next()
+		c.Locals("scoped_tenant_id", *claims.TenantID)
+		return c.Next()
 	}
 }
 
 // GetScopedTenantID returns the tenant ID for the current request
 // This accounts for system admins who may be viewing a specific tenant
-func GetScopedTenantID(ctx iris.Context) uint {
-	if scopedID := ctx.Values().GetUintDefault("scoped_tenant_id", 0); scopedID > 0 {
+func GetScopedTenantID(c *fiber.Ctx) uint {
+	if scopedID, ok := c.Locals("scoped_tenant_id").(uint); ok && scopedID > 0 {
 		return scopedID
 	}
-	return GetTenantID(ctx)
+	return GetTenantID(c)
 }
 
 // ValidateTenantAccess ensures the user can access resources for the specified tenant
-func ValidateTenantAccess(ctx iris.Context, resourceTenantID uint) bool {
-	claims := GetClaims(ctx)
+func ValidateTenantAccess(c *fiber.Ctx, resourceTenantID uint) bool {
+	claims := GetClaims(c)
 	if claims == nil {
 		return false
 	}

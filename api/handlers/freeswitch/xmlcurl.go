@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -85,48 +85,48 @@ func NewFSHandler(db *gorm.DB, cfg *config.Config) *FSHandler {
 }
 
 // HandleXMLCurl is the main entry point for mod_xml_curl requests
-func (h *FSHandler) HandleXMLCurl(ctx iris.Context) {
+func (h *FSHandler) HandleXMLCurl(c *fiber.Ctx) error {
 	// Parse multipart form data from FreeSWITCH
 	// We manually extract only the fields we need to avoid schema warnings
 	// from the 100+ extra fields FreeSWITCH sends
 	req := XMLCurlRequest{
 		// Common fields
-		Section:  ctx.FormValue("section"),
-		TagName:  ctx.FormValue("tag_name"),
-		KeyName:  ctx.FormValue("key_name"),
-		KeyValue: ctx.FormValue("key_value"),
-		Hostname: ctx.FormValue("hostname"),
+		Section:  c.FormValue("section"),
+		TagName:  c.FormValue("tag_name"),
+		KeyName:  c.FormValue("key_name"),
+		KeyValue: c.FormValue("key_value"),
+		Hostname: c.FormValue("hostname"),
 
 		// Directory fields
-		User:       ctx.FormValue("user"),
-		Domain:     ctx.FormValue("domain"),
-		Action:     ctx.FormValue("action"),
-		Purpose:    ctx.FormValue("purpose"),
-		SIPProfile: ctx.FormValue("sip_profile"),
+		User:       c.FormValue("user"),
+		Domain:     c.FormValue("domain"),
+		Action:     c.FormValue("action"),
+		Purpose:    c.FormValue("purpose"),
+		SIPProfile: c.FormValue("sip_profile"),
 
 		// SIP Auth fields
-		SIPAuthUsername: ctx.FormValue("sip_auth_username"),
-		SIPAuthRealm:    ctx.FormValue("sip_auth_realm"),
-		SIPContactUser:  ctx.FormValue("sip_contact_user"),
-		SIPContactHost:  ctx.FormValue("sip_contact_host"),
-		SIPUserAgent:    ctx.FormValue("sip_user_agent"),
-		IP:              ctx.FormValue("ip"),
+		SIPAuthUsername: c.FormValue("sip_auth_username"),
+		SIPAuthRealm:    c.FormValue("sip_auth_realm"),
+		SIPContactUser:  c.FormValue("sip_contact_user"),
+		SIPContactHost:  c.FormValue("sip_contact_host"),
+		SIPUserAgent:    c.FormValue("sip_user_agent"),
+		IP:              c.FormValue("ip"),
 
 		// Dialplan fields
-		Context:           ctx.FormValue("context"),
-		DestinationNumber: ctx.FormValue("destination_number"),
-		CallerIDName:      ctx.FormValue("caller_id_name"),
-		CallerIDNumber:    ctx.FormValue("caller_id_number"),
-		ChannelUUID:       ctx.FormValue("uuid"),
-		ChannelName:       ctx.FormValue("chan_name"),
-		NetworkAddr:       ctx.FormValue("network_addr"),
-		ANI:               ctx.FormValue("ani"),
-		RDNIS:             ctx.FormValue("rdnis"),
-		Source:            ctx.FormValue("source"),
+		Context:           c.FormValue("context"),
+		DestinationNumber: c.FormValue("destination_number"),
+		CallerIDName:      c.FormValue("caller_id_name"),
+		CallerIDNumber:    c.FormValue("caller_id_number"),
+		ChannelUUID:       c.FormValue("uuid"),
+		ChannelName:       c.FormValue("chan_name"),
+		NetworkAddr:       c.FormValue("network_addr"),
+		ANI:               c.FormValue("ani"),
+		RDNIS:             c.FormValue("rdnis"),
+		Source:            c.FormValue("source"),
 
 		// FreeSWITCH info
-		FreeSwitchHostname: ctx.FormValue("FreeSWITCH-Hostname"),
-		FreeSwitchIPv4:     ctx.FormValue("FreeSWITCH-IPv4"),
+		FreeSwitchHostname: c.FormValue("FreeSWITCH-Hostname"),
+		FreeSwitchIPv4:     c.FormValue("FreeSWITCH-IPv4"),
 	}
 
 	// Log the request with all relevant fields
@@ -165,26 +165,24 @@ func (h *FSHandler) HandleXMLCurl(ctx iris.Context) {
 		xml = h.handlePhrases(&req)
 	default:
 		log.Warnf("Unknown XML CURL section: %s", req.Section)
-		h.sendNotFound(ctx)
-		return
+		return h.sendNotFound(c)
 	}
 
 	// If no XML was generated, return not found
 	if xml == "" {
-		h.sendNotFound(ctx)
-		return
+		return h.sendNotFound(c)
 	}
 
 	// Send XML response
-	ctx.ContentType("text/xml")
-	ctx.WriteString(xml)
+	c.Set("Content-Type", "text/xml")
+	return c.SendString(xml)
 }
 
 // sendNotFound sends a "not found" XML response
 // This tells FreeSWITCH to fall back to static config files
-func (h *FSHandler) sendNotFound(ctx iris.Context) {
-	ctx.ContentType("text/xml")
-	ctx.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
+func (h *FSHandler) sendNotFound(c *fiber.Ctx) error {
+	c.Set("Content-Type", "text/xml")
+	return c.SendString(`<?xml version="1.0" encoding="UTF-8"?>
 <document type="freeswitch/xml">
   <section name="result">
     <result status="not found"/>
@@ -193,9 +191,9 @@ func (h *FSHandler) sendNotFound(ctx iris.Context) {
 }
 
 // FlushCache handles cache invalidation requests
-func (h *FSHandler) FlushCache(ctx iris.Context) {
-	pattern := ctx.URLParam("pattern")
-	key := ctx.URLParam("key")
+func (h *FSHandler) FlushCache(c *fiber.Ctx) error {
+	pattern := c.Query("pattern")
+	key := c.Query("key")
 
 	var count int
 
@@ -209,91 +207,83 @@ func (h *FSHandler) FlushCache(ctx iris.Context) {
 		count = -1 // Indicates full flush
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"message":       "Cache flushed",
 		"items_deleted": count,
 	})
 }
 
 // CacheStats returns cache statistics
-func (h *FSHandler) CacheStats(ctx iris.Context) {
-	ctx.JSON(h.Cache.Stats())
+func (h *FSHandler) CacheStats(c *fiber.Ctx) error {
+	return c.JSON(h.Cache.Stats())
 }
 
 // AuthMiddleware provides Basic Auth for FreeSWITCH endpoints
-func FreeSwitchAuthMiddleware(cfg *config.Config) iris.Handler {
-	return func(ctx iris.Context) {
+func FreeSwitchAuthMiddleware(cfg *config.Config) fiber.Handler {
+	return func(c *fiber.Ctx) error {
 		// Check for API key in config
 		expectedKey := cfg.FreeSwitchAPIKey
 		if expectedKey == "" {
 			// No API key configured, allow all requests
 			log.Debug("FreeSWITCH auth: No API key configured, allowing request")
-			ctx.Next()
-			return
+			return c.Next()
 		}
 
 		// Allow localhost connections without auth for internal FreeSWITCH
-		remoteAddr := ctx.RemoteAddr()
+		remoteAddr := c.IP()
 		if strings.HasPrefix(remoteAddr, "127.0.0.1") ||
 			strings.HasPrefix(remoteAddr, "::1") ||
 			strings.HasPrefix(remoteAddr, "localhost") ||
 			strings.HasPrefix(remoteAddr, "[::1]") {
 			log.WithField("remote", remoteAddr).Debug("FreeSWITCH auth: Localhost connection, allowing request")
-			ctx.Next()
-			return
+			return c.Next()
 		}
 
 		// Get Authorization header
-		authHeader := ctx.GetHeader("Authorization")
+		authHeader := c.Get("Authorization")
 		if authHeader == "" {
 			log.WithFields(log.Fields{
 				"remote": remoteAddr,
-				"path":   ctx.Path(),
+				"path":   c.Path(),
 			}).Warn("FreeSWITCH auth: Missing Authorization header")
-			unauthorized(ctx)
-			return
+			return unauthorized(c)
 		}
 
 		// Parse Basic Auth
 		const prefix = "Basic "
 		if !strings.HasPrefix(authHeader, prefix) {
 			log.Warn("FreeSWITCH auth: Invalid Authorization header format")
-			unauthorized(ctx)
-			return
+			return unauthorized(c)
 		}
 
 		decoded, err := base64.StdEncoding.DecodeString(authHeader[len(prefix):])
 		if err != nil {
 			log.Warn("FreeSWITCH auth: Failed to decode Authorization header")
-			unauthorized(ctx)
-			return
+			return unauthorized(c)
 		}
 
 		credentials := string(decoded)
 		colonIdx := strings.Index(credentials, ":")
 		if colonIdx < 0 {
 			log.Warn("FreeSWITCH auth: Invalid credentials format")
-			unauthorized(ctx)
-			return
+			return unauthorized(c)
 		}
 
 		// Password is the API key
 		password := credentials[colonIdx+1:]
 		if password != expectedKey {
 			log.WithField("remote", remoteAddr).Warn("FreeSWITCH auth: Invalid API key")
-			unauthorized(ctx)
-			return
+			return unauthorized(c)
 		}
 
 		log.Debug("FreeSWITCH auth: Authentication successful")
-		ctx.Next()
+		return c.Next()
 	}
 }
 
-func unauthorized(ctx iris.Context) {
-	ctx.Header("WWW-Authenticate", `Basic realm="FreeSWITCH API"`)
-	ctx.StatusCode(http.StatusUnauthorized)
-	ctx.WriteString("Unauthorized")
+func unauthorized(c *fiber.Ctx) error {
+	c.Set("WWW-Authenticate", `Basic realm="FreeSWITCH API"`)
+	return c.Status(http.StatusUnauthorized).SendString("Unauthorized")
 }
 
 // Default cache TTLs
@@ -320,17 +310,15 @@ type FileEntry struct {
 }
 
 // ListConfigDirectory lists files and directories in the FreeSWITCH config directory
-func (h *FSHandler) ListConfigDirectory(ctx iris.Context) {
+func (h *FSHandler) ListConfigDirectory(c *fiber.Ctx) error {
 	basePath := h.Config.FreeSwitchConfPath
-	relativePath := ctx.URLParam("path")
+	relativePath := c.Query("path")
 
 	// Clean and validate the path to prevent directory traversal
 	if relativePath != "" {
 		relativePath = filepath.Clean(relativePath)
 		if strings.HasPrefix(relativePath, "..") || filepath.IsAbs(relativePath) {
-			ctx.StatusCode(http.StatusBadRequest)
-			ctx.JSON(iris.Map{"error": "Invalid path"})
-			return
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 		}
 	}
 
@@ -338,31 +326,23 @@ func (h *FSHandler) ListConfigDirectory(ctx iris.Context) {
 
 	// Verify path is within the base path
 	if !strings.HasPrefix(targetPath, basePath) {
-		ctx.StatusCode(http.StatusForbidden)
-		ctx.JSON(iris.Map{"error": "Access denied"})
-		return
+		return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
 	// Check if path exists
 	info, err := os.Stat(targetPath)
 	if err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Path not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Path not found"})
 	}
 
 	if !info.IsDir() {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Not a directory"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Not a directory"})
 	}
 
 	// Read directory contents
 	entries, err := os.ReadDir(targetPath)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to read directory"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to read directory"})
 	}
 
 	var files []FileEntry
@@ -387,70 +367,56 @@ func (h *FSHandler) ListConfigDirectory(ctx iris.Context) {
 		return files[i].Name < files[j].Name
 	})
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"path":  relativePath,
 		"files": files,
 	})
 }
 
 // ReadConfigFile returns the content of a config file
-func (h *FSHandler) ReadConfigFile(ctx iris.Context) {
+func (h *FSHandler) ReadConfigFile(c *fiber.Ctx) error {
 	basePath := h.Config.FreeSwitchConfPath
-	relativePath := ctx.URLParam("path")
+	relativePath := c.Query("path")
 
 	if relativePath == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Path required"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Path required"})
 	}
 
 	// Clean and validate the path
 	relativePath = filepath.Clean(relativePath)
 	if strings.HasPrefix(relativePath, "..") || filepath.IsAbs(relativePath) {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid path"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
 	targetPath := filepath.Join(basePath, relativePath)
 
 	// Verify path is within the base path
 	if !strings.HasPrefix(targetPath, basePath) {
-		ctx.StatusCode(http.StatusForbidden)
-		ctx.JSON(iris.Map{"error": "Access denied"})
-		return
+		return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
 	// Check if file exists
 	info, err := os.Stat(targetPath)
 	if err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "File not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 	}
 
 	if info.IsDir() {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Cannot read directory"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Cannot read directory"})
 	}
 
 	// Limit file size to prevent large memory usage (max 1MB)
 	if info.Size() > 1024*1024 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "File too large"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "File too large"})
 	}
 
 	// Read file content
 	content, err := os.ReadFile(targetPath)
 	if err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to read file"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to read file"})
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"path":    relativePath,
 		"name":    info.Name(),
 		"size":    info.Size(),

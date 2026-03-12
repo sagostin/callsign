@@ -1,41 +1,37 @@
 package middleware
 
 import (
-	"bytes"
 	"callsign/models"
 	"encoding/json"
-	"io"
 	"strings"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
 // AuditMiddleware creates a middleware that logs audit events
-func AuditMiddleware(db *gorm.DB) iris.Handler {
-	return func(ctx iris.Context) {
+func AuditMiddleware(db *gorm.DB) fiber.Handler {
+	return func(c *fiber.Ctx) error {
 		// Skip for certain paths
-		path := ctx.Path()
+		path := c.Path()
 		if shouldSkipAudit(path) {
-			ctx.Next()
-			return
+			return c.Next()
 		}
 
 		// Only audit write operations
-		method := ctx.Method()
+		method := c.Method()
 		if method == "GET" || method == "OPTIONS" || method == "HEAD" {
-			ctx.Next()
-			return
+			return c.Next()
 		}
 
 		// Get user info from context (set by auth middleware)
-		claims, _ := ctx.Values().Get("claims").(*Claims)
+		claims, _ := c.Locals("claims").(*Claims)
 
 		var tenantID, userID uint
 		var username, role string
 
 		if claims != nil {
-			tenantID = GetTenantID(ctx) // Use helper to get scoped or actual tenant ID
+			tenantID = GetTenantID(c) // Use helper to get scoped or actual tenant ID
 			userID = claims.UserID
 			username = claims.Username
 			role = string(claims.Role)
@@ -44,28 +40,26 @@ func AuditMiddleware(db *gorm.DB) iris.Handler {
 		// Get request body for new value
 		var newValue interface{}
 		if method == "POST" || method == "PUT" || method == "PATCH" {
-			// Read body bytes
-			body, _ := ctx.GetBody()
+			body := c.Body()
 			if len(body) > 0 {
 				json.Unmarshal(body, &newValue)
-
-				// Restore body for downstream handlers
-				ctx.Request().Body = io.NopCloser(bytes.NewBuffer(body))
 			}
 		}
 
 		// Store pre-request state
-		ctx.Values().Set("audit_tenant_id", tenantID)
-		ctx.Values().Set("audit_user_id", userID)
-		ctx.Values().Set("audit_username", username)
-		ctx.Values().Set("audit_role", role)
-		ctx.Values().Set("audit_new_value", newValue)
+		c.Locals("audit_tenant_id", tenantID)
+		c.Locals("audit_user_id", userID)
+		c.Locals("audit_username", username)
+		c.Locals("audit_role", role)
+		c.Locals("audit_new_value", newValue)
 
 		// Process request
-		ctx.Next()
+		err := c.Next()
 
 		// Log audit event after handler completes
-		go logAuditEvent(db, ctx, tenantID, userID, username, role, newValue)
+		go logAuditEvent(db, c, tenantID, userID, username, role, newValue)
+
+		return err
 	}
 }
 
@@ -87,10 +81,10 @@ func shouldSkipAudit(path string) bool {
 	return false
 }
 
-func logAuditEvent(db *gorm.DB, ctx iris.Context, tenantID, userID uint, username, role string, newValue interface{}) {
-	method := ctx.Method()
-	path := ctx.Path()
-	status := ctx.GetStatusCode()
+func logAuditEvent(db *gorm.DB, c *fiber.Ctx, tenantID, userID uint, username, role string, newValue interface{}) {
+	method := c.Method()
+	path := c.Path()
+	status := c.Response().StatusCode()
 
 	// Determine action
 	var action models.AuditAction
@@ -118,7 +112,7 @@ func logAuditEvent(db *gorm.DB, ctx iris.Context, tenantID, userID uint, usernam
 	}
 
 	// Get old value if it was stored by handler
-	oldValue := ctx.Values().Get("audit_old_value")
+	oldValue := c.Locals("audit_old_value")
 
 	// Create audit log
 	entry := &models.AuditLog{
@@ -126,8 +120,8 @@ func logAuditEvent(db *gorm.DB, ctx iris.Context, tenantID, userID uint, usernam
 		UserID:     userID,
 		Username:   username,
 		UserRole:   role,
-		IPAddress:  ctx.RemoteAddr(),
-		UserAgent:  ctx.GetHeader("User-Agent"),
+		IPAddress:  c.IP(),
+		UserAgent:  c.Get("User-Agent"),
 		Action:     action,
 		Resource:   resource,
 		ResourceID: resourceID,
@@ -147,7 +141,7 @@ func logAuditEvent(db *gorm.DB, ctx iris.Context, tenantID, userID uint, usernam
 
 	// Check for error message
 	if status >= 400 {
-		if errMsg, ok := ctx.Values().Get("error").(string); ok {
+		if errMsg, ok := c.Locals("error").(string); ok {
 			entry.Error = errMsg
 		}
 	}
@@ -171,6 +165,6 @@ func parseResourceFromPath(path string) (resource, resourceID string) {
 
 // SetOldValue is a helper to store old value for audit logging
 // Call this in handlers before updating a resource
-func SetOldValue(ctx iris.Context, oldValue interface{}) {
-	ctx.Values().Set("audit_old_value", oldValue)
+func SetOldValue(c *fiber.Ctx, oldValue interface{}) {
+	c.Locals("audit_old_value", oldValue)
 }

@@ -3,48 +3,48 @@ package middleware
 import (
 	"time"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	log "github.com/sirupsen/logrus"
 )
 
 // RequestLogger logs all incoming requests
-func RequestLogger() iris.Handler {
-	return func(ctx iris.Context) {
+func RequestLogger() fiber.Handler {
+	return func(c *fiber.Ctx) error {
 		start := time.Now()
 
 		// Get the real client IP
-		clientIP := ctx.GetHeader("X-Forwarded-For")
+		clientIP := c.Get("X-Forwarded-For")
 		if clientIP == "" {
-			clientIP = ctx.GetHeader("X-Real-IP")
+			clientIP = c.Get("X-Real-IP")
 		}
 		if clientIP == "" {
-			clientIP = ctx.RemoteAddr()
+			clientIP = c.IP()
 		}
 
 		// Store client IP in context for other handlers
-		ctx.Values().Set("client_ip", clientIP)
+		c.Locals("client_ip", clientIP)
 
 		// Process request
-		ctx.Next()
+		err := c.Next()
 
 		// Calculate request duration
 		duration := time.Since(start)
 
 		// Get status code
-		statusCode := ctx.GetStatusCode()
+		statusCode := c.Response().StatusCode()
 
 		// Log the request
 		fields := log.Fields{
-			"method":     ctx.Method(),
-			"path":       ctx.Path(),
+			"method":     c.Method(),
+			"path":       c.Path(),
 			"status":     statusCode,
 			"duration":   duration.String(),
 			"client_ip":  clientIP,
-			"user_agent": ctx.GetHeader("User-Agent"),
+			"user_agent": c.Get("User-Agent"),
 		}
 
 		// Add user info if authenticated
-		if userID := ctx.Values().GetUintDefault("user_id", 0); userID > 0 {
+		if userID, ok := c.Locals("user_id").(uint); ok && userID > 0 {
 			fields["user_id"] = userID
 		}
 
@@ -56,27 +56,28 @@ func RequestLogger() iris.Handler {
 		} else {
 			log.WithFields(fields).Info("Request completed")
 		}
+
+		return err
 	}
 }
 
 // Recovery handles panics and returns a graceful error response
-func Recovery() iris.Handler {
-	return func(ctx iris.Context) {
+func Recovery() fiber.Handler {
+	return func(c *fiber.Ctx) error {
 		defer func() {
 			if r := recover(); r != nil {
 				log.WithFields(log.Fields{
 					"panic":  r,
-					"path":   ctx.Path(),
-					"method": ctx.Method(),
+					"path":   c.Path(),
+					"method": c.Method(),
 				}).Error("Panic recovered")
 
-				ctx.StatusCode(iris.StatusInternalServerError)
-				ctx.JSON(iris.Map{
+				c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"error": "Internal server error",
 				})
 			}
 		}()
 
-		ctx.Next()
+		return c.Next()
 	}
 }

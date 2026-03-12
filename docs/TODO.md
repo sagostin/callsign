@@ -4,32 +4,37 @@
 
 ### Core Infrastructure
 - PostgreSQL + GORM migrations
-- ESL Manager (6 services including BLF)
+- ESL Manager (6+ services including BLF)
 - Logging (Loki)
-- CDR sync
-- WebSocket Hub (notifications)
+- CDR sync (PostgreSQL + ClickHouse)
+- WebSocket Hub (notifications + event broadcasting)
 - Encryption (AES-256-GCM)
 - Audit Log Middleware
+- TTS Caching Service
+- Fax Manager (queue processing, retry strategy)
+- Messaging Manager (SMS/MMS, webhook-based)
 
 ### Authentication
 - JWT + Refresh tokens
 - RequirePermission middleware
 - Role-based (system_admin, tenant_admin, user)
-- Admin login + User login endpoints
+- Admin login + User login + Extension login endpoints
+- Password reset flow
 
 ### Tenant-Scoped API Endpoints
 - Extensions (CRUD + status + call handling rules)
 - Extension Profiles (CRUD + call handling rules)
 - Devices (CRUD + provisioning + call control)
 - Device Profiles/Templates
-- Voicemail Boxes (CRUD + messages)
+- Client Registrations (provision, assign, unassigned list)
+- Voicemail Boxes (CRUD + messages + streaming)
 - IVR Menus (CRUD)
-- Queues (CRUD)
-- Ring Groups (CRUD + **distinct ring name**)
+- Queues (CRUD + agent management: add/remove/pause/unpause)
+- Ring Groups (CRUD + distinct ring name)
 - Speed Dials (CRUD)
-- Conferences (CRUD)
+- Conferences (CRUD + live control: mute/kick/lock/record/floor + stats/sessions)
 - Numbers/DIDs (CRUD)
-- Routing (inbound/outbound + call blocks)
+- Routing (full inbound/outbound CRUD + reorder + call blocks + debug)
 - Dial Plans (CRUD)
 - Audio Library (CRUD + streaming)
 - Music on Hold (CRUD)
@@ -40,38 +45,53 @@
 - CDR / Call Records (list, get, export)
 - Audit Logs (list)
 - Messaging / Conversations (list, get, send)
+- SMS Number Management (config, assign, unassign)
 - Contacts (CRUD + sync + lookup)
 - Chat (threads, rooms, queues)
-- **Paging Groups (CRUD)** ✨
-- **Provisioning Templates (CRUD)** ✨
-- **Tenant Settings (General, Branding, SMTP, Messaging, Hospitality)** ✨
-- **Tenant Media (Sounds & Music Overrides)** ✨
+- Paging Groups (CRUD)
+- Provisioning Templates (CRUD)
+- Tenant Settings (General, Branding, SMTP, Messaging, Hospitality)
+- Tenant Media (Sounds & Music Overrides)
+- Fax (boxes, jobs, endpoints, send, retry, stats, download)
+- Reports & Analytics (call-volume, agent-performance, queue-stats, extension-usage, kpi, number-usage, export)
+- Hospitality (rooms CRUD, check-in/out, wake-up calls)
+- Call Broadcast (campaigns CRUD, start/stop, stats)
+- E911 Locations (CRUD)
+- Recordings (list, get, delete, stream, download, notes, transcription, config)
 
-### Device Control API ✨
+### Device Control API
 - `/api/devices/{mac}/hangup`
 - `/api/devices/{mac}/transfer`
 - `/api/devices/{mac}/hold`
 - `/api/devices/{mac}/dial`
 - `/api/devices/{mac}/call-status`
 
-### Provisioning System ✨
+### Provisioning System
 - `/provisioning/{mac}/{filename}` - Public endpoint
 - `/api/provision/{tenant}/{secret}/{mac}` - Secure endpoint
 - Multi-vendor support (Polycom, Yealink, Grandstream, Cisco, etc.)
 - Template variable substitution
 - Tenant/device-specific variables
 
-### Call Recording & Transcription ✨
+### Call Recording & Transcription
 - CallRecording model (multi-storage: local, S3, GCS, Azure)
 - Transcription model with segments
 - Multi-provider: Whisper, OpenAI, Google, AWS, Azure, Deepgram
 - Diarization, sentiment, summary support
 - RecordingConfig & TranscriptionConfig per tenant
+- Stream, download, notes endpoints
 
 ### BLF/Presence (ESL Service)
 - PRESENCE_PROBE handling
 - DND, Forward, Voicemail, Call Flow status
 - Extension presence tracking
+
+### Live Operations
+- Start/stop call recording via ESL
+- Active calls data
+- Live queue statistics
+- Device registrations
+- Wake-up call scheduling via ESL
 
 ### System Admin API
 - Tenants (CRUD)
@@ -87,10 +107,12 @@
 - Device Manufacturers (CRUD)
 - Firmware (CRUD + upload + set default)
 - Messaging Providers (CRUD)
+- Messaging Numbers (CRUD)
 - System Settings/Logs
 - System Media (Sounds & Music)
 - Security (Banned IPs)
 - Config Inspector (XML debug, file browser)
+- System Status & Stats
 
 ### User Portal API
 - GetUserDevices
@@ -98,6 +120,21 @@
 - GetUserVoicemail
 - GetUserSettings / UpdateUserSettings
 - GetUserContacts / CreateUserContact
+
+### Extension Portal API
+- GetExtensionDevices
+- GetExtensionCallHistory
+- GetExtensionVoicemail
+- GetExtensionSettings / UpdateExtensionSettings
+- ChangeExtensionPassword
+- GetExtensionContacts / CreateExtensionContact
+
+### Webhooks
+- Telnyx inbound SMS handler
+- Telnyx delivery status handler
+
+### Operator Panel
+- Operator panel data endpoint
 
 ### Out-of-Box Seeding
 - Default admin, tenant profiles
@@ -109,10 +146,10 @@
 - Cache management (flush, stats)
 
 ## 🔧 Remaining
-- Fax API (handlers stub exists)
+- Voicemail delivery tracking & system settings
+- Conference profiles CRUD
 - Transcription service worker (processing queue)
-- WebSocket event broadcasting expansion
-- Reports/Analytics expansion
-- Hospitality module (wake-up calls, room management)
-- Call Broadcast campaigns
+- WebSocket event broadcasting expansion (operator panel, queue, conference, device feeds)
+- Device reboot/logs/status endpoints
 - Billing integration
+- Multi-language phrases

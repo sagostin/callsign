@@ -5,10 +5,11 @@ import (
 	"callsign/models"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
@@ -51,8 +52,8 @@ func normalizeToE164(number string) string {
 // Inbound Routes (Dialplan context=public)
 // =====================
 
-func (h *Handler) ListInboundRoutes(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListInboundRoutes(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var routes []models.Dialplan
 	// Inbound routes typically live in the 'public' context
@@ -61,22 +62,18 @@ func (h *Handler) ListInboundRoutes(ctx iris.Context) {
 			return db.Order("detail_order ASC")
 		}).
 		Order("dialplan_order ASC").Find(&routes).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve inbound routes"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve inbound routes"})
 	}
 
-	ctx.JSON(iris.Map{"data": routes})
+	return c.JSON(fiber.Map{"data": routes})
 }
 
-func (h *Handler) CreateInboundRoute(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateInboundRoute(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var route models.Dialplan
-	if err := ctx.ReadJSON(&route); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&route); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	route.TenantID = &tenantID
@@ -85,60 +82,48 @@ func (h *Handler) CreateInboundRoute(ctx iris.Context) {
 	}
 
 	if err := h.DB.Create(&route).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create inbound route"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create inbound route"})
 	}
-
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(route)
 
 	// Reload FreeSWITCH so new inbound route is active
 	h.reloadXML()
+	return c.Status(http.StatusCreated).JSON(route)
 }
 
-func (h *Handler) GetInboundRoute(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) GetInboundRoute(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var route models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context = ?", id, tenantID, "public").
 		Preload("Details", func(db *gorm.DB) *gorm.DB {
 			return db.Order("detail_order ASC")
 		}).First(&route).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Inbound route not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Inbound route not found"})
 	}
 
-	ctx.JSON(iris.Map{"data": route})
+	return c.JSON(fiber.Map{"data": route})
 }
 
-func (h *Handler) UpdateInboundRoute(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) UpdateInboundRoute(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var route models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context = ?", id, tenantID, "public").First(&route).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Inbound route not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Inbound route not found"})
 	}
 
-	if err := ctx.ReadJSON(&route); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&route); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	route.ID = id
+	route.ID = uint(id)
 	route.TenantID = &tenantID
 	route.DialplanContext = "public"
 
 	if err := h.DB.Save(&route).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update inbound route"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update inbound route"})
 	}
 
 	// Replace details if present
@@ -156,35 +141,32 @@ func (h *Handler) UpdateInboundRoute(ctx iris.Context) {
 	}).First(&route, id)
 
 	h.reloadXML()
-	ctx.JSON(iris.Map{"data": route, "message": "Inbound route updated"})
+	return c.JSON(fiber.Map{"data": route, "message": "Inbound route updated"})
 }
 
-func (h *Handler) DeleteInboundRoute(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) DeleteInboundRoute(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var route models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context = ?", id, tenantID, "public").First(&route).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Inbound route not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Inbound route not found"})
 	}
 
 	// Delete details first
 	h.DB.Where("dialplan_uuid = ?", route.UUID).Delete(&models.DialplanDetail{})
 	h.DB.Delete(&route)
 	h.reloadXML()
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
-func (h *Handler) ReorderInboundRoutes(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ReorderInboundRoutes(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var items []ReorderItem
-	if err := ctx.ReadJSON(&items); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&items); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	tx := h.DB.Begin()
@@ -193,22 +175,20 @@ func (h *Handler) ReorderInboundRoutes(ctx iris.Context) {
 			Where("id = ? AND tenant_id = ? AND dialplan_context = ?", item.ID, tenantID, "public").
 			Update("dialplan_order", item.Order).Error; err != nil {
 			tx.Rollback()
-			ctx.StatusCode(http.StatusInternalServerError)
-			ctx.JSON(iris.Map{"error": "Failed to reorder routes"})
-			return
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to reorder routes"})
 		}
 	}
 	tx.Commit()
 
-	ctx.JSON(iris.Map{"message": "Inbound routes reordered"})
+	return c.JSON(fiber.Map{"message": "Inbound routes reordered"})
 }
 
 // =====================
 // Outbound Routes (Dialplan context=default/domain)
 // =====================
 
-func (h *Handler) ListOutboundRoutes(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListOutboundRoutes(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var routes []models.Dialplan
 	// Outbound routes live in the 'default' context (or the tenant's domain context)
@@ -217,22 +197,18 @@ func (h *Handler) ListOutboundRoutes(ctx iris.Context) {
 			return db.Order("detail_order ASC")
 		}).
 		Order("dialplan_order ASC").Find(&routes).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve outbound routes"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve outbound routes"})
 	}
 
-	ctx.JSON(iris.Map{"data": routes})
+	return c.JSON(fiber.Map{"data": routes})
 }
 
-func (h *Handler) CreateOutboundRoute(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateOutboundRoute(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var route models.Dialplan
-	if err := ctx.ReadJSON(&route); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&route); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	route.TenantID = &tenantID
@@ -241,54 +217,44 @@ func (h *Handler) CreateOutboundRoute(ctx iris.Context) {
 	}
 
 	if err := h.DB.Create(&route).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create outbound route"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create outbound route"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(route)
-
 	h.reloadXML()
+	return c.Status(http.StatusCreated).JSON(route)
 }
 
-func (h *Handler) GetOutboundRoute(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) GetOutboundRoute(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var route models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context != ?", id, tenantID, "public").
 		Preload("Details", func(db *gorm.DB) *gorm.DB {
 			return db.Order("detail_order ASC")
 		}).First(&route).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Outbound route not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Outbound route not found"})
 	}
 
-	ctx.JSON(iris.Map{"data": route})
+	return c.JSON(fiber.Map{"data": route})
 }
 
-func (h *Handler) UpdateOutboundRoute(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) UpdateOutboundRoute(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var route models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context != ?", id, tenantID, "public").First(&route).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Outbound route not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Outbound route not found"})
 	}
 
 	originalContext := route.DialplanContext
 
-	if err := ctx.ReadJSON(&route); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&route); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	route.ID = id
+	route.ID = uint(id)
 	route.TenantID = &tenantID
 	// Preserve context — don't allow switching to "public"
 	if route.DialplanContext == "" || route.DialplanContext == "public" {
@@ -296,9 +262,7 @@ func (h *Handler) UpdateOutboundRoute(ctx iris.Context) {
 	}
 
 	if err := h.DB.Save(&route).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update outbound route"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update outbound route"})
 	}
 
 	// Replace details if present
@@ -316,35 +280,32 @@ func (h *Handler) UpdateOutboundRoute(ctx iris.Context) {
 	}).First(&route, id)
 
 	h.reloadXML()
-	ctx.JSON(iris.Map{"data": route, "message": "Outbound route updated"})
+	return c.JSON(fiber.Map{"data": route, "message": "Outbound route updated"})
 }
 
-func (h *Handler) DeleteOutboundRoute(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) DeleteOutboundRoute(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var route models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context != ?", id, tenantID, "public").First(&route).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Outbound route not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Outbound route not found"})
 	}
 
 	// Delete details first
 	h.DB.Where("dialplan_uuid = ?", route.UUID).Delete(&models.DialplanDetail{})
 	h.DB.Delete(&route)
 	h.reloadXML()
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
-func (h *Handler) ReorderOutboundRoutes(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ReorderOutboundRoutes(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var items []ReorderItem
-	if err := ctx.ReadJSON(&items); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&items); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	tx := h.DB.Begin()
@@ -353,22 +314,20 @@ func (h *Handler) ReorderOutboundRoutes(ctx iris.Context) {
 			Where("id = ? AND tenant_id = ? AND dialplan_context != ?", item.ID, tenantID, "public").
 			Update("dialplan_order", item.Order).Error; err != nil {
 			tx.Rollback()
-			ctx.StatusCode(http.StatusInternalServerError)
-			ctx.JSON(iris.Map{"error": "Failed to reorder routes"})
-			return
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to reorder routes"})
 		}
 	}
 	tx.Commit()
 
-	ctx.JSON(iris.Map{"message": "Outbound routes reordered"})
+	return c.JSON(fiber.Map{"message": "Outbound routes reordered"})
 }
 
 // =====================
 // Generic Dial Plans (CRUD)
 // =====================
 
-func (h *Handler) ListDialPlans(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListDialPlans(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var dialplans []models.Dialplan
 	// List all dialplans for this tenant
@@ -377,40 +336,32 @@ func (h *Handler) ListDialPlans(ctx iris.Context) {
 			return db.Order("detail_order ASC")
 		}).
 		Order("dialplan_order ASC").Find(&dialplans).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve dial plans"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve dial plans"})
 	}
-	ctx.JSON(dialplans)
+	return c.JSON(dialplans)
 }
 
-func (h *Handler) CreateDialPlan(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateDialPlan(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var dialplan models.Dialplan
-	if err := ctx.ReadJSON(&dialplan); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&dialplan); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	dialplan.TenantID = &tenantID
 
 	if err := h.DB.Create(&dialplan).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create dial plan"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create dial plan"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(dialplan)
-
 	h.reloadXML()
+	return c.Status(http.StatusCreated).JSON(dialplan)
 }
 
-func (h *Handler) GetDialPlan(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) GetDialPlan(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var dialplan models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).
@@ -418,38 +369,30 @@ func (h *Handler) GetDialPlan(ctx iris.Context) {
 			return db.Order("detail_order ASC")
 		}).
 		First(&dialplan).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Dial plan not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Dial plan not found"})
 	}
 
-	ctx.JSON(dialplan)
+	return c.JSON(dialplan)
 }
 
-func (h *Handler) UpdateDialPlan(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) UpdateDialPlan(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var dialplan models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&dialplan).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Dial plan not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Dial plan not found"})
 	}
 
-	if err := ctx.ReadJSON(&dialplan); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&dialplan); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	dialplan.ID = id
+	dialplan.ID = uint(id)
 	dialplan.TenantID = &tenantID
 
 	if err := h.DB.Save(&dialplan).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update dial plan"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update dial plan"})
 	}
 
 	// Update details if present
@@ -468,18 +411,16 @@ func (h *Handler) UpdateDialPlan(ctx iris.Context) {
 	}).First(&dialplan, id)
 
 	h.reloadXML()
-	ctx.JSON(dialplan)
+	return c.JSON(dialplan)
 }
 
-func (h *Handler) DeleteDialPlan(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) DeleteDialPlan(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var dialplan models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&dialplan).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Dial plan not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Dial plan not found"})
 	}
 
 	// Delete details first
@@ -487,23 +428,24 @@ func (h *Handler) DeleteDialPlan(ctx iris.Context) {
 
 	h.DB.Delete(&dialplan)
 	h.reloadXML()
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // =====================
 // Feature Codes
 // =====================
 
-func (h *Handler) ListFeatureCodes(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListFeatureCodes(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var codes []models.FeatureCode
 	h.DB.Where("tenant_id = ?", tenantID).Order("code").Find(&codes)
 
-	ctx.JSON(codes)
+	return c.JSON(codes)
 }
 
-func (h *Handler) ListSystemFeatureCodes(ctx iris.Context) {
+func (h *Handler) ListSystemFeatureCodes(c *fiber.Ctx) error {
 	// Return the hardcoded system feature codes
 	systemCodes := []map[string]interface{}{
 		{"code": "*97", "action": "voicemail_check", "description": "Check Voicemail"},
@@ -519,280 +461,236 @@ func (h *Handler) ListSystemFeatureCodes(ctx iris.Context) {
 		{"code": "*67", "action": "caller_id_block", "description": "Block Caller ID"},
 		{"code": "*82", "action": "caller_id_unblock", "description": "Unblock Caller ID"},
 	}
-	ctx.JSON(systemCodes)
+	return c.JSON(systemCodes)
 }
 
-func (h *Handler) CreateFeatureCode(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateFeatureCode(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var code models.FeatureCode
-	if err := ctx.ReadJSON(&code); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&code); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	code.TenantID = &tenantID
 
 	if err := code.Validate(); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	if err := h.DB.Create(&code).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(code)
 
 	h.reloadXML()
+	return c.Status(http.StatusCreated).JSON(code)
 }
 
-func (h *Handler) GetFeatureCode(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) GetFeatureCode(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var code models.FeatureCode
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&code).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Feature code not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Feature code not found"})
 	}
 
-	ctx.JSON(code)
+	return c.JSON(code)
 }
 
-func (h *Handler) UpdateFeatureCode(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) UpdateFeatureCode(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var code models.FeatureCode
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&code).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Feature code not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Feature code not found"})
 	}
 
-	if err := ctx.ReadJSON(&code); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&code); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	code.TenantID = &tenantID
 	h.DB.Save(&code)
 	h.reloadXML()
-	ctx.JSON(code)
+	return c.JSON(code)
 }
 
-func (h *Handler) DeleteFeatureCode(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) DeleteFeatureCode(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var code models.FeatureCode
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&code).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Feature code not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Feature code not found"})
 	}
 
 	h.DB.Delete(&code)
 	h.reloadXML()
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // =====================
 // Time Conditions
 // =====================
 
-func (h *Handler) ListTimeConditions(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListTimeConditions(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var conditions []models.TimeCondition
 	h.DB.Where("tenant_id = ?", tenantID).Order("name").Find(&conditions)
 
-	ctx.JSON(conditions)
+	return c.JSON(conditions)
 }
 
-func (h *Handler) CreateTimeCondition(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateTimeCondition(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var condition models.TimeCondition
-	if err := ctx.ReadJSON(&condition); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&condition); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	condition.TenantID = tenantID
 
 	if err := h.DB.Create(&condition).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(condition)
 
 	h.reloadXML()
+	return c.Status(http.StatusCreated).JSON(condition)
 }
 
-func (h *Handler) GetTimeCondition(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) GetTimeCondition(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var condition models.TimeCondition
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&condition).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Time condition not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Time condition not found"})
 	}
 
-	ctx.JSON(condition)
+	return c.JSON(condition)
 }
 
-func (h *Handler) UpdateTimeCondition(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) UpdateTimeCondition(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var condition models.TimeCondition
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&condition).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Time condition not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Time condition not found"})
 	}
 
-	if err := ctx.ReadJSON(&condition); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&condition); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	condition.TenantID = tenantID
 	h.DB.Save(&condition)
 	h.reloadXML()
-	ctx.JSON(condition)
+	return c.JSON(condition)
 }
 
-func (h *Handler) DeleteTimeCondition(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) DeleteTimeCondition(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var condition models.TimeCondition
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&condition).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Time condition not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Time condition not found"})
 	}
 
 	h.DB.Delete(&condition)
 	h.reloadXML()
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // =====================
 // Holiday Lists
 // =====================
 
-func (h *Handler) ListHolidayLists(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListHolidayLists(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 	var lists []models.HolidayList
 	h.DB.Where("tenant_id = ?", tenantID).Order("name ASC").Find(&lists)
-	ctx.JSON(iris.Map{"data": lists})
+	return c.JSON(fiber.Map{"data": lists})
 }
 
-func (h *Handler) CreateHolidayList(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateHolidayList(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var list models.HolidayList
-	if err := ctx.ReadJSON(&list); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&list); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	list.TenantID = tenantID
 	if err := h.DB.Create(&list).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create holiday list"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create holiday list"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"data": list})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": list})
 }
 
-func (h *Handler) GetHolidayList(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) GetHolidayList(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var list models.HolidayList
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&list).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Holiday list not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Holiday list not found"})
 	}
 
-	ctx.JSON(iris.Map{"data": list})
+	return c.JSON(fiber.Map{"data": list})
 }
 
-func (h *Handler) UpdateHolidayList(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) UpdateHolidayList(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var list models.HolidayList
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&list).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Holiday list not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Holiday list not found"})
 	}
 
-	if err := ctx.ReadJSON(&list); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&list); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	list.TenantID = tenantID
 	h.DB.Save(&list)
-	ctx.JSON(iris.Map{"data": list})
+	return c.JSON(fiber.Map{"data": list})
 }
 
-func (h *Handler) DeleteHolidayList(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) DeleteHolidayList(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var list models.HolidayList
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&list).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Holiday list not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Holiday list not found"})
 	}
 
 	h.DB.Delete(&list)
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
-func (h *Handler) SyncHolidayList(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) SyncHolidayList(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var list models.HolidayList
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&list).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Holiday list not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Holiday list not found"})
 	}
 
 	if list.ExternalURL == "" {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "No external URL configured for this holiday list"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "No external URL configured for this holiday list"})
 	}
 
 	// TODO: Fetch and parse ICS from external URL
@@ -801,108 +699,93 @@ func (h *Handler) SyncHolidayList(ctx iris.Context) {
 	list.LastSynced = &now
 	h.DB.Save(&list)
 
-	ctx.JSON(iris.Map{"message": "Holiday list synced", "data": list})
+	return c.JSON(fiber.Map{"message": "Holiday list synced", "data": list})
 }
 
 // =====================
 // Call Flows
 // =====================
 
-func (h *Handler) ListCallFlows(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListCallFlows(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var flows []models.CallFlow
 	h.DB.Where("tenant_id = ?", tenantID).Order("name").Find(&flows)
 
-	ctx.JSON(flows)
+	return c.JSON(flows)
 }
 
-func (h *Handler) CreateCallFlow(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateCallFlow(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var flow models.CallFlow
-	if err := ctx.ReadJSON(&flow); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&flow); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	flow.TenantID = tenantID
 
 	if err := h.DB.Create(&flow).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(flow)
 
 	h.reloadXML()
+	return c.Status(http.StatusCreated).JSON(flow)
 }
 
-func (h *Handler) GetCallFlow(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) GetCallFlow(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var flow models.CallFlow
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&flow).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Call flow not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call flow not found"})
 	}
 
-	ctx.JSON(flow)
+	return c.JSON(flow)
 }
 
-func (h *Handler) UpdateCallFlow(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) UpdateCallFlow(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var flow models.CallFlow
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&flow).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Call flow not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call flow not found"})
 	}
 
-	if err := ctx.ReadJSON(&flow); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&flow); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	flow.TenantID = tenantID
 	h.DB.Save(&flow)
 	h.reloadXML()
-	ctx.JSON(flow)
+	return c.JSON(flow)
 }
 
-func (h *Handler) DeleteCallFlow(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) DeleteCallFlow(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var flow models.CallFlow
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&flow).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Call flow not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call flow not found"})
 	}
 
 	h.DB.Delete(&flow)
 	h.reloadXML()
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
-func (h *Handler) ToggleCallFlow(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) ToggleCallFlow(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var flow models.CallFlow
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&flow).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Call flow not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call flow not found"})
 	}
 
 	// Cycle through states: 0 -> 1 -> 2 -> ... -> 0
@@ -921,7 +804,7 @@ func (h *Handler) ToggleCallFlow(ctx iris.Context) {
 
 	h.reloadXML()
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"data":        flow,
 		"state_index": flow.CurrentState,
 		"state_label": stateLabel,
@@ -932,26 +815,22 @@ func (h *Handler) ToggleCallFlow(ctx iris.Context) {
 // Numbers / DIDs
 // =====================
 
-func (h *Handler) ListNumbers(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListNumbers(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var numbers []models.Destination
 	if err := h.DB.Where("tenant_id = ?", tenantID).Order("destination_number").Find(&numbers).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve numbers"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve numbers"})
 	}
-	ctx.JSON(iris.Map{"data": numbers})
+	return c.JSON(fiber.Map{"data": numbers})
 }
 
-func (h *Handler) CreateNumber(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateNumber(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var number models.Destination
-	if err := ctx.ReadJSON(&number); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&number); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	number.TenantID = tenantID
@@ -978,46 +857,36 @@ func (h *Handler) CreateNumber(ctx iris.Context) {
 	number.DestinationNumber = normalized
 
 	if err := h.DB.Create(&number).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create number"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create number"})
 	}
-
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(number)
 
 	h.reloadXML()
+	return c.Status(http.StatusCreated).JSON(number)
 }
 
-func (h *Handler) GetNumber(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) GetNumber(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var number models.Destination
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&number).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Number not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number not found"})
 	}
 
-	ctx.JSON(iris.Map{"data": number})
+	return c.JSON(fiber.Map{"data": number})
 }
 
-func (h *Handler) UpdateNumber(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) UpdateNumber(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var number models.Destination
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&number).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Number not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number not found"})
 	}
 
-	if err := ctx.ReadJSON(&number); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&number); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	// Re-normalize if changed? For now assume edits respect format or just update props
@@ -1039,31 +908,30 @@ func (h *Handler) UpdateNumber(ctx iris.Context) {
 	number.TenantID = tenantID
 	h.DB.Save(&number)
 	h.reloadXML()
-	ctx.JSON(number)
+	return c.JSON(number)
 }
 
-func (h *Handler) DeleteNumber(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, _ := ctx.Params().GetUint("id")
+func (h *Handler) DeleteNumber(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
 
 	var number models.Destination
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&number).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Number not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number not found"})
 	}
 
 	h.DB.Delete(&number)
 	h.reloadXML()
-	ctx.StatusCode(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // =====================
 // Default Dial Plans (US/CA)
 // =====================
 
-func (h *Handler) CreateDefaultUSCANRoutes(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateDefaultUSCANRoutes(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	// 1. 11-digit dialing (1 + 10 digits) -> E.164 (+1 + 10 digits)
 	// Order 9000+ for outbound routes (high priority to not conflict with internal)
@@ -1114,35 +982,30 @@ func (h *Handler) CreateDefaultUSCANRoutes(ctx iris.Context) {
 	h.DB.Create(&r2)
 	h.DB.Create(&r3)
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "Default routes created"})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"message": "Default routes created"})
 }
 
 // =====================
 // Call Blocks (Blocked Callers)
 // =====================
 
-func (h *Handler) ListCallBlocks(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListCallBlocks(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var blocks []models.CallBlock
 	if err := h.DB.Where("tenant_id = ?", tenantID).Order("created_at DESC").Find(&blocks).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve call blocks"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve call blocks"})
 	}
 
-	ctx.JSON(iris.Map{"data": blocks})
+	return c.JSON(fiber.Map{"data": blocks})
 }
 
-func (h *Handler) CreateCallBlock(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateCallBlock(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var block models.CallBlock
-	if err := ctx.ReadJSON(&block); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&block); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	block.TenantID = tenantID
@@ -1159,31 +1022,24 @@ func (h *Handler) CreateCallBlock(ctx iris.Context) {
 	}
 
 	if err := h.DB.Create(&block).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create call block"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create call block"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(iris.Map{"message": "Call block created", "data": block})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"message": "Call block created", "data": block})
 }
 
-func (h *Handler) UpdateCallBlock(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id := ctx.Params().GetUintDefault("id", 0)
+func (h *Handler) UpdateCallBlock(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id := c.Params("id")
 
 	var block models.CallBlock
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&block).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Call block not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call block not found"})
 	}
 
 	var input models.CallBlock
-	if err := ctx.ReadJSON(&input); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": err.Error()})
-		return
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	block.Number = normalizeToE164(input.Number)
@@ -1193,30 +1049,24 @@ func (h *Handler) UpdateCallBlock(ctx iris.Context) {
 	block.Notes = input.Notes
 
 	if err := h.DB.Save(&block).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update call block"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update call block"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Call block updated", "data": block})
+	return c.JSON(fiber.Map{"message": "Call block updated", "data": block})
 }
 
-func (h *Handler) DeleteCallBlock(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id := ctx.Params().GetUintDefault("id", 0)
+func (h *Handler) DeleteCallBlock(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id := c.Params("id")
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.CallBlock{})
 	if result.Error != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to delete call block"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete call block"})
 	}
 
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Call block not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call block not found"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Call block deleted"})
+	return c.JSON(fiber.Map{"message": "Call block deleted"})
 }

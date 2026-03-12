@@ -1,10 +1,11 @@
 package handlers
 
 import (
+	"bytes"
 	"callsign/services/messaging"
 	"net/http"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -18,12 +19,25 @@ func NewWebhookHandler(mgr *messaging.Manager) *WebhookHandler {
 	return &WebhookHandler{MsgManager: mgr}
 }
 
+// fiberToHTTPRequest converts a Fiber context into a standard *http.Request.
+// This is needed because provider webhook methods expect *http.Request
+// but Fiber uses fasthttp under the hood.
+func fiberToHTTPRequest(c *fiber.Ctx) (*http.Request, error) {
+	req, err := http.NewRequest(c.Method(), c.OriginalURL(), bytes.NewReader(c.Body()))
+	if err != nil {
+		return nil, err
+	}
+	// Copy headers
+	c.Request().Header.VisitAll(func(key, value []byte) {
+		req.Header.Set(string(key), string(value))
+	})
+	return req, nil
+}
+
 // TelnyxInbound handles inbound SMS/MMS webhooks from Telnyx
-func (h *WebhookHandler) TelnyxInbound(ctx iris.Context) {
+func (h *WebhookHandler) TelnyxInbound(c *fiber.Ctx) error {
 	if h.MsgManager == nil {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "Messaging not configured"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "Messaging not configured"})
 	}
 
 	// Find the Telnyx provider
@@ -36,37 +50,35 @@ func (h *WebhookHandler) TelnyxInbound(ctx iris.Context) {
 	}
 
 	if telnyxProvider == nil {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "Telnyx provider not configured"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "Telnyx provider not configured"})
+	}
+
+	// Convert Fiber request to standard http.Request for provider interface
+	httpReq, err := fiberToHTTPRequest(c)
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to convert request"})
 	}
 
 	// Verify webhook signature
 	webhookSecret := h.MsgManager.Config.TelnyxWebhookSecret
 	if webhookSecret != "" {
-		if err := telnyxProvider.VerifyWebhook(ctx.Request(), webhookSecret); err != nil {
+		if err := telnyxProvider.VerifyWebhook(httpReq, webhookSecret); err != nil {
 			log.WithError(err).Warn("Telnyx webhook verification failed")
-			ctx.StatusCode(http.StatusUnauthorized)
-			ctx.JSON(iris.Map{"error": "Invalid webhook signature"})
-			return
+			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid webhook signature"})
 		}
 	}
 
 	// Parse the inbound message
-	inbound, err := telnyxProvider.ParseInboundWebhook(ctx.Request())
+	inbound, err := telnyxProvider.ParseInboundWebhook(httpReq)
 	if err != nil {
 		log.WithError(err).Error("Failed to parse Telnyx inbound webhook")
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Failed to parse webhook"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Failed to parse webhook"})
 	}
 
 	// Route the inbound SMS
 	if err := h.MsgManager.RouteInboundSMS(inbound.To, inbound.From, inbound.Body, inbound.MediaURLs); err != nil {
 		log.WithError(err).Error("Failed to route inbound SMS")
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to process inbound message"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process inbound message"})
 	}
 
 	log.WithFields(log.Fields{
@@ -76,16 +88,13 @@ func (h *WebhookHandler) TelnyxInbound(ctx iris.Context) {
 	}).Info("Inbound SMS processed")
 
 	// Telnyx expects 200 OK
-	ctx.StatusCode(http.StatusOK)
-	ctx.JSON(iris.Map{"status": "ok"})
+	return c.Status(http.StatusOK).JSON(fiber.Map{"status": "ok"})
 }
 
 // TelnyxStatus handles delivery status webhooks from Telnyx
-func (h *WebhookHandler) TelnyxStatus(ctx iris.Context) {
+func (h *WebhookHandler) TelnyxStatus(c *fiber.Ctx) error {
 	if h.MsgManager == nil {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "Messaging not configured"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "Messaging not configured"})
 	}
 
 	// Find the Telnyx provider
@@ -98,18 +107,20 @@ func (h *WebhookHandler) TelnyxStatus(ctx iris.Context) {
 	}
 
 	if telnyxProvider == nil {
-		ctx.StatusCode(http.StatusServiceUnavailable)
-		ctx.JSON(iris.Map{"error": "Telnyx provider not configured"})
-		return
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "Telnyx provider not configured"})
+	}
+
+	// Convert Fiber request to standard http.Request for provider interface
+	httpReq, err := fiberToHTTPRequest(c)
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to convert request"})
 	}
 
 	// Parse the status update
-	status, err := telnyxProvider.ParseStatusWebhook(ctx.Request())
+	status, err := telnyxProvider.ParseStatusWebhook(httpReq)
 	if err != nil {
 		log.WithError(err).Error("Failed to parse Telnyx status webhook")
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Failed to parse webhook"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Failed to parse webhook"})
 	}
 
 	// Handle the status update
@@ -117,8 +128,7 @@ func (h *WebhookHandler) TelnyxStatus(ctx iris.Context) {
 		log.WithError(err).Error("Failed to handle status update")
 	}
 
-	ctx.StatusCode(http.StatusOK)
-	ctx.JSON(iris.Map{"status": "ok"})
+	return c.Status(http.StatusOK).JSON(fiber.Map{"status": "ok"})
 }
 
 // getProviders returns all configured providers from the manager

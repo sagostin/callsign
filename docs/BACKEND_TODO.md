@@ -2,8 +2,8 @@
 
 This document tracks the backend API endpoints needed to support the CallSign-UI frontend application.
 
-> **Last updated**: 2025-12-16  
-> **Status**: ~180+ of ~300 endpoints implemented
+> **Last updated**: 2026-03-11  
+> **Status**: ~400+ of ~420 endpoints implemented (95%+)
 
 ---
 
@@ -11,6 +11,8 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 
 - [x] `POST /api/auth/login` - User login (returns JWT token)
 - [x] `POST /api/auth/admin/login` - Admin login (system/tenant admins)
+- [x] `POST /api/auth/extension/login` - Extension login (web client)
+- [x] `POST /api/auth/register` - Self-registration (if enabled)
 - [x] `POST /api/auth/logout` - Logout / invalidate token
 - [x] `POST /api/auth/refresh` - Refresh JWT token
 - [x] `GET /api/auth/me` - Get current user profile & permissions
@@ -28,6 +30,9 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 - [x] `DELETE /api/system/tenants/:id` - Delete tenant
 - [x] `GET /api/users` - List tenant users
 - [x] `POST /api/users` - Add user to tenant
+- [x] `GET /api/users/:id` - Get user details
+- [x] `PUT /api/users/:id` - Update user
+- [x] `DELETE /api/users/:id` - Delete user
 - [x] `GET /api/devices` - List tenant devices
 - [ ] `GET /api/tenants/:id/stats` - Get tenant usage statistics
 
@@ -131,26 +136,26 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 - [x] `GET /api/numbers/:id` - Get number details
 - [x] `PUT /api/numbers/:id` - Update number routing
 - [x] `DELETE /api/numbers/:id` - Remove number
-- [ ] `GET /api/numbers/:id/stats` - Number usage statistics
+- [x] `GET /api/system/numbers` - List all numbers (system admin)
 
 ### Inbound Routes
 
 - [x] `GET /api/routing/inbound` - List inbound routes (ordered)
 - [x] `POST /api/routing/inbound` - Create inbound route
-- [ ] `GET /api/routing/inbound/:id` - Get route details
-- [ ] `PUT /api/routing/inbound/:id` - Update route
-- [ ] `DELETE /api/routing/inbound/:id` - Delete route
-- [ ] `PUT /api/routing/inbound/reorder` - Reorder routes (batch)
+- [x] `GET /api/routing/inbound/:id` - Get route details
+- [x] `PUT /api/routing/inbound/:id` - Update route
+- [x] `DELETE /api/routing/inbound/:id` - Delete route
+- [x] `POST /api/routing/inbound/reorder` - Reorder routes
 
 ### Outbound Routes
 
 - [x] `GET /api/routing/outbound` - List outbound routes
 - [x] `POST /api/routing/outbound` - Create outbound route
 - [x] `POST /api/routing/outbound/defaults` - Create default US/CAN routes
-- [ ] `GET /api/routing/outbound/:id` - Get route details
-- [ ] `PUT /api/routing/outbound/:id` - Update route
-- [ ] `DELETE /api/routing/outbound/:id` - Delete route
-- [ ] `PUT /api/routing/outbound/reorder` - Reorder routes (batch)
+- [x] `GET /api/routing/outbound/:id` - Get route details
+- [x] `PUT /api/routing/outbound/:id` - Update route
+- [x] `DELETE /api/routing/outbound/:id` - Delete route
+- [x] `POST /api/routing/outbound/reorder` - Reorder routes
 
 ### Call Blocks
 
@@ -167,9 +172,10 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 - [x] `PUT /api/dial-plans/:id` - Update dial plan
 - [x] `DELETE /api/dial-plans/:id` - Delete dial plan
 
-### Routing Settings
+### Routing Utilities
 
 - [x] `GET /api/routing/debug` - Route debugger
+- [x] `POST /api/check-dial-code` - Dial code collision check
 
 ---
 
@@ -243,6 +249,15 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 - [x] `PUT /api/provisioning-templates/:id` - Update template
 - [x] `DELETE /api/provisioning-templates/:id` - Delete template
 
+### Client Registrations
+
+- [x] `GET /api/registrations` - List client registrations
+- [x] `POST /api/registrations/provision` - Provision client registration
+- [x] `DELETE /api/registrations/:id` - Delete registration
+- [x] `GET /api/registrations/unassigned` - List unassigned registrations
+- [x] `POST /api/registrations/:id/assign` - Assign registration to extension
+- [x] `GET /api/registrations/extension/:id` - List extension registrations
+
 ---
 
 ## 7. Call Queues & Ring Groups
@@ -254,12 +269,11 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 - [x] `GET /api/queues/:id` - Get queue details
 - [x] `PUT /api/queues/:id` - Update queue
 - [x] `DELETE /api/queues/:id` - Delete queue
-- [ ] `GET /api/queues/:id/stats` - Real-time queue statistics
-- [ ] `GET /api/queues/:id/agents` - List queue agents
-- [ ] `POST /api/queues/:id/agents` - Add agent to queue
-- [ ] `DELETE /api/queues/:id/agents/:agentId` - Remove agent from queue
-- [ ] `PUT /api/queues/:id/agents/:agentId/pause` - Pause agent
-- [ ] `PUT /api/queues/:id/agents/:agentId/unpause` - Unpause agent
+- [x] `GET /api/queues/:id/agents` - List queue agents
+- [x] `POST /api/queues/:id/agents` - Add agent to queue
+- [x] `DELETE /api/queues/:id/agents/:agentId` - Remove agent from queue
+- [x] `POST /api/queues/:id/agents/:agentId/pause` - Pause agent
+- [x] `POST /api/queues/:id/agents/:agentId/unpause` - Unpause agent
 
 ### Ring Groups
 
@@ -278,15 +292,26 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 - [x] `GET /api/conferences/:id` - Get conference details
 - [x] `PUT /api/conferences/:id` - Update conference
 - [x] `DELETE /api/conferences/:id` - Delete conference
-- [ ] `GET /api/conferences/:id/participants` - List active participants (real-time)
-- [ ] `POST /api/conferences/:id/mute-all` - Mute all participants
-- [ ] `POST /api/conferences/:id/lock` - Lock conference
-- [ ] `POST /api/conferences/:id/unlock` - Unlock conference
-- [ ] `POST /api/conferences/:id/kick/:participantId` - Kick participant
-- [ ] `POST /api/conferences/:id/mute/:participantId` - Mute participant
-- [ ] `POST /api/conferences/:id/unmute/:participantId` - Unmute participant
-- [ ] `POST /api/conferences/:id/record/start` - Start recording
-- [ ] `POST /api/conferences/:id/record/stop` - Stop recording
+- [x] `GET /api/conferences/:id/stats` - Conference statistics
+- [x] `GET /api/conferences/:id/sessions` - Conference sessions
+- [x] `GET /api/conferences/sessions/:sessionId/participants` - Session participants
+
+### Live Conference Control
+
+- [x] `GET /api/conferences/live` - List live conferences
+- [x] `GET /api/conferences/live/:name` - Get live conference
+- [x] `POST /api/conferences/live/:name/mute/:memberId` - Mute participant
+- [x] `POST /api/conferences/live/:name/unmute/:memberId` - Unmute participant
+- [x] `POST /api/conferences/live/:name/deaf/:memberId` - Deaf participant
+- [x] `POST /api/conferences/live/:name/undeaf/:memberId` - Undeaf participant
+- [x] `POST /api/conferences/live/:name/kick/:memberId` - Kick participant
+- [x] `POST /api/conferences/live/:name/lock` - Lock conference
+- [x] `POST /api/conferences/live/:name/unlock` - Unlock conference
+- [x] `POST /api/conferences/live/:name/record/start` - Start recording
+- [x] `POST /api/conferences/live/:name/record/stop` - Stop recording
+- [x] `POST /api/conferences/live/:name/mute-all` - Mute all
+- [x] `POST /api/conferences/live/:name/unmute-all` - Unmute all
+- [x] `POST /api/conferences/live/:name/floor/:memberId` - Set floor
 
 ### Conference Profiles
 
@@ -329,22 +354,34 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 
 ## 10. Fax
 
-### Fax Servers
+### Fax Boxes
 
-- [ ] `GET /api/fax/servers` - List fax servers
-- [ ] `POST /api/fax/servers` - Create fax server
-- [ ] `GET /api/fax/servers/:id` - Get server details
-- [ ] `PUT /api/fax/servers/:id` - Update server
-- [ ] `DELETE /api/fax/servers/:id` - Delete server
-- [ ] `GET /api/fax/servers/:id/inbox` - List received faxes
-- [ ] `GET /api/fax/servers/:id/sent` - List sent faxes
+- [x] `GET /api/fax/boxes` - List fax boxes
+- [x] `POST /api/fax/boxes` - Create fax box
+- [x] `GET /api/fax/boxes/:boxId` - Get fax box details
+- [x] `PUT /api/fax/boxes/:boxId` - Update fax box
+- [x] `DELETE /api/fax/boxes/:boxId` - Delete fax box
 
-### Fax Operations
+### Fax Jobs
 
-- [ ] `POST /api/fax/send` - Send fax
-- [ ] `GET /api/fax/:id` - Get fax details
-- [ ] `GET /api/fax/:id/download` - Download fax PDF
-- [ ] `DELETE /api/fax/:id` - Delete fax
+- [x] `GET /api/fax/jobs` - List fax jobs
+- [x] `GET /api/fax/jobs/:jobId` - Get fax job details
+- [x] `DELETE /api/fax/jobs/:jobId` - Delete fax job
+- [x] `GET /api/fax/jobs/:jobId/download` - Download fax
+- [x] `POST /api/fax/jobs/:jobId/retry` - Retry fax
+
+### Fax Actions
+
+- [x] `POST /api/fax/send` - Send fax
+- [x] `GET /api/fax/active` - Get active faxes
+- [x] `GET /api/fax/stats` - Fax statistics
+
+### Fax Endpoints
+
+- [x] `GET /api/fax/endpoints` - List fax endpoints
+- [x] `POST /api/fax/endpoints` - Create fax endpoint
+- [x] `PUT /api/fax/endpoints/:epId` - Update fax endpoint
+- [x] `DELETE /api/fax/endpoints/:epId` - Delete fax endpoint
 
 ---
 
@@ -358,6 +395,14 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 - [ ] `PUT /api/messaging/conversations/:id/read` - Mark as read
 - [ ] `DELETE /api/messaging/conversations/:id` - Delete conversation
 
+### SMS Number Management (Tenant)
+
+- [x] `GET /api/messaging/numbers` - List SMS numbers
+- [x] `PUT /api/messaging/numbers/:id/sms` - Configure SMS number
+- [x] `GET /api/messaging/numbers/:id/assignments` - List number assignments
+- [x] `POST /api/messaging/numbers/:id/assignments` - Assign number
+- [x] `DELETE /api/messaging/numbers/:id/assignments/:assignId` - Unassign number
+
 ### Messaging Providers (System)
 
 - [x] `GET /api/system/messaging-providers` - List providers
@@ -367,18 +412,25 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 - [x] `DELETE /api/system/messaging-providers/:id` - Delete provider
 - [ ] `POST /api/system/messaging-providers/:id/test` - Test provider
 
+### Messaging Numbers (System)
+
+- [x] `GET /api/system/messaging-numbers` - List messaging numbers
+- [x] `POST /api/system/messaging-numbers` - Create messaging number
+- [x] `PUT /api/system/messaging-numbers/:id` - Update messaging number
+- [x] `DELETE /api/system/messaging-numbers/:id` - Delete messaging number
+
 ---
 
 ## 12. Call Recordings
 
 - [x] `GET /api/recordings` - List recordings (with filtering)
+- [x] `GET /api/recordings/config` - Get recording configuration
 - [x] `GET /api/recordings/:id` - Get recording metadata
-- [ ] `GET /api/recordings/:id/audio` - Stream recording audio
-- [ ] `GET /api/recordings/:id/download` - Download recording
 - [x] `DELETE /api/recordings/:id` - Delete recording
-- [ ] `POST /api/recordings/:id/email` - Email recording
-- [ ] `POST /api/recordings/export` - Batch export
-- [ ] `GET /api/recordings/stats` - Recording statistics
+- [x] `GET /api/recordings/:id/stream` - Stream recording audio
+- [x] `GET /api/recordings/:id/download` - Download recording
+- [x] `PUT /api/recordings/:id/notes` - Update recording notes
+- [x] `GET /api/recordings/:id/transcription` - Get transcription
 
 ---
 
@@ -386,7 +438,6 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 
 - [x] `GET /api/audio-library` - List audio files
 - [x] `POST /api/audio-library` - Upload audio file
-- [ ] `GET /api/audio-library/:id` - Get audio metadata
 - [x] `GET /api/audio-library/:id/stream` - Stream audio
 - [x] `PUT /api/audio-library/:id` - Update metadata
 - [x] `DELETE /api/audio-library/:id` - Delete audio
@@ -447,13 +498,13 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 
 ## 17. Reports & Analytics
 
-- [ ] `GET /api/reports/call-volume` - Call volume report
-- [ ] `GET /api/reports/call-detail` - CDR (Call Detail Records)
-- [ ] `GET /api/reports/agent-performance` - Agent performance metrics
-- [ ] `GET /api/reports/queue-stats` - Queue statistics
-- [ ] `GET /api/reports/extension-usage` - Extension usage
-- [ ] `GET /api/reports/kpi` - Key performance indicators
-- [ ] `POST /api/reports/export` - Export report (CSV/PDF)
+- [x] `GET /api/reports/call-volume` - Call volume report
+- [x] `GET /api/reports/agent-performance` - Agent performance metrics
+- [x] `GET /api/reports/queue-stats` - Queue statistics
+- [x] `GET /api/reports/extension-usage` - Extension usage
+- [x] `GET /api/reports/kpi` - Key performance indicators
+- [x] `GET /api/reports/number-usage` - Number usage statistics
+- [x] `GET /api/reports/export` - Export report (CSV/PDF)
 
 ---
 
@@ -473,14 +524,14 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 
 ## 19. Call Broadcast
 
-- [ ] `GET /api/call-broadcast` - List broadcast campaigns
-- [ ] `POST /api/call-broadcast` - Create campaign
-- [ ] `GET /api/call-broadcast/:id` - Get campaign details
-- [ ] `PUT /api/call-broadcast/:id` - Update campaign
-- [ ] `DELETE /api/call-broadcast/:id` - Delete campaign
-- [ ] `POST /api/call-broadcast/:id/start` - Start campaign
-- [ ] `POST /api/call-broadcast/:id/stop` - Stop campaign
-- [ ] `GET /api/call-broadcast/:id/stats` - Campaign statistics
+- [x] `GET /api/broadcast` - List broadcast campaigns
+- [x] `POST /api/broadcast` - Create campaign
+- [x] `GET /api/broadcast/:id` - Get campaign details
+- [x] `PUT /api/broadcast/:id` - Update campaign
+- [x] `DELETE /api/broadcast/:id` - Delete campaign
+- [x] `POST /api/broadcast/:id/start` - Start campaign
+- [x] `POST /api/broadcast/:id/stop` - Stop campaign
+- [x] `GET /api/broadcast/:id/stats` - Campaign statistics
 
 ---
 
@@ -512,7 +563,20 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 
 ---
 
-## 21. Contacts
+## 21. Extension Portal
+
+- [x] `GET /api/extension/portal/devices` - List extension devices
+- [x] `GET /api/extension/portal/call-history` - Extension call history
+- [x] `GET /api/extension/portal/voicemail` - Extension voicemail
+- [x] `GET /api/extension/portal/settings` - Get extension settings
+- [x] `PUT /api/extension/portal/settings` - Update extension settings
+- [x] `PUT /api/extension/portal/password` - Change extension password
+- [x] `GET /api/extension/portal/contacts` - List extension contacts
+- [x] `POST /api/extension/portal/contacts` - Create extension contact
+
+---
+
+## 22. Contacts
 
 - [x] `GET /api/contacts` - List contacts
 - [x] `POST /api/contacts` - Add contact
@@ -524,7 +588,7 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 
 ---
 
-## 22. Chat
+## 23. Chat
 
 - [x] `GET /api/chat/threads` - List chat threads
 - [x] `POST /api/chat/threads` - Create chat thread
@@ -538,7 +602,7 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 
 ---
 
-## 23. Paging Groups
+## 24. Paging Groups
 
 - [x] `GET /api/page-groups` - List paging groups
 - [x] `POST /api/page-groups` - Create paging group
@@ -548,7 +612,7 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 
 ---
 
-## 24. System Administration
+## 25. System Administration
 
 ### Gateways / Trunks
 
@@ -634,39 +698,53 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 
 ---
 
-## 25. Hospitality Module
+## 26. Hospitality Module
 
-- [ ] `GET /api/hospitality/rooms` - List hotel rooms
-- [ ] `POST /api/hospitality/rooms` - Add room
-- [ ] `PUT /api/hospitality/rooms/:id` - Update room
-- [ ] `DELETE /api/hospitality/rooms/:id` - Delete room
-- [ ] `POST /api/hospitality/rooms/:id/checkin` - Check-in guest
-- [ ] `POST /api/hospitality/rooms/:id/checkout` - Check-out guest
+### Rooms
 
-### Wake-Up Calls
-
-- [ ] `GET /api/hospitality/wake-up-calls` - List wake-up calls
-- [ ] `POST /api/hospitality/wake-up-calls` - Create wake-up call
-- [ ] `GET /api/hospitality/wake-up-calls/:id` - Get details
-- [ ] `PUT /api/hospitality/wake-up-calls/:id` - Update
-- [ ] `DELETE /api/hospitality/wake-up-calls/:id` - Delete
+- [x] `GET /api/hospitality/rooms` - List hotel rooms
+- [x] `POST /api/hospitality/rooms` - Add room
+- [x] `GET /api/hospitality/rooms/:id` - Get room details
+- [x] `PUT /api/hospitality/rooms/:id` - Update room
+- [x] `DELETE /api/hospitality/rooms/:id` - Delete room
+- [x] `POST /api/hospitality/rooms/:id/checkin` - Check-in guest
+- [x] `POST /api/hospitality/rooms/:id/checkout` - Check-out guest
+- [x] `POST /api/hospitality/rooms/:id/wakeup` - Schedule wake-up call
 
 ---
 
-## 26. Locations (E911)
+## 27. Locations (E911)
 
-- [ ] `GET /api/locations` - List locations
-- [ ] `POST /api/locations` - Create location
-- [ ] `GET /api/locations/:id` - Get location
-- [ ] `PUT /api/locations/:id` - Update location
-- [ ] `DELETE /api/locations/:id` - Delete location
+- [x] `GET /api/tenant/locations` - List locations
+- [x] `POST /api/tenant/locations` - Create location
+- [x] `GET /api/tenant/locations/:id` - Get location
+- [x] `PUT /api/tenant/locations/:id` - Update location
+- [x] `DELETE /api/tenant/locations/:id` - Delete location
 
 ---
 
-## 27. WebSocket / Real-time Events
+## 28. Live Operations
+
+- [x] `POST /api/live/recording/start` - Start call recording
+- [x] `POST /api/live/recording/stop` - Stop call recording
+- [x] `GET /api/live/calls` - Get active calls
+- [x] `GET /api/live/queue-stats` - Get live queue statistics
+- [x] `POST /api/live/wakeup/schedule` - Schedule wake-up via ESL
+- [x] `GET /api/live/registrations` - Get device registrations
+
+---
+
+## 29. Operator Panel
+
+- [x] `GET /api/operator-panel` - Get operator panel data
+
+---
+
+## 30. WebSocket / Real-time Events
 
 - [x] `WSS /api/ws/notifications` - Real-time notifications
 - [x] `WSS /api/system/console` - FreeSWITCH console
+- [x] `WSS /api/ws` - Generic WebSocket endpoint
 - [ ] `WSS /ws/operator-panel` - Operator panel events
 - [ ] `WSS /ws/queue/:id` - Queue real-time updates
 - [ ] `WSS /ws/conference/:id` - Conference real-time updates
@@ -674,7 +752,7 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 
 ---
 
-## 28. FreeSWITCH Integration
+## 31. FreeSWITCH Integration
 
 - [x] `POST /api/freeswitch/directory` - XML CURL directory
 - [x] `POST /api/freeswitch/dialplan` - XML CURL dialplan
@@ -686,12 +764,32 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 
 ---
 
+## 32. Webhooks
+
+- [x] `POST /api/webhooks/telnyx/inbound` - Telnyx inbound webhook
+- [x] `POST /api/webhooks/telnyx/status` - Telnyx status webhook
+
+---
+
+## 33. Provisioning (Public)
+
+- [x] `GET /api/provision/:tenant/:secret/:mac` - Secure provisioning
+- [x] `GET /provisioning/:mac/:filename` - Public provisioning
+
+---
+
+## 34. Internal API
+
+- [x] `POST /api/internal/fail2ban/report` - Report banned IP (X-Internal-Key auth)
+
+---
+
 ## Progress Summary
 
 | Category | Total | Completed |
 |----------|-------|-----------|
-| Authentication | 7 | 7 |
-| Tenants | 16 | 16 |
+| Authentication | 9 | 9 |
+| Tenants | 12 | 11 |
 | Tenant Settings | 11 | 11 |
 | Tenant Profiles | 5 | 5 |
 | Extensions | 11 | 11 |
@@ -700,36 +798,44 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 | Time Conditions | 6 | 5 |
 | Holiday Lists | 6 | 6 |
 | Call Flows | 6 | 6 |
-| Call Routing | 21 | 13 |
-| Devices | 45 | 40 |
-| Queues & Ring Groups | 16 | 10 |
-| Conferencing | 18 | 5 |
+| Call Routing | 22 | 22 |
+| Devices | 44 | 40 |
+| Client Registrations | 6 | 6 |
+| Queues & Ring Groups | 15 | 15 |
+| Conferencing | 23 | 18 |
 | Voicemail | 16 | 10 |
-| Fax | 11 | 0 |
-| Messaging | 11 | 8 |
-| Call Recordings | 8 | 3 |
-| Audio Library | 7 | 5 |
+| Fax | 15 | 15 |
+| Messaging/SMS | 17 | 15 |
+| Call Recordings | 8 | 8 |
+| Audio Library | 6 | 5 |
 | Music on Hold | 13 | 11 |
 | Feature Codes | 6 | 6 |
 | Speed Dials | 5 | 5 |
+| Reports | 7 | 7 |
 | CDR & Audit | 4 | 4 |
-| Call Broadcast | 8 | 0 |
+| Call Broadcast | 8 | 8 |
 | User Portal | 9 | 7 |
+| Extension Portal | 8 | 8 |
 | Contacts | 7 | 7 |
 | Chat | 9 | 9 |
 | Paging Groups | 5 | 5 |
-| System Admin | 48 | 48 |
-| Hospitality | 11 | 0 |
-| Locations | 5 | 0 |
-| WebSocket | 6 | 2 |
+| System Admin | 55 | 55 |
+| Hospitality | 8 | 8 |
+| Locations | 5 | 5 |
+| Live Operations | 6 | 6 |
+| Operator Panel | 1 | 1 |
+| WebSocket | 7 | 3 |
 | FreeSWITCH | 7 | 7 |
-| **TOTAL** | **~375** | **~280** |
+| Webhooks | 2 | 2 |
+| Provisioning | 2 | 2 |
+| Internal API | 1 | 1 |
+| **TOTAL** | **~420** | **~400+** |
 
 ---
 
 ## Implementation Notes
 
-### Architecture Recommendations
+### Architecture
 
 1. **RESTful Design**: All endpoints follow REST conventions
 2. **Tenant Scoping**: Most endpoints are scoped by tenant (via JWT claims)
@@ -738,11 +844,13 @@ This document tracks the backend API endpoints needed to support the CallSign-UI
 5. **Rate Limiting**: Apply appropriate rate limits per endpoint category
 6. **Authentication**: JWT Bearer tokens with role-based access control
 7. **WebSocket Auth**: Token-based authentication for WebSocket connections
+8. **Framework**: Go Fiber (migrated from Iris)
 
-### Priority Order (Current Focus)
+### Current Focus
 
-1. **Phase 1 - Core**: ✅ Authentication, Extensions, Devices, Basic Routing
-2. **Phase 2 - Communication**: ✅ Voicemail, Recordings, Messaging (partial)
-3. **Phase 3 - Advanced Call Handling**: ✅ IVR, Queues, Conferences (partial - need live control)
-4. **Phase 4 - Administration**: ✅ Reports (basic), Audit Log, System Settings
-5. **Phase 5 - Specialized**: 🔲 Fax, Hospitality, Call Broadcast
+1. **Phase 1 - Core**: ✅ Complete
+2. **Phase 2 - Communication**: ✅ Voicemail, Recordings, Messaging, Chat, Fax
+3. **Phase 3 - Advanced Call Handling**: ✅ IVR, Queues + agents, Conferences + live control
+4. **Phase 4 - Administration**: ✅ Reports, Audit Log, System Settings, Security
+5. **Phase 5 - Specialized**: ✅ Fax, Hospitality, Call Broadcast, Locations
+6. **Phase 6 - Refinement**: 🔄 WebSocket expansion, voicemail delivery, conference profiles

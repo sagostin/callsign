@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kataras/iris/v12"
+	"github.com/gofiber/fiber/v2"
 	"github.com/lib/pq"
 )
 
@@ -17,21 +17,19 @@ import (
 // =====================
 
 // ListBroadcasts returns all broadcast campaigns for the current tenant
-func (h *Handler) ListBroadcasts(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) ListBroadcasts(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var campaigns []models.BroadcastCampaign
 	query := h.DB.Where("tenant_id = ?", tenantID).Order("created_at DESC")
 
 	// Filter by status if provided
-	if status := ctx.URLParam("status"); status != "" {
+	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
 	}
 
 	if err := query.Find(&campaigns).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to retrieve campaigns"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve campaigns"})
 	}
 
 	// Enrich with progress percentage
@@ -50,18 +48,16 @@ func (h *Handler) ListBroadcasts(ctx iris.Context) {
 		}
 	}
 
-	ctx.JSON(result)
+	return c.JSON(result)
 }
 
 // CreateBroadcast creates a new broadcast campaign
-func (h *Handler) CreateBroadcast(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
+func (h *Handler) CreateBroadcast(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
 
 	var campaign models.BroadcastCampaign
-	if err := ctx.ReadJSON(&campaign); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&campaign); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	campaign.TenantID = tenantID
@@ -83,33 +79,26 @@ func (h *Handler) CreateBroadcast(ctx iris.Context) {
 	}
 
 	if err := h.DB.Create(&campaign).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to create campaign"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create campaign"})
 	}
 
-	ctx.StatusCode(http.StatusCreated)
-	ctx.JSON(campaign)
+	return c.Status(http.StatusCreated).JSON(campaign)
 }
 
 // GetBroadcast returns a specific broadcast campaign
-func (h *Handler) GetBroadcast(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, err := strconv.ParseUint(ctx.Params().Get("id"), 10, 64)
+func (h *Handler) GetBroadcast(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid campaign ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid campaign ID"})
 	}
 
 	var campaign models.BroadcastCampaign
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&campaign).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Campaign not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Campaign not found"})
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"campaign":     campaign,
 		"progress":     campaign.Progress(),
 		"target_count": len(campaign.Recipients),
@@ -117,95 +106,73 @@ func (h *Handler) GetBroadcast(ctx iris.Context) {
 }
 
 // UpdateBroadcast updates an existing broadcast campaign
-func (h *Handler) UpdateBroadcast(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, err := strconv.ParseUint(ctx.Params().Get("id"), 10, 64)
+func (h *Handler) UpdateBroadcast(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid campaign ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid campaign ID"})
 	}
 
 	var existing models.BroadcastCampaign
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&existing).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Campaign not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Campaign not found"})
 	}
 
 	// Don't allow editing a running campaign
 	if existing.Status == models.BroadcastStatusRunning {
-		ctx.StatusCode(http.StatusConflict)
-		ctx.JSON(iris.Map{"error": "Cannot edit a running campaign. Pause it first."})
-		return
+		return c.Status(http.StatusConflict).JSON(fiber.Map{"error": "Cannot edit a running campaign. Pause it first."})
 	}
 
 	var updates models.BroadcastCampaign
-	if err := ctx.ReadJSON(&updates); err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid request payload"})
-		return
+	if err := c.BodyParser(&updates); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	updates.ID = existing.ID
 	updates.TenantID = tenantID
 	if err := h.DB.Model(&existing).Updates(updates).Error; err != nil {
-		ctx.StatusCode(http.StatusInternalServerError)
-		ctx.JSON(iris.Map{"error": "Failed to update campaign"})
-		return
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update campaign"})
 	}
 
 	h.DB.First(&existing, id)
-	ctx.JSON(existing)
+	return c.JSON(existing)
 }
 
 // DeleteBroadcast deletes a broadcast campaign
-func (h *Handler) DeleteBroadcast(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, err := strconv.ParseUint(ctx.Params().Get("id"), 10, 64)
+func (h *Handler) DeleteBroadcast(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid campaign ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid campaign ID"})
 	}
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.BroadcastCampaign{})
 	if result.RowsAffected == 0 {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Campaign not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Campaign not found"})
 	}
 
-	ctx.JSON(iris.Map{"message": "Campaign deleted"})
+	return c.JSON(fiber.Map{"message": "Campaign deleted"})
 }
 
 // StartBroadcast starts (or resumes) a broadcast campaign
-func (h *Handler) StartBroadcast(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, err := strconv.ParseUint(ctx.Params().Get("id"), 10, 64)
+func (h *Handler) StartBroadcast(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid campaign ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid campaign ID"})
 	}
 
 	var campaign models.BroadcastCampaign
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&campaign).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Campaign not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Campaign not found"})
 	}
 
 	if campaign.Status == models.BroadcastStatusRunning {
-		ctx.StatusCode(http.StatusConflict)
-		ctx.JSON(iris.Map{"error": "Campaign is already running"})
-		return
+		return c.Status(http.StatusConflict).JSON(fiber.Map{"error": "Campaign is already running"})
 	}
 
 	if len(campaign.Recipients) == 0 {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Campaign has no recipients"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Campaign has no recipients"})
 	}
 
 	now := time.Now()
@@ -218,51 +185,43 @@ func (h *Handler) StartBroadcast(ctx iris.Context) {
 	// The worker would iterate recipients, originate calls via FreeSWITCH,
 	// and play the recording, updating stats as calls complete.
 
-	ctx.JSON(iris.Map{"message": "Campaign started", "started_at": now})
+	return c.JSON(fiber.Map{"message": "Campaign started", "started_at": now})
 }
 
 // StopBroadcast stops a running broadcast campaign
-func (h *Handler) StopBroadcast(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, err := strconv.ParseUint(ctx.Params().Get("id"), 10, 64)
+func (h *Handler) StopBroadcast(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid campaign ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid campaign ID"})
 	}
 
 	var campaign models.BroadcastCampaign
 	if err := h.DB.Where("id = ? AND tenant_id = ? AND status = ?", id, tenantID, models.BroadcastStatusRunning).First(&campaign).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Running campaign not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Running campaign not found"})
 	}
 
 	h.DB.Model(&campaign).Update("status", models.BroadcastStatusPaused)
 
 	// TODO: Signal broadcast worker to stop originating new calls
 
-	ctx.JSON(iris.Map{"message": "Campaign stopped"})
+	return c.JSON(fiber.Map{"message": "Campaign stopped"})
 }
 
 // GetBroadcastStats returns statistics for a broadcast campaign
-func (h *Handler) GetBroadcastStats(ctx iris.Context) {
-	tenantID := middleware.GetTenantID(ctx)
-	id, err := strconv.ParseUint(ctx.Params().Get("id"), 10, 64)
+func (h *Handler) GetBroadcastStats(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
-		ctx.StatusCode(http.StatusBadRequest)
-		ctx.JSON(iris.Map{"error": "Invalid campaign ID"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid campaign ID"})
 	}
 
 	var campaign models.BroadcastCampaign
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&campaign).Error; err != nil {
-		ctx.StatusCode(http.StatusNotFound)
-		ctx.JSON(iris.Map{"error": "Campaign not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Campaign not found"})
 	}
 
-	ctx.JSON(iris.Map{
+	return c.JSON(fiber.Map{
 		"total_recipients": len(campaign.Recipients),
 		"total_calls":      campaign.TotalCalls,
 		"answered_calls":   campaign.AnsweredCalls,
