@@ -7,7 +7,12 @@ import (
 	"callsign/router"
 	"callsign/services/cdr"
 	"callsign/services/esl"
+	"callsign/services/esl/modules/callcontrol"
 	conferencemod "callsign/services/esl/modules/conference"
+	"callsign/services/esl/modules/featurecodes"
+	"callsign/services/esl/modules/ivr"
+	"callsign/services/esl/modules/queue"
+	"callsign/services/esl/modules/voicemail"
 	"callsign/services/fax"
 	"callsign/services/logging"
 	"callsign/services/tts"
@@ -75,8 +80,22 @@ func main() {
 		log.Warnf("Failed to import SIP profiles: %v", err)
 	}
 
-	// Initialize and start ESL Manager
+	// Initialize ESL Manager
 	eslManager := esl.NewManager(cfg, db)
+
+	// Register ESL modules — these handle incoming calls from FreeSWITCH
+	// via outbound ESL sockets. Each module listens on its own loopback address.
+	eslManager.RegisterModule(callcontrol.New())
+	eslManager.RegisterModule(voicemail.New())
+	eslManager.RegisterModule(queue.New())
+	eslManager.RegisterModule(ivr.New())
+
+	// Conference & feature codes modules need DB access for live-control APIs
+	confService := conferencemod.New(db)
+	eslManager.RegisterModule(confService)
+	eslManager.RegisterModule(featurecodes.New(db))
+
+	// Start ESL manager (connects to FreeSWITCH, inits + starts all modules)
 	go func() {
 		if err := eslManager.Start(); err != nil {
 			logManager.Error("ESL", "Failed to start ESL manager: "+err.Error(), nil)
@@ -107,19 +126,6 @@ func main() {
 			log.Errorf("Failed to start fax manager: %v", err)
 		} else {
 			logManager.Info("FAX", "Fax manager started successfully", nil)
-		}
-	}()
-
-	// Initialize conference service (live control via ESL)
-	confService := conferencemod.New(db)
-	go func() {
-		// Wait briefly for ESL to connect before initializing
-		time.Sleep(2 * time.Second)
-		if err := confService.Init(eslManager); err != nil {
-			logManager.Error("CONFERENCE", "Failed to init conference service: "+err.Error(), nil)
-			log.Errorf("Failed to init conference service: %v", err)
-		} else {
-			logManager.Info("CONFERENCE", "Conference service initialized", nil)
 		}
 	}()
 

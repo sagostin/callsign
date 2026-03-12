@@ -503,9 +503,10 @@ async function restartProfile(profile) {
   try {
     const response = await systemAPI.restartSofiaProfile(profile.profile_name)
     showCommandOutput(response.data.data)
-    toast?.success(`Profile ${profile.profile_name} restart command sent`)
+    toast?.success(`Profile ${profile.profile_name} restart command sent — refreshing in 3s...`)
+    // Delay refresh to let FreeSWITCH finish the profile restart before we query status
+    await new Promise(r => setTimeout(r, 3000))
     await refreshAll()
-
   } catch (error) {
     toast?.error('Failed to restart profile', error.message)
   }
@@ -515,9 +516,10 @@ async function startProfile(profile) {
   try {
     const response = await systemAPI.startSofiaProfile(profile.profile_name)
     showCommandOutput(response.data.data)
-    toast?.success(`Profile ${profile.profile_name} start command sent`)
+    toast?.success(`Profile ${profile.profile_name} start command sent — refreshing in 3s...`)
+    // Delay refresh to let FreeSWITCH finish starting the profile
+    await new Promise(r => setTimeout(r, 3000))
     await refreshAll()
-
   } catch (error) {
     toast?.error('Failed to start profile', error.message)
   }
@@ -528,9 +530,10 @@ async function stopProfile(profile) {
   try {
     const response = await systemAPI.stopSofiaProfile(profile.profile_name)
     showCommandOutput(response.data.data)
-    toast?.success(`Profile ${profile.profile_name} stop command sent`)
+    toast?.success(`Profile ${profile.profile_name} stop command sent — refreshing in 3s...`)
+    // Delay refresh to let FreeSWITCH finish stopping the profile
+    await new Promise(r => setTimeout(r, 3000))
     await refreshAll()
-
   } catch (error) {
     toast?.error('Failed to stop profile', error.message)
   }

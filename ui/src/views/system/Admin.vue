@@ -1,139 +1,216 @@
 <template>
-  <div class="view-header">
-    <div class="header-content">
-      <h2>System Dashboard</h2>
-      <p class="text-muted text-sm">Cluster overview and status.</p>
+  <div class="page-content">
+    <!-- View Header -->
+    <div class="view-header">
+      <div class="view-header-content">
+        <h1 class="view-header-title">System Dashboard</h1>
+        <p class="view-header-subtitle">Cluster overview and infrastructure status</p>
+      </div>
+      <div class="view-header-actions">
+        <div class="status-indicator">
+          <span class="status-dot online"></span>
+          <span class="status-text">System Online</span>
+        </div>
+      </div>
     </div>
-    <div class="header-actions">
-       <div class="status-indicator">
-          <span class="dot online"></span>
-          <span class="label">System Online</span>
-       </div>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+      <StatCard 
+        label="Total Tenants"
+        :value="stats.tenants"
+        iconName="users"
+        variant="info"
+      />
+      <StatCard 
+        label="Active Users"
+        :value="formattedUsers"
+        iconName="users"
+        variant="success"
+      />
+      <StatCard 
+        label="Active Channels"
+        :value="stats.active_channels"
+        iconName="calls"
+        variant="warning"
+      />
+      <StatCard 
+        label="System Alerts"
+        :value="stats.alerts"
+        iconName="alert"
+        :variant="stats.alerts > 0 ? 'error' : 'success'"
+      />
     </div>
-  </div>
 
-  <div class="dashboard-grid">
-     <!-- Stats Cards -->
-     <div class="stat-card">
-        <div class="icon-box bg-indigo-100 text-indigo-600">
-           <Building class="w-6 h-6" />
+    <!-- Registration Stats -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Device Registrations</h2>
+        <span class="section-subtitle">Real-time device status across all tenants</span>
+      </div>
+      
+      <div class="registration-grid">
+        <div class="reg-card">
+          <div class="reg-header">
+            <div class="reg-icon-wrapper bg-blue-100">
+              <MonitorIcon class="reg-icon text-blue-600" />
+            </div>
+            <span class="reg-title">Desk Phones</span>
+          </div>
+          <div class="reg-stats">
+            <div class="stat-num">{{ stats.devices?.desk_phones?.total || 0 }}</div>
+            <div class="stat-details">
+              <span class="online">
+                <span class="dot"></span>
+                {{ stats.devices?.desk_phones?.online || 0 }} online
+              </span>
+              <span class="offline">
+                <span class="dot"></span>
+                {{ (stats.devices?.desk_phones?.total || 0) - (stats.devices?.desk_phones?.online || 0) }} offline
+              </span>
+            </div>
+          </div>
         </div>
-        <div class="stat-info">
-           <span class="label">Total Tenants</span>
-           <span class="value">{{ stats.tenants }}</span>
-        </div>
-     </div>
-     <div class="stat-card">
-        <div class="icon-box bg-emerald-100 text-emerald-600">
-           <Users class="w-6 h-6" />
-        </div>
-        <div class="stat-info">
-           <span class="label">Active Users</span>
-           <span class="value">{{ stats.users.toLocaleString() }}</span>
-        </div>
-     </div>
-     <div class="stat-card">
-        <div class="icon-box bg-amber-100 text-amber-600">
-           <Phone class="w-6 h-6" />
-        </div>
-        <div class="stat-info">
-           <span class="label">Active Channels</span>
-           <span class="value">{{ stats.active_channels }}</span>
-        </div>
-     </div>
-     <div class="stat-card">
-        <div class="icon-box bg-rose-100 text-rose-600">
-           <AlertTriangle class="w-6 h-6" />
-        </div>
-        <div class="stat-info">
-           <span class="label">System Alerts</span>
-           <span class="value">{{ stats.alerts }}</span>
-        </div>
-     </div>
-  </div>
 
-  <!-- Registration Stats -->
-  <div class="section mt-8">
-     <h3 class="section-title">Device Registrations</h3>
-     <div class="registration-grid">
         <div class="reg-card">
-           <div class="reg-header">
-              <MonitorIcon class="reg-icon" />
-              <span class="reg-title">Desk Phones</span>
-           </div>
-           <div class="reg-stats">
-              <div class="stat-num">{{ stats.devices?.desk_phones?.total || 0 }}</div>
-              <div class="stat-details">
-                 <span class="online"><span class="dot"></span> {{ stats.devices?.desk_phones?.online || 0 }} online</span>
-                 <span class="offline"><span class="dot"></span> {{ (stats.devices?.desk_phones?.total || 0) - (stats.devices?.desk_phones?.online || 0) }} offline</span>
-              </div>
-           </div>
+          <div class="reg-header">
+            <div class="reg-icon-wrapper bg-emerald-100">
+              <SmartphoneIcon class="reg-icon text-emerald-600" />
+            </div>
+            <span class="reg-title">Softphones</span>
+          </div>
+          <div class="reg-stats">
+            <div class="stat-num">{{ stats.devices?.softphones?.total || 0 }}</div>
+            <div class="stat-details">
+              <span class="online">
+                <span class="dot"></span>
+                {{ stats.devices?.softphones?.online || 0 }} online
+              </span>
+              <span class="offline">
+                <span class="dot"></span>
+                {{ (stats.devices?.softphones?.total || 0) - (stats.devices?.softphones?.online || 0) }} offline
+              </span>
+            </div>
+          </div>
         </div>
-        <div class="reg-card">
-           <div class="reg-header">
-              <SmartphoneIcon class="reg-icon" />
-              <span class="reg-title">Softphones</span>
-           </div>
-           <div class="reg-stats">
-              <div class="stat-num">{{ stats.devices?.softphones?.total || 0 }}</div>
-              <div class="stat-details">
-                 <span class="online"><span class="dot"></span> {{ stats.devices?.softphones?.online || 0 }} online</span>
-                 <span class="offline"><span class="dot"></span> {{ (stats.devices?.softphones?.total || 0) - (stats.devices?.softphones?.online || 0) }} offline</span>
-              </div>
-           </div>
-        </div>
-        <div class="reg-card">
-           <div class="reg-header">
-              <PhoneIcon class="reg-icon" />
-              <span class="reg-title">Mobile Apps</span>
-           </div>
-           <div class="reg-stats">
-              <div class="stat-num">{{ stats.devices?.mobile?.total || 0 }}</div>
-              <div class="stat-details">
-                 <span class="online"><span class="dot"></span> {{ stats.devices?.mobile?.online || 0 }} online</span>
-                 <span class="offline"><span class="dot"></span> {{ (stats.devices?.mobile?.total || 0) - (stats.devices?.mobile?.online || 0) }} offline</span>
-              </div>
-           </div>
-        </div>
-        <div class="reg-card">
-           <div class="reg-header">
-              <ServerIcon class="reg-icon" />
-              <span class="reg-title">SIP Trunks</span>
-           </div>
-           <div class="reg-stats">
-              <div class="stat-num">{{ stats.devices?.trunks?.total || 0 }}</div>
-              <div class="stat-details">
-                 <span class="online"><span class="dot"></span> {{ stats.devices?.trunks?.online || 0 }} online</span>
-                 <span class="offline"><span class="dot"></span> {{ (stats.devices?.trunks?.total || 0) - (stats.devices?.trunks?.online || 0) }} offline</span>
-              </div>
-           </div>
-        </div>
-     </div>
-  </div>
 
-  <div class="section mt-8">
-     <h3 class="section-title">Quick Actions</h3>
-     <div class="quick-actions">
-        <button class="action-btn" @click="$router.push('/system/tenants')">
-           <span class="icon">+</span>
-           Create Tenant
+        <div class="reg-card">
+          <div class="reg-header">
+            <div class="reg-icon-wrapper bg-amber-100">
+              <PhoneIcon class="reg-icon text-amber-600" />
+            </div>
+            <span class="reg-title">Mobile Apps</span>
+          </div>
+          <div class="reg-stats">
+            <div class="stat-num">{{ stats.devices?.mobile?.total || 0 }}</div>
+            <div class="stat-details">
+              <span class="online">
+                <span class="dot"></span>
+                {{ stats.devices?.mobile?.online || 0 }} online
+              </span>
+              <span class="offline">
+                <span class="dot"></span>
+                {{ (stats.devices?.mobile?.total || 0) - (stats.devices?.mobile?.online || 0) }} offline
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="reg-card">
+          <div class="reg-header">
+            <div class="reg-icon-wrapper bg-purple-100">
+              <ServerIcon class="reg-icon text-purple-600" />
+            </div>
+            <span class="reg-title">SIP Trunks</span>
+          </div>
+          <div class="reg-stats">
+            <div class="stat-num">{{ stats.devices?.trunks?.total || 0 }}</div>
+            <div class="stat-details">
+              <span class="online">
+                <span class="dot"></span>
+                {{ stats.devices?.trunks?.online || 0 }} online
+              </span>
+              <span class="offline">
+                <span class="dot"></span>
+                {{ (stats.devices?.trunks?.total || 0) - (stats.devices?.trunks?.online || 0) }} offline
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Quick Actions</h2>
+        <span class="section-subtitle">Common system management tasks</span>
+      </div>
+      
+      <div class="quick-actions">
+        <button class="action-card" @click="$router.push('/system/tenants')">
+          <div class="action-icon-wrapper">
+            <PlusIcon class="action-icon" />
+          </div>
+          <div class="action-content">
+            <span class="action-title">Create Tenant</span>
+            <span class="action-desc">Add a new tenant organization</span>
+          </div>
+          <ArrowRightIcon class="action-arrow" />
         </button>
-        <button class="action-btn" @click="$router.push('/system/trunks')">
-           <span class="icon">+</span>
-           Add Gateway
+
+        <button class="action-card" @click="$router.push('/system/trunks')">
+          <div class="action-icon-wrapper">
+            <GlobeIcon class="action-icon" />
+          </div>
+          <div class="action-content">
+            <span class="action-title">Add Gateway</span>
+            <span class="action-desc">Configure a new SIP gateway</span>
+          </div>
+          <ArrowRightIcon class="action-arrow" />
         </button>
-         <button class="action-btn" @click="$router.push('/system/logs')">
-           <span class="icon">></span>
-           View Logs
+
+        <button class="action-card" @click="$router.push('/system/logs')">
+          <div class="action-icon-wrapper">
+            <FileTextIcon class="action-icon" />
+          </div>
+          <div class="action-content">
+            <span class="action-title">View Logs</span>
+            <span class="action-desc">Check system logs & events</span>
+          </div>
+          <ArrowRightIcon class="action-arrow" />
         </button>
-     </div>
+
+        <button class="action-card" @click="$router.push('/system/settings')">
+          <div class="action-icon-wrapper">
+            <SettingsIcon class="action-icon" />
+          </div>
+          <div class="action-content">
+            <span class="action-title">Global Settings</span>
+            <span class="action-desc">Manage system configuration</span>
+          </div>
+          <ArrowRightIcon class="action-arrow" />
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { Building, Users, Phone, AlertTriangle, Monitor as MonitorIcon, Smartphone as SmartphoneIcon, Phone as PhoneIcon, Server as ServerIcon } from 'lucide-vue-next'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import StatCard from '../../components/features/StatCard.vue'
 import { systemAPI } from '../../services/api'
+import { 
+  Monitor as MonitorIcon, 
+  Smartphone as SmartphoneIcon, 
+  Phone as PhoneIcon, 
+  Server as ServerIcon,
+  Plus as PlusIcon,
+  Globe as GlobeIcon,
+  FileText as FileTextIcon,
+  Settings as SettingsIcon,
+  ArrowRight as ArrowRightIcon
+} from 'lucide-vue-next'
 
 // Stats data
 const stats = ref({
@@ -149,6 +226,10 @@ const stats = ref({
     mobile: { total: 0, online: 0 },
     trunks: { total: 0, online: 0 }
   }
+})
+
+const formattedUsers = computed(() => {
+  return stats.value.users.toLocaleString()
 })
 
 const loading = ref(true)
@@ -180,134 +261,273 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.view-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--spacing-xl);
-}
-
+/* Status Indicator */
 .status-indicator {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: white;
-  padding: 6px 12px;
-  border-radius: 20px;
+  gap: var(--spacing-2);
+  background: var(--bg-card);
+  padding: var(--spacing-2) var(--spacing-4);
+  border-radius: var(--radius-full);
   border: 1px solid var(--border-color);
-  font-size: 13px;
-  font-weight: 500;
-}
-.dot { width: 8px; height: 8px; border-radius: 50%; }
-.dot.online { background: #22c55e; box-shadow: 0 0 0 2px #dcfce7; }
-
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 24px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
 }
 
-.stat-card {
-  background: white;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 24px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  box-shadow: var(--shadow-sm);
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
 }
 
-.icon-box {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.status-dot.online {
+  background: var(--status-good);
+  box-shadow: 0 0 0 2px var(--status-good-subtle);
 }
 
-.stat-info {
-  display: flex;
-  flex-direction: column;
+.status-text {
+  color: var(--text-primary);
 }
 
-.stat-info .label { font-size: 13px; color: var(--text-muted); font-weight: 500; }
-.stat-info .value { font-size: 24px; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
-
-.section-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--text-primary); }
-
-.quick-actions {
-  display: flex;
-  gap: 16px;
+/* Section Styles */
+.section {
+  margin-top: var(--spacing-8);
 }
 
-.action-btn {
-  background: white;
-  border: 1px solid var(--border-color);
-  padding: 12px 20px;
-  border-radius: var(--radius-sm);
-  font-weight: 500;
-  color: var(--text-main);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transition: all 0.2s;
+.section-header {
+  margin-bottom: var(--spacing-5);
 }
-.action-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }
-.action-btn .icon { font-weight: bold; font-size: 16px; }
 
-.mt-8 { margin-top: 32px; }
+.section-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin: 0 0 var(--spacing-1) 0;
+}
+
+.section-subtitle {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
 
 /* Registration Grid */
 .registration-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-4);
 }
 
 .reg-card {
-  background: white;
+  background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 16px;
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-5);
+  transition: box-shadow var(--transition-fast);
+}
+
+.reg-card:hover {
+  box-shadow: var(--shadow-md);
 }
 
 .reg-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-4);
+}
+
+.reg-icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .reg-icon {
   width: 20px;
   height: 20px;
-  color: var(--primary-color);
 }
 
 .reg-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-main);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
 }
 
-.reg-stats .stat-num {
-  font-size: 28px;
-  font-weight: 700;
+.reg-stats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.stat-num {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
   color: var(--text-primary);
-  line-height: 1;
-  margin-bottom: 8px;
+  line-height: var(--leading-none);
 }
 
 .stat-details {
   display: flex;
-  gap: 12px;
-  font-size: 12px;
+  flex-wrap: wrap;
+  gap: var(--spacing-3);
+  font-size: var(--text-xs);
 }
 
-.stat-details .online { color: #22c55e; display: flex; align-items: center; gap: 4px; }
-.stat-details .offline { color: #94a3b8; display: flex; align-items: center; gap: 4px; }
-.stat-details .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.stat-details .online {
+  color: var(--status-good);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.stat-details .offline {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.stat-details .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+}
+
+/* Quick Actions */
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--spacing-4);
+}
+
+.action-card {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  padding: var(--spacing-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+  width: 100%;
+}
+
+.action-card:hover {
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.action-card:hover .action-arrow {
+  transform: translateX(4px);
+  color: var(--primary-color);
+}
+
+.action-icon-wrapper {
+  width: 44px;
+  height: 44px;
+  background: var(--primary-subtle);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.action-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--primary-color);
+}
+
+.action-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.action-title {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-0-5);
+}
+
+.action-desc {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.action-arrow {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+/* Mobile Responsive */
+@media (max-width: 1024px) {
+  .registration-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .quick-actions {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .section {
+    margin-top: var(--spacing-6);
+  }
+  
+  .registration-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-3);
+  }
+  
+  .reg-card {
+    padding: var(--spacing-4);
+  }
+  
+  .stat-num {
+    font-size: var(--text-2xl);
+  }
+  
+  .quick-actions {
+    grid-template-columns: 1fr;
+  }
+  
+  .action-card {
+    padding: var(--spacing-3);
+  }
+}
+
+@media (max-width: 480px) {
+  .registration-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .reg-header {
+    margin-bottom: var(--spacing-3);
+  }
+  
+  .stat-details {
+    flex-direction: column;
+    gap: var(--spacing-1);
+  }
+  
+  .action-icon-wrapper {
+    width: 40px;
+    height: 40px;
+  }
+}
 </style>

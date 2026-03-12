@@ -18,9 +18,9 @@ func ProvisionTenant(db *gorm.DB, tenant *Tenant) error {
 			"domain":    tenant.Domain,
 		}).Info("Provisioning FreeSWITCH resources for tenant")
 
-		// 1. Clone global feature codes as tenant-specific copies
-		if err := cloneGlobalFeatureCodes(tx, tenant.ID); err != nil {
-			return fmt.Errorf("clone feature codes: %w", err)
+		// 1. Provision all feature code modules for this tenant
+		if err := ProvisionFeatureCodes(tx, tenant.ID, nil); err != nil {
+			return fmt.Errorf("provision feature codes: %w", err)
 		}
 
 		// 2. Create default parking slots
@@ -94,55 +94,6 @@ func DeprovisionTenant(db *gorm.DB, tenantID uint) error {
 		log.WithField("tenant_id", tenantID).Info("Tenant deprovisioning completed")
 		return nil
 	})
-}
-
-// cloneGlobalFeatureCodes copies all global feature codes (tenant_id IS NULL)
-// into tenant-specific copies that can be independently customized.
-func cloneGlobalFeatureCodes(tx *gorm.DB, tenantID uint) error {
-	var globals []FeatureCode
-	if err := tx.Where("tenant_id IS NULL AND is_global = ?", true).Find(&globals).Error; err != nil {
-		return err
-	}
-
-	if len(globals) == 0 {
-		log.Debug("No global feature codes to clone")
-		return nil
-	}
-
-	for _, g := range globals {
-		clone := FeatureCode{
-			TenantID:      &tenantID,
-			Code:          g.Code,
-			CodeRegex:     g.CodeRegex,
-			Name:          g.Name,
-			Description:   g.Description,
-			Action:        g.Action,
-			Extension:     g.Extension,
-			Order:         g.Order,
-			IsGlobal:      false, // tenant-specific copy
-			Context:       g.Context,
-			ActionData:    g.ActionData,
-			ActionParams:  g.ActionParams,
-			ParkLotName:   g.ParkLotName,
-			ParkTimeout:   g.ParkTimeout,
-			ParkAnnounce:  g.ParkAnnounce,
-			WebhookURL:    g.WebhookURL,
-			WebhookMethod: g.WebhookMethod,
-			BLFHint:       g.BLFHint,
-			Enabled:       g.Enabled,
-		}
-
-		if err := tx.Create(&clone).Error; err != nil {
-			return fmt.Errorf("clone feature code %s: %w", g.Code, err)
-		}
-	}
-
-	log.WithFields(log.Fields{
-		"tenant_id": tenantID,
-		"count":     len(globals),
-	}).Debug("Cloned global feature codes for tenant")
-
-	return nil
 }
 
 // createDefaultInternalDialplan creates a dialplan entry for the tenant's

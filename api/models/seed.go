@@ -145,7 +145,6 @@ func RunSeeds(db *gorm.DB) error {
 		SeedDefaultTenantProfile,
 		SeedDefaultOutboundRoutes,
 		SeedDefaultSounds,
-		SeedDefaultFeatureCodes,
 		SeedDefaultChatplans,
 	}
 
@@ -256,50 +255,9 @@ func SeedDefaultSounds(db *gorm.DB) error {
 	return nil
 }
 
-// SeedDefaultFeatureCodes creates system feature codes for the default tenant
+// SeedDefaultFeatureCodes is a no-op — feature codes are now provisioned
+// per-tenant via ProvisionFeatureCodes() during tenant setup.
 func SeedDefaultFeatureCodes(db *gorm.DB) error {
-	// Check if any global feature codes exist
-	var count int64
-	if err := db.Model(&FeatureCode{}).Where("tenant_id IS NULL").Count(&count).Error; err != nil {
-		return err
-	}
-
-	if count > 0 {
-		return nil
-	}
-
-	log.Info("Creating default feature codes...")
-
-	// Default system feature codes (global, managed by system admin)
-	defaults := []FeatureCode{
-		{Code: "*97", CodeRegex: `^\*97$`, Name: "Voicemail Check", Action: FCActionVoicemail, Order: 10, IsGlobal: true},
-		{Code: "*98", CodeRegex: `^\*98$`, Name: "Voicemail Direct", Action: FCActionVoicemail, Order: 11, IsGlobal: true},
-		{Code: "*72", CodeRegex: `^\*72$`, Name: "Call Forward Enable", Action: FCActionCallForward, Order: 20, IsGlobal: true},
-		{Code: "*73", CodeRegex: `^\*73$`, Name: "Call Forward Disable", Action: FCActionCallForward, ActionData: "disable", Order: 21, IsGlobal: true},
-		{Code: "*78", CodeRegex: `^\*78$`, Name: "DND Enable", Action: FCActionDND, Order: 30, IsGlobal: true},
-		{Code: "*79", CodeRegex: `^\*79$`, Name: "DND Disable", Action: FCActionDND, ActionData: "disable", Order: 31, IsGlobal: true},
-		{Code: "*30", CodeRegex: `^\*30$`, Name: "Call Flow Toggle", Action: FCActionCallFlowToggle, Order: 40, IsGlobal: true},
-		// Parking - auto slot
-		{Code: "*70", CodeRegex: `^\*70$`, Name: "Valet Park", Action: FCActionPark, Order: 50, IsGlobal: true, ParkTimeout: 120},
-		// Parking - specific slot (*7001-*7099)
-		{Code: "*70XX", CodeRegex: `^\*70(?P<slot>\d{2})$`, Name: "Park to Slot", Action: FCActionParkSlot, Order: 51, IsGlobal: true, ParkTimeout: 120},
-		// Retrieve from slot (*5701-*5799)
-		{Code: "*57XX", CodeRegex: `^\*57(?P<slot>\d{2})$`, Name: "Retrieve from Slot", Action: FCActionParkRetrieve, Order: 52, IsGlobal: true, Extension: "5700"},
-		// Pickup
-		{Code: "*8", CodeRegex: `^\*8$`, Name: "Group Pickup", Action: FCActionPickup, ActionData: "group", Order: 60, IsGlobal: true},
-		{Code: "**", CodeRegex: `^\*\*(\d+)$`, Name: "Directed Pickup", Action: FCActionPickup, Order: 61, IsGlobal: true},
-		// Intercom
-		{Code: "*0", CodeRegex: `^\*0(\d+)$`, Name: "Intercom", Action: FCActionIntercom, Order: 70, IsGlobal: true},
-	}
-
-	for _, fc := range defaults {
-		fc.Enabled = true
-		if err := db.Create(&fc).Error; err != nil {
-			return err
-		}
-	}
-
-	log.Info("Default feature codes created")
 	return nil
 }
 

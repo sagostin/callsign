@@ -77,19 +77,17 @@ func TestFeatureCodeValidation(t *testing.T) {
 		Code:     "*55",
 		Name:     "Custom Code",
 		Action:   models.FCActionWebhook,
-		IsGlobal: false,
 	}
 	assert.NoError(t, fc.Validate())
 
-	// Valid global feature code (no tenant, IsGlobal true)
-	fcGlobal := &models.FeatureCode{
-		TenantID: nil, // Global codes have nil TenantID
+	// Valid voicemail feature code
+	fcVM := &models.FeatureCode{
+		TenantID: &tenantID,
 		Code:     "*97",
 		Name:     "Check Voicemail",
 		Action:   models.FCActionVoicemail,
-		IsGlobal: true,
 	}
-	assert.NoError(t, fcGlobal.Validate())
+	assert.NoError(t, fcVM.Validate())
 
 	// Invalid code format
 	fc3 := &models.FeatureCode{
@@ -97,31 +95,20 @@ func TestFeatureCodeValidation(t *testing.T) {
 		Code:     "55", // Missing * or #
 		Name:     "Invalid",
 		Action:   models.FCActionCustom,
-		IsGlobal: false,
 	}
 	assert.Error(t, fc3.Validate())
 }
 
-func TestFeatureCodeIsGlobal(t *testing.T) {
+func TestFeatureCodePerTenant(t *testing.T) {
 	tenantID := uint(1)
-
-	// Global code (IsGlobal true, nil TenantID)
-	global := &models.FeatureCode{
-		TenantID: nil,
-		Code:     "*97",
-		IsGlobal: true,
-	}
-	assert.True(t, global.IsGlobal)
-	assert.Nil(t, global.TenantID)
 
 	// Tenant-specific code
 	tenant := &models.FeatureCode{
 		TenantID: &tenantID,
 		Code:     "*55",
-		IsGlobal: false,
 	}
-	assert.False(t, tenant.IsGlobal)
 	assert.NotNil(t, tenant.TenantID)
+	assert.Equal(t, uint(1), *tenant.TenantID)
 }
 
 func TestConferenceSessionDuration(t *testing.T) {

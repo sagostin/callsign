@@ -1,112 +1,142 @@
 <template>
-  <div class="app-layout" :class="{ 'mobile-nav-open': isMobileOpen }">
-    <div class="mobile-toggle" @click="isMobileOpen = !isMobileOpen">
-       <MenuIcon v-if="!isMobileOpen" />
-       <XIcon v-else />
-    </div>
+  <div 
+    class="app-layout" 
+    :class="{ 
+      'mobile-nav-open': isMobileOpen,
+      'sidebar-collapsed': isCollapsed && !isMobile
+    }"
+  >
+    <!-- Mobile Menu Toggle -->
+    <button 
+      class="mobile-toggle" 
+      @click="isMobileOpen = !isMobileOpen"
+      aria-label="Toggle navigation menu"
+      :aria-expanded="isMobileOpen"
+    >
+      <MenuIcon v-if="!isMobileOpen" :size="20" />
+      <XIcon v-else :size="20" />
+    </button>
 
-    <div class="layout-sidebar">
-      <Sidebar @navigated="isMobileOpen = false" />
-    </div>
-    
-    <div class="layout-topbar">
+    <!-- Sidebar -->
+    <aside class="layout-sidebar" role="navigation" aria-label="Main navigation">
+      <Sidebar 
+        :collapsed="isCollapsed && !isMobile" 
+        @navigated="handleNavigated"
+        @toggle-collapse="isCollapsed = !isCollapsed"
+      />
+    </aside>
+
+    <!-- Top Bar -->
+    <header class="layout-topbar" role="banner">
       <TopBar />
-    </div>
-    
-    <div class="mobile-overlay" v-if="isMobileOpen" @click="isMobileOpen = false"></div>
+    </header>
 
-    <main class="layout-content">
-      <router-view />
+    <!-- Mobile Overlay -->
+    <div 
+      v-if="isMobileOpen" 
+      class="mobile-overlay" 
+      @click="isMobileOpen = false"
+      aria-hidden="true"
+    ></div>
+
+    <!-- Main Content -->
+    <main class="layout-content" role="main">
+      <router-view v-slot="{ Component }">
+        <transition name="page" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </router-view>
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import Sidebar from './Sidebar.vue'
 import TopBar from './TopBar.vue'
 import { Menu as MenuIcon, X as XIcon } from 'lucide-vue-next'
 
+// Mobile menu state
 const isMobileOpen = ref(false)
+const isCollapsed = ref(false)
+const isMobile = ref(false)
+
+// Check if viewport is mobile
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 768
+  if (!isMobile.value) {
+    isMobileOpen.value = false
+  }
+}
+
+// Handle navigation - close mobile menu
+const handleNavigated = () => {
+  if (isMobile.value) {
+    isMobileOpen.value = false
+  }
+}
+
+// Handle resize
+let resizeObserver = null
+
+onMounted(() => {
+  checkMobile()
+  
+  // Use ResizeObserver if available, otherwise fallback to resize event
+  if (window.ResizeObserver) {
+    resizeObserver = new ResizeObserver(() => {
+      checkMobile()
+    })
+    resizeObserver.observe(document.documentElement)
+  } else {
+    window.addEventListener('resize', checkMobile)
+  }
+
+  // Close mobile menu on escape key
+  const handleEscape = (e) => {
+    if (e.key === 'Escape' && isMobileOpen.value) {
+      isMobileOpen.value = false
+    }
+  }
+  document.addEventListener('keydown', handleEscape)
+
+  // Restore cleanup
+  onUnmounted(() => {
+    if (resizeObserver) {
+      resizeObserver.disconnect()
+    } else {
+      window.removeEventListener('resize', checkMobile)
+    }
+    document.removeEventListener('keydown', handleEscape)
+  })
+})
 </script>
 
 <style scoped>
-.mobile-toggle {
-  display: none;
-  position: fixed;
-  top: 12px;
-  left: 16px;
-  z-index: 100;
-  background: white;
-  padding: 8px;
-  border-radius: 4px;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-  cursor: pointer;
+/* Page transition animations */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
 
-@media (max-width: 768px) {
-  .mobile-toggle { display: block; }
-  
-  .layout-sidebar {
-    position: fixed;
-    top: 0; left: 0; bottom: 0;
-    z-index: 90;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease;
-    width: 280px;
-    background: white;
-    border-right: 1px solid var(--border-color);
-  }
-  
-  .mobile-nav-open .layout-sidebar { transform: translateX(0); }
-  
-  .mobile-overlay {
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.5); z-index: 80;
-  }
-  
-  .layout-topbar {
-    margin-left: 0 !important;
-    padding-left: 52px; /* Space for mobile toggle */
-  }
-  
-  .layout-content {
-    margin-left: 0 !important;
-    padding: 16px;
-    padding-top: 12px;
-  }
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
 }
 
-/* Tablet breakpoint */
-@media (min-width: 769px) and (max-width: 1024px) {
-  .layout-sidebar {
-    width: 200px;
-  }
-  
-  .layout-topbar,
-  .layout-content {
-    margin-left: 200px;
-  }
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
-/* Small mobile */
-@media (max-width: 480px) {
-  .mobile-toggle {
-    top: 8px;
-    left: 8px;
-    padding: 6px;
-  }
-  
-  .layout-sidebar {
-    width: 100%;
-  }
-  
-  .layout-topbar {
-    padding-left: 48px;
-  }
-  
-  .layout-content {
-    padding: 12px;
-  }
+/* Ensure smooth scrolling */
+.layout-content {
+  scroll-behavior: smooth;
+}
+
+/* Focus visible styles for accessibility */
+.mobile-toggle:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 </style>

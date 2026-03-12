@@ -446,22 +446,9 @@ func (h *Handler) ListFeatureCodes(c *fiber.Ctx) error {
 }
 
 func (h *Handler) ListSystemFeatureCodes(c *fiber.Ctx) error {
-	// Return the hardcoded system feature codes
-	systemCodes := []map[string]interface{}{
-		{"code": "*97", "action": "voicemail_check", "description": "Check Voicemail"},
-		{"code": "*72", "action": "call_forward_enable", "description": "Enable Call Forward"},
-		{"code": "*73", "action": "call_forward_disable", "description": "Disable Call Forward"},
-		{"code": "*78", "action": "dnd_enable", "description": "Enable Do Not Disturb"},
-		{"code": "*79", "action": "dnd_disable", "description": "Disable Do Not Disturb"},
-		{"code": "*70", "action": "park", "description": "Park Call"},
-		{"code": "*71", "action": "pickup", "description": "Pickup Parked Call"},
-		{"code": "*0", "action": "intercom", "description": "Intercom"},
-		{"code": "*1", "action": "blind_transfer", "description": "Blind Transfer"},
-		{"code": "*2", "action": "attended_transfer", "description": "Attended Transfer"},
-		{"code": "*67", "action": "caller_id_block", "description": "Block Caller ID"},
-		{"code": "*82", "action": "caller_id_unblock", "description": "Unblock Caller ID"},
-	}
-	return c.JSON(systemCodes)
+	tenantID := middleware.GetTenantID(c)
+	modules := models.ListAvailableModules(h.DB, tenantID)
+	return c.JSON(fiber.Map{"data": modules})
 }
 
 func (h *Handler) CreateFeatureCode(c *fiber.Ctx) error {

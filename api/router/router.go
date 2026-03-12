@@ -629,11 +629,11 @@ func (r *Router) Init() {
 	gateways := system.Group("/gateways")
 	gateways.Get("/", r.Handler.ListGateways)
 	gateways.Post("/", r.Handler.CreateGateway)
+	gateways.Get("/status", r.Handler.GetGatewayStatus)  // Must be before /:id
+	gateways.Post("/reorder", r.Handler.ReorderGateways) // Must be before /:id
 	gateways.Get("/:id", r.Handler.GetGateway)
 	gateways.Put("/:id", r.Handler.UpdateGateway)
 	gateways.Delete("/:id", r.Handler.DeleteGateway)
-	gateways.Get("/status", r.Handler.GetGatewayStatus)
-	gateways.Post("/reorder", r.Handler.ReorderGateways)
 
 	// Bridges
 	bridges := system.Group("/bridges")

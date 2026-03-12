@@ -313,9 +313,10 @@ type DefaultOutboundRoute struct {
 	StripDigits   int    `json:"strip_digits" gorm:"default:0"`
 	PrependDigits string `json:"prepend_digits"`
 
-	Order   int  `json:"order" gorm:"default:0"`
-	Enabled bool `json:"enabled" gorm:"default:true"`
-	Default bool `json:"default" gorm:"default:false"`
+	Order     int    `json:"order" gorm:"default:0"`
+	TollAllow string `json:"toll_allow"` // Call class: "domestic", "international", "premium"
+	Enabled   bool   `json:"enabled" gorm:"default:true"`
+	Default   bool   `json:"default" gorm:"default:false"`
 }
 
 func (r *DefaultOutboundRoute) BeforeCreate(tx *gorm.DB) error {

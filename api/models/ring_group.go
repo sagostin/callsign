@@ -15,6 +15,8 @@ const (
 	RingStrategySequence     RingGroupStrategy = "sequence"     // Ring one after another
 	RingStrategyRandom       RingGroupStrategy = "random"       // Random order
 	RingStrategyRoundRobin   RingGroupStrategy = "round-robin"  // Cycle through
+	RingStrategyEnterprise   RingGroupStrategy = "enterprise"   // Ring all with per-member delays
+	RingStrategyRollover     RingGroupStrategy = "rollover"     // Sequential without delay, pipe-separated
 )
 
 // RingGroup represents a ring group for call distribution
@@ -53,6 +55,22 @@ type RingGroup struct {
 	AlertInfo          string `json:"alert_info"`         // SIP Alert-Info header value for ringtone
 	FollowMeEnabled    bool   `json:"follow_me_enabled" gorm:"default:false"`
 	MissedCallTracking bool   `json:"missed_call_tracking" gorm:"default:true"`
+
+	// Greeting / Pre-ring audio
+	GreetingPath string `json:"greeting_path"` // Audio file to play before ringing
+
+	// Exit key — allows caller to press a key during ringing to jump to timeout destination
+	ExitKey string `json:"exit_key"` // DTMF key, e.g., "1"
+
+	// Call screening — record caller name and play to answering party
+	CallScreenEnabled bool `json:"call_screen_enabled" gorm:"default:false"`
+
+	// Ring group-level forwarding — forward entire group to a single destination
+	ForwardEnabled     bool   `json:"forward_enabled" gorm:"default:false"`
+	ForwardDestination string `json:"forward_destination"`
+
+	// Missed call notification
+	MissedCallEmail string `json:"missed_call_email"` // Email address for missed call alerts
 
 	// Status
 	Enabled bool `json:"enabled" gorm:"default:true"`

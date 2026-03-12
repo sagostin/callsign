@@ -479,14 +479,14 @@ func (h *FSHandler) buildFeatureCodeDialplans(req *XMLCurlRequest) string {
 	// Find tenant by domain
 	var tenant models.Tenant
 	if err := h.DB.Where("domain = ?", domain).First(&tenant).Error; err != nil {
-		// No tenant found, just use global feature codes
-		tenant.ID = 0
+		// No tenant found — no feature codes to generate
+		return ""
 	}
 
-	// Get feature codes (global + tenant-specific)
+	// Get feature codes (strictly per-tenant, no global fallback)
 	var featureCodes []models.FeatureCode
 	h.DB.Where(
-		"(tenant_id IS NULL OR tenant_id = ?) AND enabled = ?",
+		"tenant_id = ? AND enabled = ?",
 		tenant.ID, true,
 	).Order(`"order" ASC`).Find(&featureCodes)
 
@@ -518,8 +518,8 @@ func (h *FSHandler) buildFeatureCodeDialplans(req *XMLCurlRequest) string {
 		b.WriteString(fmt.Sprintf(`          <action application="set" data="feature_code_action=%s"/>`, string(fc.Action)))
 		b.WriteString("\n")
 
-		// Route to ESL socket for processing
-		b.WriteString(`          <action application="socket" data="127.0.0.1:9001 async full"/>`)
+		// Route to featurecodes ESL socket for processing
+		b.WriteString(`          <action application="socket" data="127.0.0.6:9001 async full"/>`)
 		b.WriteString("\n")
 
 		b.WriteString(`        </condition>`)

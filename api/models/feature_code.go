@@ -57,9 +57,6 @@ type FeatureCode struct {
 	// Ordering for dialplan matching (lower = higher priority)
 	Order int `json:"order" gorm:"default:100"`
 
-	// System code flag (managed by system admin only)
-	IsGlobal bool `json:"is_global" gorm:"default:false"`
-
 	// Context for dialplan
 	Context string `json:"context" gorm:"default:'default'"`
 
@@ -184,47 +181,30 @@ func (fc *FeatureCode) ToDialplanXML(domain string) string {
 </extension>`
 }
 
-// GetFeatureCode looks up a feature code for a tenant (including global codes)
+// GetFeatureCode looks up a feature code for a specific tenant.
+// No global fallback — all codes are per-tenant.
 func GetFeatureCode(db *gorm.DB, tenantID uint, code string) (*FeatureCode, error) {
-	var fc FeatureCode
-
-	// Try tenant-specific first, then global
-	err := db.Where("(tenant_id = ? OR tenant_id IS NULL) AND enabled = ?", tenantID, true).
-		Order("tenant_id DESC NULLS LAST, \"order\" ASC"). // Tenant-specific takes priority
-		Find(&[]FeatureCode{}).Error                       // Get all matching
-
-	if err != nil {
-		return nil, err
-	}
-
-	// Find matching code (supports regex)
 	var codes []FeatureCode
-	db.Where("(tenant_id = ? OR tenant_id IS NULL) AND enabled = ?", tenantID, true).
+	db.Where("tenant_id = ? AND enabled = ?", tenantID, true).
 		Order("\"order\" ASC").
 		Find(&codes)
 
 	for _, candidate := range codes {
 		if matches, _ := candidate.MatchesDialedNumber(code); matches {
-			fc = candidate
-			return &fc, nil
+			return &candidate, nil
 		}
 	}
 
 	return nil, gorm.ErrRecordNotFound
 }
 
-// ListFeatureCodes returns all feature codes for a tenant (including global)
-func ListFeatureCodes(db *gorm.DB, tenantID *uint) ([]FeatureCode, error) {
+// ListFeatureCodes returns all feature codes for a specific tenant.
+// No global fallback — all codes are per-tenant.
+func ListFeatureCodes(db *gorm.DB, tenantID uint) ([]FeatureCode, error) {
 	var codes []FeatureCode
-	query := db.Order("\"order\" ASC")
-
-	if tenantID != nil {
-		query = query.Where("tenant_id = ? OR tenant_id IS NULL", *tenantID)
-	} else {
-		query = query.Where("tenant_id IS NULL") // Global only
-	}
-
-	err := query.Find(&codes).Error
+	err := db.Where("tenant_id = ?", tenantID).
+		Order("\"order\" ASC").
+		Find(&codes).Error
 	return codes, err
 }
 

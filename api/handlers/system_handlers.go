@@ -939,7 +939,7 @@ func (h *Handler) RestartSofiaProfile(c *fiber.Ctx) error {
 		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
-	jobUUID, err := h.ESLManager.BgAPI("sofia profile " + profileName + " restart reloadxml")
+	jobUUID, err := h.ESLManager.BgAPI("sofia profile " + profileName + " restart")
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to restart profile: " + err.Error()})
 	}

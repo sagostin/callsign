@@ -265,19 +265,25 @@ const loadGateways = async () => {
     const data = response.data || []
     gateways.value = data.map(g => ({
       id: g.id,
-      name: g.name,
-      hostname: g.proxy || g.hostname,
+      name: g.gateway_name || g.name || '',
+      hostname: g.proxy || g.hostname || '',
       type: g.gateway_type || 'Public',
       tenants: g.tenant_count || 0,
       status: g.enabled ? (g.register ? 'Registered' : 'Active') : 'Disabled',
-      protocol: g.protocol || 'udp',
+      protocol: g.transport || g.protocol || 'udp',
       port: g.port || 5060,
       register: g.register || false,
       username: g.username || '',
       realm: g.realm || '',
       enabled: g.enabled !== false,
       priority: g.priority || 0,
-      weight: g.weight || 100
+      weight: g.weight || 100,
+      dial_format: g.dial_format || 'e164',
+      allow_10_digit: g.allow_10_digit !== false,
+      allow_11_digit: g.allow_11_digit !== false,
+      international_prefix: g.international_prefix || '011',
+      strip_prefix: g.strip_prefix || '',
+      prepend_prefix: g.prepend_prefix || ''
     })).sort((a, b) => a.priority - b.priority)
     originalOrder.value = gateways.value.map(g => ({ id: g.id, priority: g.priority, weight: g.weight }))
   } catch (e) {
