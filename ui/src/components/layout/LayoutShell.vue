@@ -41,11 +41,7 @@
 
     <!-- Main Content -->
     <main class="layout-content" role="main">
-      <router-view v-slot="{ Component, route }">
-        <transition name="page" mode="out-in">
-          <component :is="Component" :key="route.fullPath" />
-        </transition>
-      </router-view>
+      <router-view />
     </main>
   </div>
 </template>
@@ -113,22 +109,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Page transition animations */
-.page-enter-active,
-.page-leave-active {
-  transition: opacity var(--transition-fast), transform var(--transition-fast);
-}
-
-.page-enter-from {
-  opacity: 0;
-  transform: translateY(4px);
-}
-
-.page-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-}
-
 /* Ensure smooth scrolling */
 .layout-content {
   scroll-behavior: smooth;
