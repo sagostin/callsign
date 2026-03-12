@@ -41,23 +41,23 @@
       <div class="bottom-actions">
         <!-- PROFILE DROPDOWN TRIGGER -->
         <div class="user-avatar-container" @click.stop="toggleProfileMenu">
-            <div class="user-avatar">JS</div>
+            <div class="user-avatar">{{ userInitials }}</div>
             <div v-if="showProfileMenu" class="dropdown-menu profile-menu">
                 <div class="menu-header">
-                    <div class="user-name">John Smith</div>
-                    <div class="user-ext">Ext. 101</div>
+                    <div class="user-name">{{ userName }}</div>
+                    <div class="user-ext">{{ userExtLabel }}</div>
                 </div>
                 <div class="menu-divider"></div>
-                <router-link to="/settings" class="menu-item">
+                <router-link to="/settings" class="menu-item" @click="showProfileMenu = false">
                     <User class="icon-xs" /> Profile
                 </router-link>
-                <router-link to="/settings" class="menu-item">
+                <router-link to="/settings" class="menu-item" @click="showProfileMenu = false">
                     <SettingsIcon class="icon-xs" /> Settings
                 </router-link>
                 <div class="menu-divider"></div>
-                <div class="menu-item text-bad">
+                <button class="menu-item text-bad" @click="logout">
                     <LogOut class="icon-xs" /> Log Out
-                </div>
+                </button>
             </div>
         </div>
       </div>
@@ -205,11 +205,16 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuth } from '../services/auth'
 import { 
   Phone, MessageSquare, Users, UsersRound, Clock, Search, Headphones, 
   ChevronDown, Voicemail, User, Settings as SettingsIcon, LogOut, Printer, 
   Mic as MicIcon, Check as CheckIcon, LogIn as LoginIcon
 } from 'lucide-vue-next'
+
+const router = useRouter()
+const auth = useAuth()
 
 // --- STATUS LOGIC ---
 const showStatusMenu = ref(false)
@@ -258,10 +263,26 @@ const clearCustomStatus = () => {
 // --- PROFILE LOGIC ---
 const showProfileMenu = ref(false)
 
+const userName = computed(() => auth.state.user?.name || auth.state.user?.username || 'User')
+const userInitials = computed(() => {
+    const name = userName.value
+    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+})
+const userExtLabel = computed(() => {
+    const ext = auth.state.user?.extension
+    return ext ? `Ext. ${ext}` : (auth.state.user?.email || '')
+})
+
 const toggleProfileMenu = () => {
     showProfileMenu.value = !showProfileMenu.value
     showStatusMenu.value = false
     showQueueMenu.value = false
+}
+
+const logout = async () => {
+    showProfileMenu.value = false
+    await auth.logout()
+    router.push('/login')
 }
 
 // --- QUEUE LOGIN LOGIC ---
@@ -513,6 +534,7 @@ const closeDropdowns = () => {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 10px; font-size: 13px; color: var(--text-main);
     border-radius: var(--radius-sm); cursor: pointer; text-decoration: none;
+    background: transparent; border: none; font: inherit; width: 100%; text-align: left;
 }
 .menu-item:hover { background: var(--bg-app); }
 

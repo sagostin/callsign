@@ -88,8 +88,8 @@
              <div class="section-header">
                <ServerIcon class="section-icon" />
                <div>
-                 <h3>Generic SIP Registration</h3>
-                 <p class="text-muted text-sm">Configure manual SIP credentials for third-party devices or softphones.</p>
+                 <h3>Generic Device Registration</h3>
+                 <p class="text-muted text-sm">Configure credentials and media settings for this device.</p>
                </div>
              </div>
 
@@ -97,24 +97,49 @@
                <div class="form-row">
                  <div class="form-group flex-1">
                     <label>Registration Username</label>
-                    <input v-model="device.sip_username" class="input-field code" :placeholder="device.mac ? 'd_' + device.mac : 'Auto-generated'">
+                    <input v-model="device.registration_user" class="input-field code" :placeholder="device.mac ? 'd_' + device.mac : 'Auto-generated'">
                  </div>
                  <div class="form-group flex-1">
-                    <label>SIP Password</label>
+                    <label>Password</label>
                     <div class="password-field">
-                      <input type="password" v-model="device.sip_password" class="input-field" placeholder="Hidden">
+                      <input type="password" v-model="device.registration_pass" class="input-field" placeholder="Hidden">
                     </div>
                  </div>
                </div>
-               
+
+               <div class="form-group">
+                 <label>Supported Codecs</label>
+                 <div class="codec-checkboxes">
+                   <label class="codec-check" v-for="codec in codecOptions" :key="codec">
+                     <input type="checkbox" :value="codec" v-model="device.codecs_array">
+                     <span>{{ codec }}</span>
+                   </label>
+                 </div>
+               </div>
+
+               <div class="form-row">
+                 <label class="toggle-row">
+                   <input type="checkbox" v-model="device.early_media">
+                   <span>Early Media (183)</span>
+                 </label>
+                 <label class="toggle-row">
+                   <input type="checkbox" v-model="device.encryption_enabled">
+                   <span>Encryption (SRTP)</span>
+                 </label>
+                 <label class="toggle-row">
+                   <input type="checkbox" v-model="device.t38_enabled">
+                   <span>T.38 Fax</span>
+                 </label>
+               </div>
+
                <div class="form-row">
                  <div class="form-group flex-1">
-                    <label>SIP Server</label>
-                    <input v-model="device.sip_server" class="input-field" placeholder="sip.domain.com">
-                 </div>
-                 <div class="form-group flex-1">
-                    <label>Proxy</label>
-                    <input v-model="device.sip_proxy" class="input-field" placeholder="Optional">
+                    <label>Transport</label>
+                    <select v-model="device.sip_transport" class="input-field">
+                      <option value="udp">UDP</option>
+                      <option value="tcp">TCP</option>
+                      <option value="tls">TLS</option>
+                    </select>
                  </div>
                </div>
              </div>
@@ -264,8 +289,19 @@ const device = ref({
   user_id: null,
   lines: [{ line_number: 1, line_type: 'line', label: 'Line 1', extension_id: null }],
   provision_token: '',
-  provision_url: ''
+  provision_url: '',
+  // Generic device settings
+  registration_user: '',
+  registration_pass: '',
+  sip_transport: 'udp',
+  early_media: false,
+  encryption_enabled: false,
+  t38_enabled: false,
+  supported_codecs: '',
+  codecs_array: ['PCMU', 'PCMA']
 })
+
+const codecOptions = ['PCMU', 'PCMA', 'G722', 'G729', 'opus']
 
 onMounted(async () => {
   await Promise.all([
@@ -326,7 +362,8 @@ async function loadDevice(id) {
     const d = res.data.data || res.data
     device.value = {
       ...d,
-      lines: d.lines && d.lines.length ? d.lines.sort((a,b) => a.line_number - b.line_number) : [{ line_number: 1, line_type: 'line' }]
+      lines: d.lines && d.lines.length ? d.lines.sort((a,b) => a.line_number - b.line_number) : [{ line_number: 1, line_type: 'line' }],
+      codecs_array: d.supported_codecs ? d.supported_codecs.split(',').map(c => c.trim()) : ['PCMU', 'PCMA']
     }
   } catch (e) {
     toast.error('Failed to load device')
@@ -378,25 +415,25 @@ async function saveDevice() {
     // Clean mac
     const cleanMac = device.value.mac.replace(/:/g, '').toLowerCase()
 
-    // Build clean payload - explicitly include only what we want to update
-    // Exclude nested objects like user, template, profile, tenant, lines to avoid backend parsing errors
+    // Build clean payload
     const payload = {
       mac: cleanMac,
       name: device.value.name,
       model: device.value.model,
-      manufacturer: device.value.manufacturer, // Ensure this is included if available
+      manufacturer: device.value.manufacturer,
       profile_id: device.value.profile_id,
       location_id: device.value.location_id,
       user_id: device.value.user_id,
-      template_id: device.value.template_id, // If used
-      sip_server: device.value.sip_server,
-      sip_proxy: device.value.sip_proxy,
+      template_id: device.value.template_id,
       sip_transport: device.value.sip_transport,
-      sip_port: device.value.sip_port,
-      sip_username: device.value.sip_username,
-      sip_password: device.value.sip_password,
+      registration_user: device.value.registration_user,
+      registration_pass: device.value.registration_pass,
+      early_media: device.value.early_media,
+      supported_codecs: (device.value.codecs_array || []).join(','),
+      t38_enabled: device.value.t38_enabled,
+      encryption_enabled: device.value.encryption_enabled,
       provision_token: device.value.provision_token,
-      enabled: device.value.enabled !== false // Default to true if undefined
+      enabled: device.value.enabled !== false
     }
 
     if (isNew.value) {
@@ -520,4 +557,43 @@ label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transf
 
 .icon-sm { width: 16px; height: 16px; }
 .full-width { width: 100%; }
+
+.codec-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.codec-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--text-main);
+  cursor: pointer;
+  background: white;
+  transition: border-color 0.15s, background 0.15s;
+}
+.codec-check:has(input:checked) {
+  border-color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.06);
+  color: var(--primary-color);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 4px 0;
+}
 </style>

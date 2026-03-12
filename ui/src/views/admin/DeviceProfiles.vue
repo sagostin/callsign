@@ -200,6 +200,35 @@
             </select>
           </div>
         </div>
+
+        <div class="divider"></div>
+
+        <div class="form-section">
+          <h4>SIP / Media Settings</h4>
+          <div class="form-group">
+            <label>Supported Codecs</label>
+            <div class="codec-checkboxes">
+              <label class="codec-check" v-for="codec in codecOptions" :key="codec">
+                <input type="checkbox" :value="codec" v-model="form.codecsArray">
+                <span>{{ codec }}</span>
+              </label>
+            </div>
+          </div>
+          <div class="feature-toggles">
+            <label class="toggle-row">
+              <input type="checkbox" v-model="form.earlyMedia">
+              <span>Early Media (183)</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" v-model="form.encryption">
+              <span>Encryption (SRTP)</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" v-model="form.t38">
+              <span>T.38 Fax Passthrough</span>
+            </label>
+          </div>
+        </div>
       </div>
 
       <div class="modal-actions">
@@ -241,8 +270,14 @@ const defaultForm = {
   blf: true,
   directory: true,
   dnd: false,
-  templateId: null
+  templateId: null,
+  earlyMedia: false,
+  encryption: false,
+  t38: false,
+  codecsArray: ['PCMU', 'PCMA']
 }
+
+const codecOptions = ['PCMU', 'PCMA', 'G722', 'G729', 'opus']
 
 const form = ref({ ...defaultForm })
 
@@ -271,7 +306,11 @@ async function fetchProfiles() {
       dnd: p.dnd || false,
       templateId: p.template_id,
       templateName: p.template_name,
-      deviceCount: p.device_count || 0
+      deviceCount: p.device_count || 0,
+      earlyMedia: p.early_media || false,
+      encryption: p.encryption_enabled || false,
+      t38: p.t38_enabled || false,
+      codecsArray: p.supported_codecs ? p.supported_codecs.split(',').map(c => c.trim()) : ['PCMU', 'PCMA']
     }))
   } catch (error) {
     toast?.error(error.message, 'Failed to load device profiles')
@@ -325,7 +364,11 @@ async function saveProfile() {
       blf: form.value.blf,
       directory: form.value.directory,
       dnd: form.value.dnd,
-      template_id: form.value.templateId
+      template_id: form.value.templateId,
+      early_media: form.value.earlyMedia,
+      encryption_enabled: form.value.encryption,
+      t38_enabled: form.value.t38,
+      supported_codecs: (form.value.codecsArray || []).join(',')
     }
     
     if (isEditing.value) {
@@ -664,4 +707,32 @@ label {
 .text-bad { color: #dc2626; }
 .icon-sm { width: 16px; height: 16px; }
 .icon-xs { width: 12px; height: 12px; }
+
+.codec-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.codec-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--text-main);
+  cursor: pointer;
+  background: white;
+  transition: border-color 0.15s, background 0.15s;
+}
+.codec-check:has(input:checked) {
+  border-color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.06);
+  color: var(--primary-color);
+}
 </style>

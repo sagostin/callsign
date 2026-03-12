@@ -11,15 +11,19 @@ import (
 
 // Client represents an inbound ESL connection to FreeSWITCH
 type Client struct {
-	Host     string
-	Port     int
-	Password string
-	conn     *eventsocket.Connection
-	events   chan *eventsocket.Event
-	errors   chan error
-	done     chan struct{}
-	mu       sync.RWMutex
-	running  bool
+	Host      string
+	Port      int
+	Password  string
+	conn      *eventsocket.Connection
+	events    chan *eventsocket.Event
+	errors    chan error
+	done      chan struct{}
+	closeOnce sync.Once
+	mu        sync.RWMutex
+	running   bool
+
+	// subscribedEvents remembers the event list so reconnect can re-subscribe
+	subscribedEvents []string
 }
 
 // NewClient creates a new ESL client
@@ -76,6 +80,11 @@ func (c *Client) Subscribe(eventTypes ...string) error {
 		return fmt.Errorf("failed to subscribe to events: %w", err)
 	}
 
+	// Remember subscribed events so reconnect can re-subscribe
+	c.mu.Lock()
+	c.subscribedEvents = eventTypes
+	c.mu.Unlock()
+
 	log.Infof("Subscribed to events: %v", eventTypes)
 
 	return nil
@@ -87,6 +96,12 @@ func (c *Client) StartEventLoop() {
 }
 
 func (c *Client) eventLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("ESL event loop panic (recovered): %v", r)
+		}
+	}()
+
 	for {
 		c.mu.RLock()
 		conn := c.conn
@@ -94,7 +109,13 @@ func (c *Client) eventLoop() {
 		c.mu.RUnlock()
 
 		if !running || conn == nil {
-			return
+			// If not running but done isn't closed, wait for reconnect or shutdown
+			select {
+			case <-c.done:
+				return
+			case <-time.After(500 * time.Millisecond):
+				continue
+			}
 		}
 
 		ev, err := conn.ReadEvent()
@@ -103,7 +124,11 @@ func (c *Client) eventLoop() {
 			case <-c.done:
 				return
 			default:
-				c.errors <- err
+				select {
+				case c.errors <- err:
+				default:
+					// errors channel full, drop
+				}
 				// Try to reconnect
 				c.reconnect()
 			}
@@ -127,23 +152,53 @@ func (c *Client) reconnect() {
 		c.conn.Close()
 		c.conn = nil
 	}
+	// Grab subscribed events so we can re-subscribe after reconnect
+	events := make([]string, len(c.subscribedEvents))
+	copy(events, c.subscribedEvents)
 	c.mu.Unlock()
 
-	for i := 0; i < 10; i++ {
-		time.Sleep(time.Duration(i+1) * time.Second)
+	for i := 0; i < 30; i++ {
+		// Check if shutdown was requested
+		select {
+		case <-c.done:
+			return
+		default:
+		}
 
-		log.Infof("Attempting to reconnect to FreeSWITCH (attempt %d)", i+1)
+		delay := time.Duration(i+1) * time.Second
+		if delay > 10*time.Second {
+			delay = 10 * time.Second
+		}
+		time.Sleep(delay)
+
+		log.Infof("Attempting to reconnect to FreeSWITCH (attempt %d/30)", i+1)
 
 		if err := c.Connect(); err != nil {
 			log.Warnf("Reconnect failed: %v", err)
 			continue
 		}
 
-		log.Info("Reconnected to FreeSWITCH")
+		// Re-subscribe to events after reconnecting
+		if len(events) > 0 {
+			if err := c.Subscribe(events...); err != nil {
+				log.Warnf("Re-subscribe failed after reconnect: %v", err)
+				// Close and retry
+				c.mu.Lock()
+				c.running = false
+				if c.conn != nil {
+					c.conn.Close()
+					c.conn = nil
+				}
+				c.mu.Unlock()
+				continue
+			}
+		}
+
+		log.Info("Reconnected to FreeSWITCH and re-subscribed to events")
 		return
 	}
 
-	log.Error("Failed to reconnect to FreeSWITCH after 10 attempts")
+	log.Error("Failed to reconnect to FreeSWITCH after 30 attempts")
 }
 
 // Events returns the event channel
@@ -195,7 +250,9 @@ func (c *Client) Originate(dialString, app, appArgs string) (string, error) {
 
 // Close closes the ESL connection
 func (c *Client) Close() {
-	close(c.done)
+	c.closeOnce.Do(func() {
+		close(c.done)
+	})
 
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -39,10 +39,21 @@ func (p *EventProcessor) Start() {
 }
 
 func (p *EventProcessor) processEvents() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("Event processor panic (recovered): %v", r)
+			// Restart the processor after a brief delay
+			time.Sleep(time.Second)
+			go p.processEvents()
+		}
+	}()
+
 	for {
 		select {
 		case event := <-p.client.Events():
-			p.handleEvent(event)
+			if event != nil {
+				p.handleEvent(event)
+			}
 		case err := <-p.client.Errors():
 			log.Errorf("ESL error: %v", err)
 		}

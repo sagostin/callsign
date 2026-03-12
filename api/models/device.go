@@ -100,6 +100,12 @@ type Device struct {
 	SIPTransport string `json:"sip_transport" gorm:"default:'udp'"` // udp, tcp, tls
 	SIPPort      int    `json:"sip_port" gorm:"default:5060"`
 
+	// Generic Device Settings (media/codec)
+	EarlyMedia        bool   `json:"early_media" gorm:"default:false"`        // Send 183 early media instead of 180
+	SupportedCodecs   string `json:"supported_codecs"`                        // Comma-separated: PCMU,PCMA,G722,G729,opus
+	T38Enabled        bool   `json:"t38_enabled" gorm:"default:false"`        // T.38 fax passthrough
+	EncryptionEnabled bool   `json:"encryption_enabled" gorm:"default:false"` // Require SRTP/TLS
+
 	// Provisioning
 	ProvisionURL   string    `json:"provision_url"`   // Auto-generated provisioning URL
 	ProvisionToken string    `json:"-"`               // Secret token for provisioning auth
@@ -400,6 +406,12 @@ type DeviceProfile struct {
 	DefaultVolume    int  `json:"default_volume" gorm:"default:7"`
 	VADEnabled       bool `json:"vad_enabled" gorm:"default:true"`
 	EchoCancellation bool `json:"echo_cancellation" gorm:"default:true"`
+
+	// SIP / Media settings (applied to generic devices in this profile)
+	EarlyMedia        bool   `json:"early_media" gorm:"default:false"`        // Send 183 early media instead of 180
+	SupportedCodecs   string `json:"supported_codecs"`                        // Comma-separated: PCMU,PCMA,G722,G729,opus
+	T38Enabled        bool   `json:"t38_enabled" gorm:"default:false"`        // T.38 fax passthrough
+	EncryptionEnabled bool   `json:"encryption_enabled" gorm:"default:false"` // Require SRTP/TLS
 
 	// Feature toggles
 	DirectoryEnabled   bool `json:"directory_enabled" gorm:"default:true"`

@@ -174,31 +174,41 @@
           <div v-if="newDevice.model === 'Generic SIP'" class="generic-sip-config">
             <div class="config-header">
               <ServerIcon class="config-icon" />
-              <span>SIP Registration Settings</span>
+              <span>Device Registration Settings</span>
             </div>
-            <p class="help-text">Configure manual SIP credentials for third-party devices.</p>
+            <p class="help-text">Configure credentials and media settings for this generic device.</p>
             
             <div class="form-group">
               <label>Registration Username</label>
-              <input v-model="newDevice.sipUsername" class="input-field code" placeholder="e.g. 101 or user@domain.com">
+              <input v-model="newDevice.sipUsername" class="input-field code" placeholder="Auto-generated from MAC">
             </div>
             
             <div class="form-group">
-              <label>SIP Password</label>
-              <input type="password" v-model="newDevice.sipPassword" class="input-field" placeholder="Enter SIP password">
+              <label>Password</label>
+              <input type="password" v-model="newDevice.sipPassword" class="input-field" placeholder="Enter device password">
             </div>
-            
+
+            <div class="form-group">
+              <label>Supported Codecs</label>
+              <div class="codec-checkboxes">
+                <label class="codec-check" v-for="codec in codecOptions" :key="codec">
+                  <input type="checkbox" :value="codec" v-model="newDevice.codecs">
+                  <span>{{ codec }}</span>
+                </label>
+              </div>
+            </div>
+
             <div class="form-row">
-              <div class="form-group">
-                <label>SIP Domain / Realm</label>
-                <input v-model="newDevice.sipDomain" class="input-field" placeholder="e.g. sip.example.com">
-              </div>
-              <div class="form-group">
-                <label>Outbound Proxy</label>
-                <input v-model="newDevice.sipProxy" class="input-field" placeholder="e.g. proxy.example.com">
-              </div>
+              <label class="toggle-row">
+                <input type="checkbox" v-model="newDevice.earlyMedia">
+                <span>Early Media (183)</span>
+              </label>
+              <label class="toggle-row">
+                <input type="checkbox" v-model="newDevice.encryption">
+                <span>Encryption (SRTP)</span>
+              </label>
             </div>
-            
+
             <div class="form-row">
               <div class="form-group">
                 <label>Transport</label>
@@ -208,40 +218,32 @@
                   <option value="tls">TLS</option>
                 </select>
               </div>
-              <div class="form-group">
-                <label>Port</label>
-                <input type="number" v-model="newDevice.sipPort" class="input-field" placeholder="5060">
-              </div>
             </div>
           </div>
 
           <div class="form-group">
             <label>Template</label>
-            <select v-model="newDevice.template" class="input-field">
-              <option value="">Default for Model</option>
-              <option value="Standard Yealink">Standard Yealink</option>
-              <option value="Executive Poly">Executive Poly</option>
-              <option value="Reception Console">Reception Console</option>
+            <select v-model="newDevice.template_id" class="input-field">
+              <option :value="null">Default for Model</option>
+              <option v-for="t in addModalTemplates" :key="t.id" :value="t.id">{{ t.name }}</option>
             </select>
           </div>
 
           <div class="form-row">
             <div class="form-group">
               <label>Assign to Extension</label>
-              <select v-model="newDevice.ext" class="input-field">
-                <option value="">Unassigned</option>
-                <option value="101">101 - Alice Smith</option>
-                <option value="102">102 - Bob Jones</option>
-                <option value="103">103 - Charlie Brown</option>
+              <select v-model="newDevice.extension_id" class="input-field">
+                <option :value="null">Unassigned</option>
+                <option v-for="ext in addModalExtensions" :key="ext.id" :value="ext.id">
+                  {{ ext.extension }} - {{ ext.name }}
+                </option>
               </select>
             </div>
             <div class="form-group">
-              <label>Location</label>
-              <select v-model="newDevice.location" class="input-field">
-                <option value="">No Location</option>
-                <option value="HQ - SF">HQ - SF</option>
-                <option value="HQ - NYC">HQ - NYC</option>
-                <option value="Warehouse">Warehouse</option>
+              <label>Device Profile</label>
+              <select v-model="newDevice.profile_id" class="input-field">
+                <option :value="null">None</option>
+                <option v-for="p in deviceProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
               </select>
             </div>
           </div>
@@ -292,7 +294,7 @@ import {
 } from 'lucide-vue-next'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
-import { devicesAPI, deviceProfilesAPI, usersAPI } from '@/services/api'
+import { devicesAPI, deviceProfilesAPI, deviceTemplatesAPI, extensionsAPI } from '@/services/api'
 
 const toast = inject('toast')
 const isLoading = ref(false)
@@ -318,7 +320,7 @@ const filterProfile = ref('')
 const activeDropdown = ref(null)
 
 onMounted(async () => {
-  await Promise.all([fetchDevices(), fetchDeviceProfiles()])
+  await Promise.all([fetchDevices(), fetchDeviceProfiles(), fetchAddModalData()])
   document.addEventListener('click', closeDropdown)
 })
 
@@ -370,6 +372,28 @@ async function fetchDeviceProfiles() {
   } catch (error) {
     console.error('Failed to load device profiles', error)
     deviceProfiles.value = []
+  }
+}
+
+// Data for add modal dropdowns
+const addModalTemplates = ref([])
+const addModalExtensions = ref([])
+const codecOptions = ['PCMU', 'PCMA', 'G722', 'G729', 'opus']
+
+async function fetchAddModalData() {
+  try {
+    const [tmplRes, extRes] = await Promise.all([
+      deviceTemplatesAPI.list(),
+      extensionsAPI.list()
+    ])
+    addModalTemplates.value = (tmplRes.data || []).map(t => ({ id: t.id, name: t.name }))
+    addModalExtensions.value = (extRes.data || []).map(e => ({
+      id: e.id,
+      extension: e.extension,
+      name: e.user ? `${e.user.first_name} ${e.user.last_name || ''}`.trim() : (e.description || 'Unassigned')
+    }))
+  } catch (error) {
+    console.error('Failed to load add-modal data', error)
   }
 }
 
@@ -470,15 +494,15 @@ const addMethod = ref('manual')
 const newDevice = ref({
   mac: '',
   model: '',
-  template: '',
-  ext: '',
-  location: '',
+  template_id: null,
+  extension_id: null,
+  profile_id: null,
   sipUsername: '',
   sipPassword: '',
-  sipDomain: '',
-  sipProxy: '',
   sipTransport: 'udp',
-  sipPort: 5060
+  earlyMedia: false,
+  encryption: false,
+  codecs: ['PCMU', 'PCMA']
 })
 
 const canAddDevice = computed(() => {
@@ -502,18 +526,38 @@ const startScan = () => {
 const addDevice = async () => {
   try {
     if (addMethod.value === 'manual') {
-      await devicesAPI.create({
-        mac_address: newDevice.value.mac.replace(/:/g, '').toLowerCase(),
+      const payload = {
+        mac: newDevice.value.mac.replace(/:/g, '').toLowerCase(),
         model: newDevice.value.model,
-        template_id: newDevice.value.template || null,
-        extension_id: newDevice.value.ext || null,
-        location: newDevice.value.location || null,
-      })
+        template_id: newDevice.value.template_id || undefined,
+        profile_id: newDevice.value.profile_id || undefined,
+        device_type: newDevice.value.model === 'Generic SIP' ? 'generic_sip' : 'provisioned',
+        registration_pass: newDevice.value.sipPassword || undefined,
+        registration_user: newDevice.value.sipUsername || undefined,
+        sip_transport: newDevice.value.sipTransport,
+        early_media: newDevice.value.earlyMedia,
+        encryption_enabled: newDevice.value.encryption,
+        supported_codecs: newDevice.value.codecs.join(','),
+      }
+      // If an extension is selected, we'll assign via lines after creation
+      const res = await devicesAPI.create(payload)
+      const createdDevice = res.data || res
+
+      // Assign extension to line 1 if selected
+      if (newDevice.value.extension_id && createdDevice.id) {
+        await devicesAPI.updateLines(createdDevice.id, [{
+          line_number: 1,
+          line_type: 'line',
+          extension_id: newDevice.value.extension_id,
+          enabled: true
+        }])
+      }
+
       toast?.success('Device added successfully')
     } else {
       for (const r of scanResults.value.filter(r => r.selected)) {
         await devicesAPI.create({
-          mac_address: r.mac.replace(/:/g, '').toLowerCase(),
+          mac: r.mac.replace(/:/g, '').toLowerCase(),
           model: r.model,
         })
       }
@@ -521,7 +565,7 @@ const addDevice = async () => {
     }
     await fetchDevices()
     showAddModal.value = false
-    newDevice.value = { mac: '', model: '', template: '', ext: '', location: '', sipUsername: '', sipPassword: '', sipDomain: '', sipProxy: '', sipTransport: 'udp', sipPort: 5060 }
+    newDevice.value = { mac: '', model: '', template_id: null, extension_id: null, profile_id: null, sipUsername: '', sipPassword: '', sipTransport: 'udp', earlyMedia: false, encryption: false, codecs: ['PCMU', 'PCMA'] }
     scanResults.value = []
   } catch (error) {
     toast?.error(error.message, 'Failed to add device')
@@ -956,5 +1000,44 @@ label {
 }
 .generic-sip-config .form-row {
   margin-bottom: 12px;
+}
+
+.codec-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.codec-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--text-main);
+  cursor: pointer;
+  background: white;
+  transition: border-color 0.15s, background 0.15s;
+}
+.codec-check:has(input:checked) {
+  border-color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.06);
+  color: var(--primary-color);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 4px 0;
 }
 </style>

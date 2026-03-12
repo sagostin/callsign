@@ -6,12 +6,36 @@
         <p class="text-muted text-sm">Configure feature codes for call forwarding, voicemail, parking, and more.</p>
       </div>
       <div class="header-actions">
+        <button class="btn-secondary" @click="showModulesPanel = !showModulesPanel">
+          <PackageIcon class="btn-icon" /> {{ showModulesPanel ? 'Hide Modules' : 'Manage Modules' }}
+        </button>
         <button class="btn-secondary" @click="refreshData" :disabled="loading">
           <RefreshCwIcon class="btn-icon" :class="{ 'spin': loading }" /> Refresh
         </button>
         <button class="btn-primary" @click="openCreateModal">
           <PlusIcon class="btn-icon" /> Add Feature Code
         </button>
+      </div>
+    </div>
+
+    <!-- Module Management Panel -->
+    <div v-if="showModulesPanel" class="modules-panel">
+      <h3 class="panel-title">Feature Code Modules</h3>
+      <p class="text-muted text-sm" style="margin-bottom: 16px;">Enable or disable groups of feature codes. Enabling a module provisions its default codes; disabling removes them.</p>
+      <div class="modules-grid">
+        <div v-for="mod in modules" :key="mod.module" class="module-card" :class="{ active: mod.enabled }">
+          <div class="module-header">
+            <div class="module-info">
+              <span class="module-label">{{ mod.label }}</span>
+              <span class="module-count">{{ mod.code_count }} code{{ mod.code_count !== 1 ? 's' : '' }}</span>
+            </div>
+            <button class="module-toggle" :class="{ on: mod.enabled }" @click="toggleModule(mod)" :disabled="togglingModule === mod.module">
+              <ToggleRightIcon v-if="mod.enabled" />
+              <ToggleLeftIcon v-else />
+            </button>
+          </div>
+          <p class="module-desc">{{ mod.description }}</p>
+        </div>
       </div>
     </div>
 
@@ -232,7 +256,8 @@ import {
   Edit as EditIcon, Trash as TrashIcon, ToggleLeft as ToggleLeftIcon,
   ToggleRight as ToggleRightIcon, PhoneOff as PhoneOffIcon,
   Phone, Voicemail, BellOff, ArrowRightLeft, ParkingCircle, PhoneIncoming,
-  Mic, Users, Webhook, Code, Settings
+  Mic, Users, Webhook, Code, Settings, Package as PackageIcon,
+  LogIn, LogOut, Video, Hash
 } from 'lucide-vue-next'
 import { featureCodesAPI } from '../../services/api'
 
@@ -243,15 +268,18 @@ const notify = {
 }
 
 const featureCodes = ref([])
+const modules = ref([])
 const loading = ref(false)
 const searchQuery = ref('')
 const filterAction = ref('')
 const showModal = ref(false)
 const showDeleteModal = ref(false)
+const showModulesPanel = ref(false)
 const isEditing = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
 const deleteTarget = ref(null)
+const togglingModule = ref(null)
 
 const defaultForm = {
   code: '',
@@ -262,7 +290,6 @@ const defaultForm = {
   action_data: '',
   order: 100,
   enabled: true,
-  is_global: true,
   park_lot_name: 'default',
   park_timeout: 120,
   park_announce: true,
@@ -286,6 +313,10 @@ const actionTypes = [
   { value: 'page_group', label: 'Page Group', icon: 'Users' },
   { value: 'transfer', label: 'Transfer', icon: 'Phone' },
   { value: 'record', label: 'Recording', icon: 'Mic' },
+  { value: 'speed_dial', label: 'Speed Dial', icon: 'Hash' },
+  { value: 'queue_login', label: 'Agent Login', icon: 'LogIn' },
+  { value: 'queue_logout', label: 'Agent Logout', icon: 'LogOut' },
+  { value: 'conference', label: 'Conference', icon: 'Video' },
   { value: 'webhook', label: 'Webhook', icon: 'Webhook' },
   { value: 'lua', label: 'Lua Script', icon: 'Code' },
   { value: 'custom', label: 'Custom', icon: 'Settings' }
@@ -317,13 +348,35 @@ const showActionData = computed(() => {
 const loadData = async () => {
   loading.value = true
   try {
-    const response = await featureCodesAPI.list()
-    featureCodes.value = response.data || []
+    const [codesRes, modulesRes] = await Promise.all([
+      featureCodesAPI.list(),
+      featureCodesAPI.listModules()
+    ])
+    featureCodes.value = codesRes.data || []
+    modules.value = modulesRes.data || []
   } catch (error) {
     notify.error('Failed to load feature codes')
     console.error(error)
   } finally {
     loading.value = false
+  }
+}
+
+const toggleModule = async (mod) => {
+  togglingModule.value = mod.module
+  try {
+    if (mod.enabled) {
+      await featureCodesAPI.deprovision([mod.module])
+      notify.success(`${mod.label} module disabled`)
+    } else {
+      await featureCodesAPI.provision([mod.module])
+      notify.success(`${mod.label} module enabled`)
+    }
+    await loadData()
+  } catch (error) {
+    notify.error(`Failed to toggle ${mod.label}`)
+  } finally {
+    togglingModule.value = null
   }
 }
 
@@ -343,7 +396,12 @@ const getActionClass = (action) => {
     park_slot: 'action-park',
     park_retrieve: 'action-park',
     pickup: 'action-pickup',
-    intercom: 'action-intercom'
+    intercom: 'action-intercom',
+    queue_login: 'action-queue',
+    queue_logout: 'action-queue',
+    conference: 'action-conference',
+    speed_dial: 'action-default',
+    record: 'action-record'
   }
   return classes[action] || 'action-default'
 }
@@ -362,6 +420,10 @@ const getActionIcon = (action) => {
     page_group: Users,
     transfer: Phone,
     record: Mic,
+    speed_dial: Hash,
+    queue_login: LogIn,
+    queue_logout: LogOut,
+    conference: Video,
     webhook: Webhook,
     lua: Code,
     custom: Settings
@@ -510,7 +572,26 @@ onMounted(() => {
 .action-park { background: #fef3c7; color: #d97706; }
 .action-pickup { background: #e9d5ff; color: #9333ea; }
 .action-intercom { background: #cffafe; color: #0891b2; }
+.action-queue { background: #fef9c3; color: #a16207; }
+.action-conference { background: #ede9fe; color: #7c3aed; }
+.action-record { background: #fce7f3; color: #db2777; }
 .action-default { background: #f1f5f9; color: #475569; }
+
+/* Modules Panel */
+.modules-panel { background: white; border: 1px solid var(--border-color); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+.panel-title { margin: 0 0 4px; font-size: 16px; }
+.modules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.module-card { border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px; transition: all 0.15s ease; }
+.module-card.active { border-color: var(--primary-color); background: #f0f9ff; }
+.module-header { display: flex; justify-content: space-between; align-items: center; }
+.module-info { display: flex; flex-direction: column; }
+.module-label { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.module-count { font-size: 10px; color: var(--text-muted); }
+.module-desc { font-size: 11px; color: var(--text-muted); margin: 6px 0 0; }
+.module-toggle { background: none; border: none; cursor: pointer; padding: 0; color: var(--text-muted); }
+.module-toggle svg { width: 24px; height: 24px; }
+.module-toggle.on { color: var(--primary-color); }
+.module-toggle:disabled { opacity: 0.5; cursor: wait; }
 
 .scope-badge { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .scope-badge.global { background: #dbeafe; color: #1d4ed8; }
