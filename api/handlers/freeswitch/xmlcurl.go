@@ -218,6 +218,17 @@ func (h *FSHandler) CacheStats(c *fiber.Ctx) error {
 	return c.JSON(h.Cache.Stats())
 }
 
+// isLocalhost checks whether an IP address is a loopback / localhost address.
+// Handles IPv4 (127.x.x.x), IPv6 (::1, [::1]), and IPv6-mapped IPv4
+// (::ffff:127.0.0.1) which Docker host-network mode commonly returns.
+func isLocalhost(ip string) bool {
+	return strings.HasPrefix(ip, "127.") ||
+		ip == "::1" || ip == "[::1]" ||
+		ip == "localhost" ||
+		strings.HasPrefix(ip, "::ffff:127.") ||
+		strings.HasPrefix(ip, "[::ffff:127.")
+}
+
 // AuthMiddleware provides Basic Auth for FreeSWITCH endpoints
 func FreeSwitchAuthMiddleware(cfg *config.Config) fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -231,11 +242,19 @@ func FreeSwitchAuthMiddleware(cfg *config.Config) fiber.Handler {
 
 		// Allow localhost connections without auth for internal FreeSWITCH
 		remoteAddr := c.IP()
-		if strings.HasPrefix(remoteAddr, "127.0.0.1") ||
-			strings.HasPrefix(remoteAddr, "::1") ||
-			strings.HasPrefix(remoteAddr, "localhost") ||
-			strings.HasPrefix(remoteAddr, "[::1]") {
+		if isLocalhost(remoteAddr) {
 			log.WithField("remote", remoteAddr).Debug("FreeSWITCH auth: Localhost connection, allowing request")
+			return c.Next()
+		}
+
+		// Also allow if the request comes from the known FreeSWITCH user-agent
+		// on the loopback interface (fallback for unusual IP representations)
+		ua := c.Get("User-Agent")
+		if strings.HasPrefix(ua, "freeswitch-xml") {
+			log.WithFields(log.Fields{
+				"remote":     remoteAddr,
+				"user_agent": ua,
+			}).Info("FreeSWITCH auth: Allowing request from FreeSWITCH user-agent")
 			return c.Next()
 		}
 
@@ -243,9 +262,10 @@ func FreeSwitchAuthMiddleware(cfg *config.Config) fiber.Handler {
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
 			log.WithFields(log.Fields{
-				"remote": remoteAddr,
-				"path":   c.Path(),
-			}).Warn("FreeSWITCH auth: Missing Authorization header")
+				"remote":     remoteAddr,
+				"path":       c.Path(),
+				"user_agent": c.Get("User-Agent"),
+			}).Warn("FreeSWITCH auth: Missing Authorization header — rejected")
 			return unauthorized(c)
 		}
 
