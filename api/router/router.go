@@ -137,6 +137,27 @@ func (r *Router) Init() {
 	internal.Use(r.internalKeyAuth())
 	internal.Post("/fail2ban/report", r.Handler.ReportBannedIP)
 
+	// FreeSWITCH XML CURL endpoints — MUST be registered before protected
+	// middleware so that RequireAuth() (JWT) does not intercept them.
+	// FreeSWITCH authenticates via its own Basic Auth middleware.
+	fs := r.App.Group("/api/freeswitch")
+	fs.Use(freeswitch.FreeSwitchAuthMiddleware(r.Config))
+	// Individual section handlers - FreeSWITCH mod_xml_curl calls these
+	fs.Post("/directory", r.FSHandler.HandleXMLCurl)     // sip_auth, registration
+	fs.Post("/dialplan", r.FSHandler.HandleXMLCurl)      // call routing
+	fs.Post("/configuration", r.FSHandler.HandleXMLCurl) // sofia, event_socket, etc
+
+	// Legacy combined handler (for backwards compatibility)
+	fs.Post("/xmlapi", r.FSHandler.HandleXMLCurl)
+
+	// CDR handler - receives POST from mod_xml_cdr
+	// Config in FreeSWITCH: <param name="url" value="http://127.0.0.1:8080/api/freeswitch/cdr"/>
+	fs.Post("/cdr", r.FSHandler.HandleXMLCDR)
+
+	// Cache management endpoints
+	fs.Get("/cache/flush", r.FSHandler.FlushCache)
+	fs.Get("/cache/stats", r.FSHandler.CacheStats)
+
 	// Protected routes (require authentication)
 	protected := api.Group("")
 	protected.Use(r.Auth.RequireAuth())
@@ -795,25 +816,6 @@ func (r *Router) Init() {
 	extPortal.Get("/contacts", r.Handler.GetExtensionContacts)
 	extPortal.Post("/contacts", r.Handler.CreateExtensionContact)
 	extPortal.Get("/webrtc-config", r.Handler.GetWebRTCConfig)
-
-	// FreeSWITCH XML CURL endpoints (inside /api for consistency with Caddy routing)
-	fs := r.App.Group("/api/freeswitch")
-	fs.Use(freeswitch.FreeSwitchAuthMiddleware(r.Config))
-	// Individual section handlers - FreeSWITCH mod_xml_curl calls these
-	fs.Post("/directory", r.FSHandler.HandleXMLCurl)     // sip_auth, registration
-	fs.Post("/dialplan", r.FSHandler.HandleXMLCurl)      // call routing
-	fs.Post("/configuration", r.FSHandler.HandleXMLCurl) // sofia, event_socket, etc
-
-	// Legacy combined handler (for backwards compatibility)
-	fs.Post("/xmlapi", r.FSHandler.HandleXMLCurl)
-
-	// CDR handler - receives POST from mod_xml_cdr
-	// Config in FreeSWITCH: <param name="url" value="http://127.0.0.1:8080/api/freeswitch/cdr"/>
-	fs.Post("/cdr", r.FSHandler.HandleXMLCDR)
-
-	// Cache management endpoints
-	fs.Get("/cache/flush", r.FSHandler.FlushCache)
-	fs.Get("/cache/stats", r.FSHandler.CacheStats)
 
 	// WebSocket endpoint for real-time events
 	r.App.Get("/api/ws", r.Handler.HandleWebSocket)
