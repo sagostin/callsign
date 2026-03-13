@@ -874,3 +874,26 @@ export const locationAPI = {
     delete: (id) => api.delete(`/tenant/locations/${id}`),
 }
 
+// =====================
+// AI Greetings API (Admin - tenant-scoped)
+// =====================
+export const greetingsAPI = {
+    listScripts: (params) => api.get('/greetings/scripts', { params }),
+    getScript: (id) => api.get(`/greetings/scripts/${id}`),
+    createScript: (data) => api.post('/greetings/scripts', data),
+    updateScript: (id, data) => api.put(`/greetings/scripts/${id}`, data),
+    deleteScript: (id) => api.delete(`/greetings/scripts/${id}`),
+    generateAudio: (id) => api.post(`/greetings/scripts/${id}/generate`),
+    listVoices: () => api.get('/greetings/voices'),
+}
+
+// =====================
+// User Greetings API (User Portal - voicemail)
+// =====================
+export const userGreetingsAPI = {
+    list: () => api.get('/user/greetings'),
+    create: (data) => api.post('/user/greetings', data),
+    update: (id, data) => api.put(`/user/greetings/${id}`, data),
+    delete: (id) => api.delete(`/user/greetings/${id}`),
+    activate: (id) => api.post(`/user/greetings/${id}/activate`),
+}

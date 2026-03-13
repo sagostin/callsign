@@ -355,12 +355,15 @@ func (h *Handler) AdminLogin(c *fiber.Ctx) error {
 	if domain := h.resolveTenantDomain(c, req.Domain); domain != "" {
 		var tenant models.Tenant
 		if err := h.DB.Where("domain = ? AND enabled = true", domain).First(&tenant).Error; err != nil {
-			h.logWarn("AUTH", "AdminLogin: tenant not found for domain", h.reqFields(c, map[string]interface{}{"domain": domain, "username": req.Username}))
-			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials or insufficient permissions"})
+			// No tenant for this domain — allow global system_admin login only
+			h.logInfo("AUTH", "AdminLogin: no tenant for domain, trying global system_admin lookup", h.reqFields(c, map[string]interface{}{"domain": domain, "username": req.Username}))
+			userErr = h.DB.Where("(username = ? OR email = ?) AND role = ?",
+				req.Username, req.Username, models.RoleSystemAdmin).First(&user).Error
+		} else {
+			// Tenant-scoped lookup for tenant_admin; system_admin can log in from any domain
+			userErr = h.DB.Where("(username = ? OR email = ?) AND role IN ? AND (tenant_id = ? OR role = ?)",
+				req.Username, req.Username, adminRoles, tenant.ID, models.RoleSystemAdmin).First(&user).Error
 		}
-		// Tenant-scoped lookup for tenant_admin; system_admin can log in from any domain
-		userErr = h.DB.Where("(username = ? OR email = ?) AND role IN ? AND (tenant_id = ? OR role = ?)",
-			req.Username, req.Username, adminRoles, tenant.ID, models.RoleSystemAdmin).First(&user).Error
 	} else {
 		userErr = h.DB.Where("(username = ? OR email = ?) AND role IN ?", req.Username, req.Username, adminRoles).First(&user).Error
 	}

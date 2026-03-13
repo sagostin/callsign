@@ -153,6 +153,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&RecordingConfig{},
 		&MediaFile{},
 
+		// AI Greeting Scripts
+		&GreetingScript{},
+
 		// Speed Dials
 		&SpeedDialGroup{},
 

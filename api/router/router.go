@@ -533,6 +533,17 @@ func (r *Router) Init() {
 	media.Post("/music", r.Handler.UploadTenantMusic)
 	media.Delete("/music", r.Handler.DeleteTenantMusic)
 
+	// AI Greeting Scripts (tenant-scoped admin)
+	greetings := tenantScoped.Group("/greetings")
+	greetings.Get("/scripts", r.Handler.ListGreetingScripts)
+	greetings.Get("/scripts/:id", r.Handler.GetGreetingScript)
+	greetings.Post("/scripts", r.Handler.CreateGreetingScript)
+	greetings.Put("/scripts/:id", r.Handler.UpdateGreetingScript)
+	greetings.Delete("/scripts/:id", r.Handler.DeleteGreetingScript)
+	greetings.Post("/scripts/:id/generate", r.Handler.GenerateGreeting)
+	greetings.Get("/scripts/:id/stream", r.Handler.StreamGreeting)
+	greetings.Get("/voices", r.Handler.ListTTSVoices)
+
 	// Fax
 	faxRoutes := tenantScoped.Group("/fax")
 	// Fax Boxes
@@ -803,6 +814,14 @@ func (r *Router) Init() {
 	user.Put("/settings", r.Handler.UpdateUserSettings)
 	user.Get("/contacts", r.Handler.GetUserContacts)
 	user.Post("/contacts", r.Handler.CreateUserContact)
+
+	// User AI Greeting (voicemail)
+	user.Get("/greetings", r.Handler.ListUserGreetings)
+	user.Post("/greetings", r.Handler.CreateUserGreeting)
+	user.Put("/greetings/:id", r.Handler.UpdateUserGreeting)
+	user.Delete("/greetings/:id", r.Handler.DeleteUserGreeting)
+	user.Post("/greetings/:id/activate", r.Handler.ActivateUserGreeting)
+	user.Get("/greetings/:id/stream", r.Handler.StreamUserGreeting)
 
 	// Extension portal routes (for extension panel / web client)
 	extPortal := protected.Group("/extension/portal")

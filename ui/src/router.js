@@ -25,6 +25,7 @@ const routes = [
       { path: 'fax', component: () => import('./views/user/UserFax.vue'), name: 'PortalFax' },
       { path: 'contacts', component: UserContacts, name: 'PortalContacts' },
       { path: 'recordings', component: () => import('./views/user/UserRecordings.vue'), name: 'PortalRecordings' },
+      { path: 'greetings', component: () => import('./views/user/UserGreetings.vue'), name: 'PortalGreetings' },
       { path: 'history', component: UserHistory, name: 'PortalHistory' },
       { path: 'settings', component: () => import('./views/user/UserSettings.vue'), name: 'PortalSettings' },
     ]
@@ -107,6 +108,8 @@ const routes = [
       { path: 'call-recordings', component: () => import('./views/admin/CallRecordings.vue'), name: 'CallRecordings' },
       { path: 'audio-library', component: () => import('./views/admin/Recordings.vue'), name: 'AudioLibrary' },
       { path: 'audio-library/new', component: () => import('./views/admin/RecordingForm.vue'), name: 'RecordingFormNew' },
+
+      { path: 'ai-greetings', component: () => import('./views/admin/AIGreetings.vue'), name: 'AIGreetings' },
 
       { path: 'fax', component: () => import('./views/admin/FaxServer.vue'), name: 'FaxServer' },
       { path: 'fax/new', component: () => import('./views/admin/FaxBoxForm.vue'), name: 'FaxBoxFormNew' },

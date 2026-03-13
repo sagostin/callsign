@@ -85,6 +85,11 @@ type Config struct {
 	EncryptionKey  string // Master key for data-at-rest encryption (required)
 	EncryptionSalt string // Salt for key derivation (required)
 
+	// AI TTS API keys
+	ElevenLabsAPIKey string
+	OpenAIAPIKey     string
+	TTSDefaultEngine string // Default engine: "flite", "elevenlabs", "openai"
+
 	// WebRTC / Softphone settings
 	SIPWssURL   string // WebSocket URL for SIP.js (e.g., wss://sip.example.com:7443)
 	SIPDomain   string // SIP domain for registration (e.g., sip.example.com)
@@ -172,6 +177,11 @@ func Load() *Config {
 		// Encryption
 		EncryptionKey:  getEnv("ENCRYPTION_KEY", ""),
 		EncryptionSalt: getEnv("ENCRYPTION_SALT", ""),
+
+		// AI TTS API keys
+		ElevenLabsAPIKey: getEnv("ELEVENLABS_API_KEY", ""),
+		OpenAIAPIKey:     getEnv("OPENAI_API_KEY", ""),
+		TTSDefaultEngine: getEnv("TTS_DEFAULT_ENGINE", "flite"),
 
 		// WebRTC / Softphone
 		SIPWssURL:   getEnv("SIP_WSS_URL", ""),
