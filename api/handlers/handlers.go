@@ -89,10 +89,28 @@ func (h *Handler) reloadXML() {
 	h.flushXMLCache()
 }
 
-// reloadSofia flushes the XML cache. Gateway changes are picked up on next xml_curl fetch.
-// For immediate effect, use the manual "Reload XML" or sofia rescan buttons in the UI.
+// reloadSofia flushes the XML cache and tells FreeSWITCH to reload XML and
+// rescan the named Sofia profile so gateway/config changes take effect immediately.
 func (h *Handler) reloadSofia(profileName string) {
 	h.flushXMLCache()
+
+	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		log.Warn("reloadSofia: ESL not connected, skipping FreeSWITCH reload")
+		return
+	}
+
+	// Reload XML so FreeSWITCH re-reads disk config
+	if _, err := h.ESLManager.API("reloadxml"); err != nil {
+		log.WithError(err).Warn("reloadSofia: failed to send reloadxml")
+	}
+
+	// Rescan the profile to pick up gateway changes without a full restart
+	if profileName != "" {
+		cmd := fmt.Sprintf("sofia profile %s rescan", profileName)
+		if _, err := h.ESLManager.BgAPI(cmd); err != nil {
+			log.WithError(err).WithField("profile", profileName).Warn("reloadSofia: failed to rescan profile")
+		}
+	}
 }
 
 // reloadCallcenter flushes the XML cache. Callcenter config is fetched dynamically.

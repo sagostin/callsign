@@ -15,10 +15,16 @@ fi
 
 # Copy filter
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cp "$SCRIPT_DIR/filter.d/freeswitch-callsign.conf" /etc/fail2ban/filter.d/
+cp "$SCRIPT_DIR/etc/fail2ban/filter.d/freeswitch-callsign.conf" /etc/fail2ban/filter.d/
 
 # Copy jail config
-cp "$SCRIPT_DIR/jail.d/freeswitch-callsign.conf" /etc/fail2ban/jail.d/
+cp "$SCRIPT_DIR/etc/fail2ban/jail.d/freeswitch-callsign.conf" /etc/fail2ban/jail.d/
+
+# Copy action and report script
+cp "$SCRIPT_DIR/etc/fail2ban/action.d/callsign-report.conf" /etc/fail2ban/action.d/
+mkdir -p /opt/callsign/fail2ban
+cp "$SCRIPT_DIR/etc/fail2ban/action.d/callsign-report.sh" /opt/callsign/fail2ban/
+chmod +x /opt/callsign/fail2ban/callsign-report.sh
 
 # Disable default sshd jail if no SSH log exists
 if [ ! -f /var/log/auth.log ] && [ ! -f /var/log/secure ]; then

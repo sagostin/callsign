@@ -151,6 +151,10 @@ collect_security_config() {
     log_info "Generating internal API key..."
     INTERNAL_API_KEY=$(generate_random_string 32)
     log_success "Internal API key generated"
+    
+    log_info "Generating FreeSWITCH API key..."
+    FREESWITCH_API_KEY=$(generate_random_string 16)
+    log_success "FreeSWITCH API key generated"
 }
 
 collect_freeswitch_config() {
@@ -292,25 +296,26 @@ ADMIN_PANEL_URL=http${SSL_ENABLED:+s}://$DOMAIN/admin
 POSTGRES_USER=$POSTGRES_USER
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 POSTGRES_DB=$POSTGRES_DB
-POSTGRES_HOST=postgres
+POSTGRES_HOST=127.0.0.1
 POSTGRES_PORT=5432
 
 # ===================================
 # Redis
 # ===================================
-REDIS_HOST=redis
+REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 REDIS_PASSWORD=
 
 # ===================================
 # ClickHouse (Analytics)
 # ===================================
-CLICKHOUSE_HOST=clickhouse
+CLICKHOUSE_HOST=127.0.0.1
 CLICKHOUSE_PORT=9000
 CLICKHOUSE_HTTP_PORT=8123
 CLICKHOUSE_DB=callsign
 CLICKHOUSE_USER=default
 CLICKHOUSE_PASSWORD=
+CLICKHOUSE_ENABLED=false
 
 # ===================================
 # API Server
@@ -319,6 +324,10 @@ API_PORT=8080
 API_HOST=0.0.0.0
 API_ENV=production
 API_DEBUG=false
+
+# Logging
+LOG_METHOD=standard
+LOG_LEVEL=info
 
 # JWT Settings
 JWT_SECRET=$JWT_SECRET
@@ -331,7 +340,8 @@ JWT_REFRESH_EXPIRY=168h
 FREESWITCH_HOST=$FREESWITCH_HOST
 FREESWITCH_ESL_PORT=$FREESWITCH_ESL_PORT
 FREESWITCH_ESL_PASSWORD=$FREESWITCH_ESL_PASSWORD
-FREESWITCH_XML_CURL_URL=http://api:8080/api/freeswitch
+FREESWITCH_XML_CURL_URL=http://127.0.0.1:8080/api/freeswitch
+FREESWITCH_API_KEY=$FREESWITCH_API_KEY
 
 # ===================================
 # Encryption
@@ -349,7 +359,8 @@ INTERNAL_API_KEY=$INTERNAL_API_KEY
 # ===================================
 GRAFANA_USER=admin
 GRAFANA_PASSWORD=$(generate_random_string 12)
-LOKI_URL=http://loki:3100
+LOKI_URL=http://127.0.0.1:3100
+LOKI_ENABLED=false
 
 # ===================================
 # CORS
@@ -423,24 +434,34 @@ generate_caddyfile() {
 }
 
 $DOMAIN {
-    # API routes
-    handle /api/* {
-        reverse_proxy api:8080
+    # API WebSocket console (must be before general API handler)
+    @websocket {
+        header Connection *Upgrade*
+        header Upgrade websocket
+        path /api/system/console*
+    }
+    handle @websocket {
+        reverse_proxy 127.0.0.1:8080
     }
     
-    # WebSocket
+    # API routes
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8080
+    }
+    
+    # Legacy WebSocket connections
     handle /ws/* {
-        reverse_proxy api:8080
+        reverse_proxy 127.0.0.1:8080
     }
     
     # FreeSWITCH XML handler
     handle /freeswitch/* {
-        reverse_proxy api:8080
+        reverse_proxy 127.0.0.1:8080
     }
     
-    # UI (default)
+    # UI - Vite dev server on port 5173
     handle {
-        reverse_proxy ui:80
+        reverse_proxy 127.0.0.1:5173
     }
     
     # Security headers
@@ -467,24 +488,34 @@ EOF
 }
 
 :80 {
-    # API routes
-    handle /api/* {
-        reverse_proxy api:8080
+    # API WebSocket console (must be before general API handler)
+    @websocket {
+        header Connection *Upgrade*
+        header Upgrade websocket
+        path /api/system/console*
+    }
+    handle @websocket {
+        reverse_proxy 127.0.0.1:8080
     }
     
-    # WebSocket
+    # API routes
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8080
+    }
+    
+    # Legacy WebSocket connections
     handle /ws/* {
-        reverse_proxy api:8080
+        reverse_proxy 127.0.0.1:8080
     }
     
     # FreeSWITCH XML handler  
     handle /freeswitch/* {
-        reverse_proxy api:8080
+        reverse_proxy 127.0.0.1:8080
     }
     
-    # UI (default)
+    # UI - Vite dev server on port 5173
     handle {
-        reverse_proxy ui:80
+        reverse_proxy 127.0.0.1:5173
     }
     
     # Security headers
@@ -511,10 +542,14 @@ EOF
 # ============================================================================
 
 update_docker_compose() {
-    log_info "Updating docker-compose.yml with Caddy..."
+    log_info "Updating docker-compose.yml..."
     
     cat > "$SCRIPT_DIR/docker-compose.yml" << 'EOF'
-version: '3.8'
+# CallSign Docker Compose - Full Stack (Host Network Mode)
+# Run with: docker compose up -d
+#
+# All services run in host network mode for loopback connectivity
+# Required: Copy .env.example to .env and configure
 
 services:
   # ========================
@@ -524,18 +559,24 @@ services:
     image: caddy:2-alpine
     container_name: callsign-caddy
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
+    network_mode: "host"
     volumes:
       - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    depends_on:
-      - api
-      - ui
-    networks:
-      - callsign-network
+
+  # ========================
+  # UI Server (Vue/Vite)
+  # ========================
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: callsign-ui
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      - VITE_API_URL=/api
 
   # ========================
   # API Server
@@ -546,21 +587,32 @@ services:
       dockerfile: Dockerfile
     container_name: callsign-api
     restart: unless-stopped
+    network_mode: "host"
     environment:
-      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_HOST=${POSTGRES_HOST:-127.0.0.1}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_USER=${POSTGRES_USER:-callsign}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-callsign}
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_HOST=${REDIS_HOST:-127.0.0.1}
       - REDIS_PORT=${REDIS_PORT:-6379}
+      - CLICKHOUSE_HOST=${CLICKHOUSE_HOST:-127.0.0.1}
+      - CLICKHOUSE_PORT=${CLICKHOUSE_PORT:-9000}
+      - CLICKHOUSE_ENABLED=${CLICKHOUSE_ENABLED:-false}
       - JWT_SECRET=${JWT_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - ENCRYPTION_SALT=${ENCRYPTION_SALT}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
-      - FREESWITCH_HOST=${FREESWITCH_HOST:-host.docker.internal}
+      - FREESWITCH_HOST=${FREESWITCH_HOST:-127.0.0.1}
       - FREESWITCH_ESL_PORT=${FREESWITCH_ESL_PORT:-8021}
       - FREESWITCH_ESL_PASSWORD=${FREESWITCH_ESL_PASSWORD:-ClueCon}
+      - FREESWITCH_API_KEY=${FREESWITCH_API_KEY}
+      - LOKI_URL=${LOKI_URL:-http://127.0.0.1:3100}
+      - LOKI_ENABLED=${LOKI_ENABLED:-false}
+      - LOG_METHOD=${LOG_METHOD:-standard}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - API_PORT=${API_PORT:-8080}
+      - API_HOST=${API_HOST:-127.0.0.1}
       - API_ENV=${API_ENV:-production}
       - ENABLE_TRANSCRIPTION=${ENABLE_TRANSCRIPTION:-false}
       - TRANSCRIPTION_PROVIDER=${TRANSCRIPTION_PROVIDER:-whisper}
@@ -568,27 +620,16 @@ services:
       - TTS_PROVIDER=${TTS_PROVIDER:-edge}
     volumes:
       - storage_data:/var/lib/callsign
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - callsign-network
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-  # ========================
-  # UI (Vue.js)
-  # ========================
-  ui:
-    build:
-      context: ./ui
-      dockerfile: Dockerfile
-    container_name: callsign-ui
-    restart: unless-stopped
-    networks:
-      - callsign-network
+      # FreeSWITCH shared paths - bind mount from host system
+      - /usr/share/freeswitch:/usr/share/freeswitch
+      - /var/lib/freeswitch:/var/lib/freeswitch
+      - /var/log/freeswitch:/var/log/freeswitch:ro
+      - /etc/freeswitch:/etc/freeswitch
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:${API_PORT:-8080}/api/health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # ========================
   # PostgreSQL Database
@@ -597,19 +638,18 @@ services:
     image: postgres:15-alpine
     container_name: callsign-postgres
     restart: unless-stopped
+    network_mode: "host"
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-callsign}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB:-callsign}
+      POSTGRES_USER: ${POSTGRES_USER:-callsign}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-callsign}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-callsign}"]
-      interval: 5s
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-callsign}" ]
+      interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - callsign-network
 
   # ========================
   # Redis
@@ -618,32 +658,40 @@ services:
     image: redis:7-alpine
     container_name: callsign-redis
     restart: unless-stopped
+    network_mode: "host"
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - callsign-network
 
   # ========================
   # ClickHouse (Analytics)
   # ========================
   clickhouse:
-    image: clickhouse/clickhouse-server:latest
+    image: clickhouse/clickhouse-server:23.8-alpine
     container_name: callsign-clickhouse
     restart: unless-stopped
+    network_mode: "host"
     environment:
-      - CLICKHOUSE_DB=${CLICKHOUSE_DB:-callsign}
-      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-default}
-      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-callsign}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-    networks:
-      - callsign-network
+      - clickhouse_logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "localhost:8123/ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ========================
   # Loki (Log Aggregation)
@@ -652,11 +700,11 @@ services:
     image: grafana/loki:2.9.0
     container_name: callsign-loki
     restart: unless-stopped
-    command: -config.file=/etc/loki/local-config.yaml
+    network_mode: "host"
     volumes:
       - loki_data:/loki
-    networks:
-      - callsign-network
+      - ./docker/loki-config.yaml:/etc/loki/local-config.yaml:ro
+    command: -config.file=/etc/loki/local-config.yaml
 
   # ========================
   # Grafana (Monitoring)
@@ -665,27 +713,21 @@ services:
     image: grafana/grafana:latest
     container_name: callsign-grafana
     restart: unless-stopped
+    network_mode: "host"
     environment:
+      - GF_SERVER_HTTP_PORT=3000
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana_data:/var/lib/grafana
-    ports:
-      - "3000:3000"
-    depends_on:
-      - loki
-    networks:
-      - callsign-network
-
-networks:
-  callsign-network:
-    driver: bridge
+      - ./docker/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
 
 volumes:
   postgres_data:
   redis_data:
   clickhouse_data:
+  clickhouse_logs:
   loki_data:
   grafana_data:
   storage_data:
@@ -693,7 +735,7 @@ volumes:
   caddy_config:
 EOF
 
-    log_success "docker-compose.yml updated with Caddy"
+    log_success "docker-compose.yml updated"
 }
 
 # ============================================================================
@@ -761,14 +803,14 @@ ESL_PASSWORD="${ESL_PASSWORD:-ClueCon}"
 log_info "Installing dependencies..."
 
 apt-get update
+# Note: ntp is NOT installed — Debian 12+ uses systemd-timesyncd by default
 apt-get install -y \
     wget curl gnupg2 lsb-release \
     ca-certificates apt-transport-https \
     sox libsox-fmt-all \
-    sngrep ntp \
+    sngrep \
     lua5.3 liblua5.3-dev \
-    libcurl4-openssl-dev \
-    memcached
+    libcurl4-openssl-dev
 
 log_success "Dependencies installed"
 

@@ -97,8 +97,8 @@ func DefaultExternalProfileSettings() []SIPProfileSetting {
 		// --- Enabled settings ---
 		{SettingName: "apply-inbound-acl", SettingValue: "providers", Enabled: true},
 		{SettingName: "apply-nat-acl", SettingValue: "nat.auto", Enabled: true},
-		{SettingName: "auth-calls", SettingValue: "true", Enabled: true},
-		{SettingName: "auth-subscriptions", SettingValue: "true", Enabled: true},
+		{SettingName: "auth-calls", SettingValue: "false", Enabled: true},
+		{SettingName: "auth-subscriptions", SettingValue: "false", Enabled: true},
 		{SettingName: "context", SettingValue: "public", Enabled: true},
 		{SettingName: "debug", SettingValue: "0", Enabled: true},
 		{SettingName: "dialplan", SettingValue: "XML", Enabled: true},

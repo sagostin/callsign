@@ -60,11 +60,12 @@ echo ""
 log_info "Installing dependencies..."
 
 apt-get update
+# Note: ntp is NOT installed — Debian 12+ uses systemd-timesyncd by default
 apt-get install -y \
     wget curl gnupg2 lsb-release \
     ca-certificates apt-transport-https \
     sox libsox-fmt-all \
-    sngrep ntp memcached
+    sngrep
 
 log_success "Dependencies installed"
 

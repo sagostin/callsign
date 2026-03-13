@@ -786,6 +786,9 @@ func (h *Handler) CreateSIPProfile(c *fiber.Ctx) error {
 		log.Printf("Failed to write SIP profile to disk: %v", err)
 	}
 
+	// Tell FreeSWITCH to reload XML and rescan the profile
+	h.reloadSofia(input.ProfileName)
+
 	return c.Status(http.StatusCreated).JSON(input)
 }
 
@@ -882,6 +885,9 @@ func (h *Handler) UpdateSIPProfile(c *fiber.Ctx) error {
 	if err := h.writeSIPProfileToDisk(&profile); err != nil {
 		log.Printf("Failed to write SIP profile to disk: %v", err)
 	}
+
+	// Tell FreeSWITCH to reload XML and rescan the profile
+	h.reloadSofia(profile.ProfileName)
 
 	return c.JSON(profile)
 }
@@ -1026,7 +1032,12 @@ func (h *Handler) RestartSofiaProfile(c *fiber.Ctx) error {
 		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH ESL not connected"})
 	}
 
-	jobUUID, err := h.ESLManager.BgAPI("sofia profile " + profileName + " restart")
+	// Reload XML first so any on-disk profile changes take effect before restart
+	if _, err := h.ESLManager.API("reloadxml"); err != nil {
+		log.WithError(err).Warn("RestartSofiaProfile: failed to send reloadxml")
+	}
+
+	jobUUID, err := h.ESLManager.BgAPI("sofia profile " + profileName + " restart reloadxml")
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to restart profile: " + err.Error()})
 	}
