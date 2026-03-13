@@ -56,11 +56,13 @@ func (h *Handler) GetCDR(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
+		h.logWarn("CDR", "GetCDR: Invalid ID", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ID"})
 	}
 
 	var record models.CallRecord
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&record).Error; err != nil {
+		h.logWarn("CDR", "GetCDR: Call record not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call record not found"})
 	}
 

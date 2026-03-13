@@ -110,6 +110,42 @@ func (h *Handler) SetLogManager(lm *logging.LogManager) {
 	h.LogManager = lm
 }
 
+// logRequest logs an API operation via the LogManager (if available).
+func (h *Handler) logRequest(level log.Level, logType, message string, fields map[string]interface{}) {
+	if h.LogManager != nil {
+		h.LogManager.Log(level, logType, message, fields)
+	}
+}
+
+// logInfo logs an info-level API operation.
+func (h *Handler) logInfo(logType, message string, fields map[string]interface{}) {
+	h.logRequest(log.InfoLevel, logType, message, fields)
+}
+
+// logWarn logs a warn-level API operation (e.g. validation failures, not-found).
+func (h *Handler) logWarn(logType, message string, fields map[string]interface{}) {
+	h.logRequest(log.WarnLevel, logType, message, fields)
+}
+
+// logError logs an error-level API operation (e.g. DB failures, internal errors).
+func (h *Handler) logError(logType, message string, fields map[string]interface{}) {
+	h.logRequest(log.ErrorLevel, logType, message, fields)
+}
+
+// reqFields builds a common fields map for request logging, combining request
+// context (method, path, client IP) with any additional fields provided.
+func (h *Handler) reqFields(c *fiber.Ctx, extra map[string]interface{}) map[string]interface{} {
+	fields := map[string]interface{}{
+		"method": c.Method(),
+		"path":   c.Path(),
+		"ip":     c.IP(),
+	}
+	for k, v := range extra {
+		fields[k] = v
+	}
+	return fields
+}
+
 // =====================
 // Helper utilities
 // =====================
@@ -230,6 +266,7 @@ func (h *Handler) resolveTenantDomain(c *fiber.Ctx, explicit string) string {
 func (h *Handler) Login(c *fiber.Ctx) error {
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("AUTH", "Login: invalid request payload", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
@@ -240,7 +277,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	if domain := h.resolveTenantDomain(c, req.Domain); domain != "" {
 		var tenant models.Tenant
 		if err := h.DB.Where("domain = ? AND enabled = true", domain).First(&tenant).Error; err != nil {
-			log.WithField("domain", domain).Debug("Login: tenant not found for domain")
+			h.logWarn("AUTH", "Login: tenant not found for domain", h.reqFields(c, map[string]interface{}{"domain": domain, "username": req.Username}))
 			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 		}
 		userErr = h.DB.Where("(username = ? OR email = ?) AND tenant_id = ?", req.Username, req.Username, tenant.ID).First(&user).Error
@@ -250,10 +287,12 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	}
 
 	if userErr != nil {
+		h.logWarn("AUTH", "Login: user not found", h.reqFields(c, map[string]interface{}{"username": req.Username, "domain": req.Domain}))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
 	if !user.CheckPassword(req.Password) {
+		h.logWarn("AUTH", "Login: invalid password", h.reqFields(c, map[string]interface{}{"username": req.Username, "user_id": user.ID}))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
@@ -264,9 +303,11 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	// Generate token
 	token, err := h.Auth.GenerateToken(&user)
 	if err != nil {
+		h.logError("AUTH", "Login: failed to generate token", h.reqFields(c, map[string]interface{}{"error": err.Error(), "user_id": user.ID}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 	}
 
+	h.logInfo("AUTH", "Login: successful", h.reqFields(c, map[string]interface{}{"user_id": user.ID, "username": user.Username, "role": user.Role}))
 	return c.JSON(fiber.Map{
 		"token": token,
 		"user": fiber.Map{
@@ -284,6 +325,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 func (h *Handler) AdminLogin(c *fiber.Ctx) error {
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("AUTH", "AdminLogin: invalid request payload", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
@@ -295,7 +337,7 @@ func (h *Handler) AdminLogin(c *fiber.Ctx) error {
 	if domain := h.resolveTenantDomain(c, req.Domain); domain != "" {
 		var tenant models.Tenant
 		if err := h.DB.Where("domain = ? AND enabled = true", domain).First(&tenant).Error; err != nil {
-			log.WithField("domain", domain).Debug("AdminLogin: tenant not found for domain")
+			h.logWarn("AUTH", "AdminLogin: tenant not found for domain", h.reqFields(c, map[string]interface{}{"domain": domain, "username": req.Username}))
 			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials or insufficient permissions"})
 		}
 		// Tenant-scoped lookup for tenant_admin; system_admin can log in from any domain
@@ -306,10 +348,12 @@ func (h *Handler) AdminLogin(c *fiber.Ctx) error {
 	}
 
 	if userErr != nil {
+		h.logWarn("AUTH", "AdminLogin: admin user not found or insufficient permissions", h.reqFields(c, map[string]interface{}{"username": req.Username, "domain": req.Domain}))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials or insufficient permissions"})
 	}
 
 	if !user.CheckPassword(req.Password) {
+		h.logWarn("AUTH", "AdminLogin: invalid password", h.reqFields(c, map[string]interface{}{"username": req.Username, "user_id": user.ID}))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
@@ -320,9 +364,11 @@ func (h *Handler) AdminLogin(c *fiber.Ctx) error {
 	// Generate token
 	token, err := h.Auth.GenerateToken(&user)
 	if err != nil {
+		h.logError("AUTH", "AdminLogin: failed to generate token", h.reqFields(c, map[string]interface{}{"error": err.Error(), "user_id": user.ID}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 	}
 
+	h.logInfo("AUTH", "AdminLogin: successful", h.reqFields(c, map[string]interface{}{"user_id": user.ID, "username": user.Username, "role": user.Role}))
 	return c.JSON(fiber.Map{
 		"token": token,
 		"user": fiber.Map{

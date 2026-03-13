@@ -56,18 +56,21 @@ func (h *Handler) CreateDevice(c *fiber.Ctx) error {
 
 	var device models.Device
 	if err := c.BodyParser(&device); err != nil {
+		h.logWarn("DEVICE", "CreateDevice: Invalid request body", h.reqFields(c, nil))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	// Normalize MAC address
 	device.MAC = strings.ToLower(models.NormalizeMAC(device.MAC))
 	if device.MAC == "" {
+		h.logWarn("DEVICE", "CreateDevice: MAC address is required", h.reqFields(c, nil))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "MAC address is required"})
 	}
 
 	// Check for duplicate MAC
 	var existing models.Device
 	if err := h.DB.Where("mac = ?", device.MAC).First(&existing).Error; err == nil {
+		h.logWarn("DEVICE", "CreateDevice: Device with this MAC address already exists", h.reqFields(c, nil))
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Device with this MAC address already exists"})
 	}
 
@@ -83,6 +86,7 @@ func (h *Handler) CreateDevice(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Create(&device).Error; err != nil {
+		h.logError("DEVICE", "CreateDevice: Failed to create device", h.reqFields(c, nil))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create device"})
 	}
 
@@ -116,6 +120,7 @@ func (h *Handler) GetDevice(c *fiber.Ctx) error {
 		// Try normalized MAC
 		normalizedMAC := strings.ToLower(models.NormalizeMAC(idOrMac))
 		if err := query.Where("mac = ?", normalizedMAC).First(&device).Error; err != nil {
+			h.logWarn("DEVICE", "GetDevice: Device not found", h.reqFields(c, nil))
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 		}
 	}
@@ -168,6 +173,7 @@ func (h *Handler) UpdateDevice(c *fiber.Ctx) error {
 
 	var device models.Device
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&device).Error; err != nil {
+		h.logWarn("DEVICE", "UpdateDevice: Device not found", h.reqFields(c, nil))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
@@ -177,6 +183,7 @@ func (h *Handler) UpdateDevice(c *fiber.Ctx) error {
 		ProvisionToken string `json:"provision_token"`
 	}
 	if err := c.BodyParser(&input); err != nil {
+		h.logWarn("DEVICE", "UpdateDevice: Invalid request body", h.reqFields(c, nil))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -224,6 +231,7 @@ func (h *Handler) DeleteDevice(c *fiber.Ctx) error {
 	// Delete device
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.Device{})
 	if result.RowsAffected == 0 {
+		h.logWarn("DEVICE", "DeleteDevice: Device not found", h.reqFields(c, nil))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
@@ -239,6 +247,7 @@ func (h *Handler) AssignDeviceToUser(c *fiber.Ctx) error {
 		UserID *uint `json:"user_id"`
 	}
 	if err := c.BodyParser(&input); err != nil {
+		h.logWarn("DEVICE", "AssignDeviceToUser: Invalid request body", h.reqFields(c, nil))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -247,6 +256,7 @@ func (h *Handler) AssignDeviceToUser(c *fiber.Ctx) error {
 		Update("user_id", input.UserID)
 
 	if result.RowsAffected == 0 {
+		h.logWarn("DEVICE", "AssignDeviceToUser: Device not found", h.reqFields(c, nil))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
@@ -265,11 +275,13 @@ func (h *Handler) UpdateDeviceLines(c *fiber.Ctx) error {
 	// Verify device belongs to tenant
 	var device models.Device
 	if err := h.DB.Where("id = ? AND tenant_id = ?", deviceID, tenantID).First(&device).Error; err != nil {
+		h.logWarn("DEVICE", "UpdateDeviceLines: Device not found", h.reqFields(c, nil))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
 	var lines []models.DeviceLine
 	if err := c.BodyParser(&lines); err != nil {
+		h.logWarn("DEVICE", "UpdateDeviceLines: Invalid request body", h.reqFields(c, nil))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -548,6 +560,7 @@ func (h *Handler) ReprovisionDevice(c *fiber.Ctx) error {
 
 	var device models.Device
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&device).Error; err != nil {
+		h.logWarn("DEVICE", "ReprovisionDevice: Device not found", h.reqFields(c, nil))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
@@ -600,6 +613,7 @@ func (h *Handler) CreateDeviceTemplate(c *fiber.Ctx) error {
 
 	var tmpl models.DeviceTemplate
 	if err := c.BodyParser(&tmpl); err != nil {
+		h.logWarn("DEVICE", "CreateDeviceTemplate: Invalid request body", h.reqFields(c, nil))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -607,6 +621,7 @@ func (h *Handler) CreateDeviceTemplate(c *fiber.Ctx) error {
 	tmpl.IsSystem = false // Tenant can't create system templates
 
 	if err := h.DB.Create(&tmpl).Error; err != nil {
+		h.logError("DEVICE", "CreateDeviceTemplate: Failed to create template", h.reqFields(c, nil))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create template"})
 	}
 
@@ -642,12 +657,14 @@ func (h *Handler) CreateDeviceProfile(c *fiber.Ctx) error {
 
 	var profile models.DeviceProfile
 	if err := c.BodyParser(&profile); err != nil {
+		h.logWarn("DEVICE", "CreateDeviceProfile: Invalid request body", h.reqFields(c, nil))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	profile.TenantID = tenantID
 
 	if err := h.DB.Create(&profile).Error; err != nil {
+		h.logError("DEVICE", "CreateDeviceProfile: Failed to create profile", h.reqFields(c, nil))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create profile"})
 	}
 
@@ -664,6 +681,7 @@ func (h *Handler) GetDeviceProfile(c *fiber.Ctx) error {
 		Preload("Template").
 		Preload("Firmware").
 		First(&profile).Error; err != nil {
+		h.logWarn("DEVICE", "GetDeviceProfile: Profile not found", h.reqFields(c, nil))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Profile not found"})
 	}
 
@@ -677,11 +695,13 @@ func (h *Handler) UpdateDeviceProfile(c *fiber.Ctx) error {
 
 	var profile models.DeviceProfile
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&profile).Error; err != nil {
+		h.logWarn("DEVICE", "UpdateDeviceProfile: Profile not found", h.reqFields(c, nil))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Profile not found"})
 	}
 
 	var input models.DeviceProfile
 	if err := c.BodyParser(&input); err != nil {
+		h.logWarn("DEVICE", "UpdateDeviceProfile: Invalid request body", h.reqFields(c, nil))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -744,6 +764,7 @@ func (h *Handler) DeleteDeviceProfile(c *fiber.Ctx) error {
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.DeviceProfile{})
 	if result.RowsAffected == 0 {
+		h.logWarn("DEVICE", "DeleteDeviceProfile: Profile not found", h.reqFields(c, nil))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Profile not found"})
 	}
 
@@ -759,6 +780,7 @@ func (h *Handler) AssignDeviceToProfile(c *fiber.Ctx) error {
 		ProfileID *uint `json:"profile_id"`
 	}
 	if err := c.BodyParser(&input); err != nil {
+		h.logWarn("DEVICE", "AssignDeviceToProfile: Invalid request body", h.reqFields(c, nil))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -766,6 +788,7 @@ func (h *Handler) AssignDeviceToProfile(c *fiber.Ctx) error {
 	if input.ProfileID != nil {
 		var profile models.DeviceProfile
 		if err := h.DB.Where("id = ? AND tenant_id = ?", *input.ProfileID, tenantID).First(&profile).Error; err != nil {
+			h.logWarn("DEVICE", "AssignDeviceToProfile: Profile not found", h.reqFields(c, nil))
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Profile not found"})
 		}
 	}
@@ -775,6 +798,7 @@ func (h *Handler) AssignDeviceToProfile(c *fiber.Ctx) error {
 		Update("profile_id", input.ProfileID)
 
 	if result.RowsAffected == 0 {
+		h.logWarn("DEVICE", "AssignDeviceToProfile: Device not found", h.reqFields(c, nil))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 
@@ -807,22 +831,26 @@ func (h *Handler) ListDeviceManufacturers(c *fiber.Ctx) error {
 func (h *Handler) CreateDeviceManufacturer(c *fiber.Ctx) error {
 	var mfg models.DeviceManufacturer
 	if err := c.BodyParser(&mfg); err != nil {
+		h.logWarn("DEVICE", "CreateDeviceManufacturer: Invalid request body", h.reqFields(c, nil))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	// Normalize code to lowercase
 	mfg.Code = strings.ToLower(mfg.Code)
 	if mfg.Code == "" || mfg.Name == "" {
+		h.logWarn("DEVICE", "CreateDeviceManufacturer: Code and name are required", h.reqFields(c, nil))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Code and name are required"})
 	}
 
 	// Check for duplicate code
 	var existing models.DeviceManufacturer
 	if err := h.DB.Where("code = ?", mfg.Code).First(&existing).Error; err == nil {
+		h.logWarn("DEVICE", "CreateDeviceManufacturer: Manufacturer code already exists", h.reqFields(c, nil))
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Manufacturer code already exists"})
 	}
 
 	if err := h.DB.Create(&mfg).Error; err != nil {
+		h.logError("DEVICE", "CreateDeviceManufacturer: Failed to create manufacturer", h.reqFields(c, nil))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create manufacturer"})
 	}
 
@@ -835,11 +863,13 @@ func (h *Handler) UpdateDeviceManufacturer(c *fiber.Ctx) error {
 
 	var mfg models.DeviceManufacturer
 	if err := h.DB.Where("id = ?", id).First(&mfg).Error; err != nil {
+		h.logWarn("DEVICE", "UpdateDeviceManufacturer: Manufacturer not found", h.reqFields(c, nil))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Manufacturer not found"})
 	}
 
 	var input models.DeviceManufacturer
 	if err := c.BodyParser(&input); err != nil {
+		h.logWarn("DEVICE", "UpdateDeviceManufacturer: Invalid request body", h.reqFields(c, nil))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -860,6 +890,7 @@ func (h *Handler) UpdateDeviceManufacturer(c *fiber.Ctx) error {
 		var count int64
 		h.DB.Model(&models.DeviceTemplate{}).Where("LOWER(manufacturer) = ?", mfg.Code).Count(&count)
 		if count > 0 {
+			h.logWarn("DEVICE", "UpdateDeviceManufacturer: Cannot change code while templates exist", h.reqFields(c, nil))
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Cannot change code while templates exist"})
 		}
 		updates["code"] = strings.ToLower(input.Code)
@@ -877,6 +908,7 @@ func (h *Handler) DeleteDeviceManufacturer(c *fiber.Ctx) error {
 	// Check if any templates are using this manufacturer
 	var mfg models.DeviceManufacturer
 	if err := h.DB.Where("id = ?", id).First(&mfg).Error; err != nil {
+		h.logWarn("DEVICE", "DeleteDeviceManufacturer: Manufacturer not found", h.reqFields(c, nil))
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Manufacturer not found"})
 	}
 

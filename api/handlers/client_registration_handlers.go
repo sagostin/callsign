@@ -39,6 +39,7 @@ func (h *Handler) ListClientRegistrations(c *fiber.Ctx) error {
 
 	var registrations []models.ClientRegistration
 	if err := query.Order("created_at DESC").Find(&registrations).Error; err != nil {
+		h.logError("CLIENT_REG", "ListClientRegistrations: Failed to fetch registrations", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch registrations"})
 	}
 
@@ -53,6 +54,7 @@ func (h *Handler) ListExtensionRegistrations(c *fiber.Ctx) error {
 	// Verify the extension belongs to this tenant
 	var ext models.Extension
 	if err := h.DB.Where("id = ? AND tenant_id = ?", extID, tenantID).First(&ext).Error; err != nil {
+		h.logWarn("CLIENT_REG", "ListExtensionRegistrations: Extension not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Extension not found"})
 	}
 
@@ -61,6 +63,7 @@ func (h *Handler) ListExtensionRegistrations(c *fiber.Ctx) error {
 		Preload("Device").
 		Order("endpoint_type ASC, created_at DESC").
 		Find(&registrations).Error; err != nil {
+		h.logError("CLIENT_REG", "ListExtensionRegistrations: Failed to fetch registrations", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch registrations"})
 	}
 
@@ -87,6 +90,7 @@ func (h *Handler) ProvisionClientRegistration(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("CLIENT_REG", "ProvisionClientRegistration: Invalid request body", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -96,6 +100,7 @@ func (h *Handler) ProvisionClientRegistration(c *fiber.Ctx) error {
 	case models.EndpointTypeMobileApp, models.EndpointTypeDesktopApp, models.EndpointTypeWebClient:
 		// Valid
 	default:
+		h.logWarn("CLIENT_REG", "ProvisionClientRegistration: Invalid endpoint_type. Must be: mobile_app, desktop_app, or web_client", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid endpoint_type. Must be: mobile_app, desktop_app, or web_client"})
 	}
 
@@ -108,12 +113,14 @@ func (h *Handler) ProvisionClientRegistration(c *fiber.Ctx) error {
 	if req.UserID != nil {
 		var user models.User
 		if err := h.DB.Where("id = ? AND tenant_id = ?", *req.UserID, tenantID).First(&user).Error; err != nil {
+			h.logWarn("CLIENT_REG", "ProvisionClientRegistration: User not found in tenant", h.reqFields(c, nil))
 			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "User not found in tenant"})
 		}
 	}
 	if req.ExtensionID != nil {
 		var ext models.Extension
 		if err := h.DB.Where("id = ? AND tenant_id = ?", *req.ExtensionID, tenantID).First(&ext).Error; err != nil {
+			h.logWarn("CLIENT_REG", "ProvisionClientRegistration: Extension not found in tenant", h.reqFields(c, nil))
 			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Extension not found in tenant"})
 		}
 	}
@@ -194,10 +201,12 @@ func (h *Handler) DeleteClientRegistration(c *fiber.Ctx) error {
 
 	var reg models.ClientRegistration
 	if err := h.DB.Where("id = ? AND tenant_id = ?", regID, tenantID).First(&reg).Error; err != nil {
+		h.logWarn("CLIENT_REG", "DeleteClientRegistration: Registration not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Registration not found"})
 	}
 
 	if err := h.DB.Delete(&reg).Error; err != nil {
+		h.logError("CLIENT_REG", "DeleteClientRegistration: Failed to delete registration", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete registration"})
 	}
 
@@ -216,6 +225,7 @@ func (h *Handler) ListUnassignedRegistrations(c *fiber.Ctx) error {
 		"tenant_id = ? AND user_id IS NULL AND enabled = ?",
 		tenantID, true,
 	).Preload("Device").Order("created_at DESC").Find(&registrations).Error; err != nil {
+		h.logError("CLIENT_REG", "ListUnassignedRegistrations: Failed to fetch registrations", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch registrations"})
 	}
 
@@ -232,22 +242,26 @@ func (h *Handler) AssignRegistration(c *fiber.Ctx) error {
 		ExtensionID uint `json:"extension_id"`
 	}
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("CLIENT_REG", "AssignRegistration: Invalid request body", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	var reg models.ClientRegistration
 	if err := h.DB.Where("id = ? AND tenant_id = ?", regID, tenantID).First(&reg).Error; err != nil {
+		h.logWarn("CLIENT_REG", "AssignRegistration: Registration not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Registration not found"})
 	}
 
 	// Verify user and extension belong to tenant
 	var user models.User
 	if err := h.DB.Where("id = ? AND tenant_id = ?", req.UserID, tenantID).First(&user).Error; err != nil {
+		h.logWarn("CLIENT_REG", "AssignRegistration: User not found in tenant", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "User not found in tenant"})
 	}
 
 	var ext models.Extension
 	if err := h.DB.Where("id = ? AND tenant_id = ?", req.ExtensionID, tenantID).First(&ext).Error; err != nil {
+		h.logWarn("CLIENT_REG", "AssignRegistration: Extension not found in tenant", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Extension not found in tenant"})
 	}
 
@@ -256,6 +270,7 @@ func (h *Handler) AssignRegistration(c *fiber.Ctx) error {
 	reg.AllowOutbound = true
 
 	if err := h.DB.Save(&reg).Error; err != nil {
+		h.logError("CLIENT_REG", "AssignRegistration: Failed to assign registration", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to assign registration"})
 	}
 

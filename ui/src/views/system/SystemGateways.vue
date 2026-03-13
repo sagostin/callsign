@@ -23,6 +23,7 @@
       <span class="gw-col handle-col"></span>
       <span class="gw-col name-col">Gateway Name</span>
       <span class="gw-col host-col">Hostname / IP</span>
+      <span class="gw-col profile-col">Profile</span>
       <span class="gw-col type-col">Type</span>
       <span class="gw-col priority-col">Priority</span>
       <span class="gw-col status-col">Status</span>
@@ -44,6 +45,9 @@
       </span>
       <span class="gw-col name-col font-semibold">{{ gw.name }}</span>
       <span class="gw-col host-col text-muted">{{ gw.hostname }}</span>
+      <span class="gw-col profile-col">
+        <span class="badge profile">{{ gw.profile_name || 'external' }}</span>
+      </span>
       <span class="gw-col type-col">
         <span class="badge" :class="(gw.type || '').toLowerCase()">{{ gw.type }}</span>
       </span>
@@ -105,6 +109,16 @@
               <option value="Local">Local (On-Premise PRI/FXO)</option>
               <option value="Peering">Peering (Direct Interconnect)</option>
             </select>
+          </div>
+
+          <div class="form-group">
+            <label>SIP Profile</label>
+            <select v-model="form.profile_name" class="input-field">
+              <option v-for="p in sipProfiles" :key="p.profile_name" :value="p.profile_name">
+                {{ p.profile_name }}{{ p.description ? ` — ${p.description}` : '' }}
+              </option>
+            </select>
+            <p class="help-text">Which SIP profile (interface) this trunk registers on. Trunks typically use the <strong>external</strong> profile.</p>
           </div>
         </div>
 
@@ -201,6 +215,7 @@ const defaultForm = () => ({
   protocol: 'udp',
   port: 5060,
   type: 'Public',
+  profile_name: 'external',
   register: false,
   username: '',
   password: '',
@@ -210,6 +225,8 @@ const defaultForm = () => ({
   priority: 0,
   weight: 100
 })
+
+const sipProfiles = ref([])
 
 const form = ref(defaultForm())
 
@@ -223,6 +240,7 @@ const loadGateways = async () => {
       name: g.gateway_name || g.name || '',
       hostname: g.proxy || g.hostname || '',
       type: g.gateway_type || 'Public',
+      profile_name: g.profile_name || 'external',
       tenants: g.tenant_count || 0,
       status: g.enabled ? (g.register ? 'Registered' : 'Active') : 'Disabled',
       protocol: g.transport || g.protocol || 'udp',
@@ -271,7 +289,21 @@ const refreshStatus = async () => {
   refreshing.value = false
 }
 
+const loadSipProfiles = async () => {
+  try {
+    const response = await systemAPI.listSIPProfiles()
+    sipProfiles.value = (response.data?.data || response.data || []).filter(p => p.enabled !== false)
+  } catch (e) {
+    // Fallback to common defaults
+    sipProfiles.value = [
+      { profile_name: 'external', description: 'External/Trunk interface' },
+      { profile_name: 'internal', description: 'Internal/Registration interface' }
+    ]
+  }
+}
+
 onMounted(async () => {
+  await loadSipProfiles()
   await loadGateways()
   await loadGatewayStatus()
   // Auto-refresh every 30 seconds
@@ -296,6 +328,7 @@ const saveGateway = async () => {
       proxy: form.value.hostname,
       transport: form.value.protocol,
       gateway_type: form.value.type,
+      profile_name: form.value.profile_name || 'external',
       register: form.value.register,
       username: form.value.username,
       password: form.value.password,
@@ -442,6 +475,7 @@ const saveOrder = async () => {
 .badge.public { background: #e0f2fe; color: #0369a1; }
 .badge.local { background: #f3e8ff; color: #7e22ce; }
 .badge.peering { background: #fef3c7; color: #92400e; }
+.badge.profile { background: #ecfdf5; color: #065f46; }
 
 .tenant-badge {
   font-size: 11px;
@@ -586,7 +620,7 @@ label {
 .gw-list { border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; }
 .gw-list-header {
   display: grid;
-  grid-template-columns: 36px 1.5fr 1.5fr 100px 120px 120px 180px;
+  grid-template-columns: 36px 1.5fr 1.5fr 90px 100px 120px 120px 180px;
   gap: 8px;
   padding: 10px 16px;
   background: var(--bg-app);
@@ -598,7 +632,7 @@ label {
 }
 .gw-row {
   display: grid;
-  grid-template-columns: 36px 1.5fr 1.5fr 100px 120px 120px 180px;
+  grid-template-columns: 36px 1.5fr 1.5fr 90px 100px 120px 120px 180px;
   gap: 8px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-color);

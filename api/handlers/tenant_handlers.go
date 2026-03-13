@@ -19,6 +19,7 @@ import (
 func (h *Handler) ListExtensions(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "ListExtensions: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -31,6 +32,7 @@ func (h *Handler) ListExtensions(c *fiber.Ctx) error {
 	}
 
 	if err := query.Find(&extensions).Error; err != nil {
+		h.logError("API", "ListExtensions: Failed to fetch extensions", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch extensions"})
 	}
 
@@ -40,6 +42,7 @@ func (h *Handler) ListExtensions(c *fiber.Ctx) error {
 func (h *Handler) CreateExtension(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "CreateExtension: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -59,11 +62,13 @@ func (h *Handler) CreateExtension(c *fiber.Ctx) error {
 		OutboundCallerIDNumber  string `json:"outbound_caller_id_number"`
 	}
 	if err := c.BodyParser(&input); err != nil {
+		h.logWarn("API", "CreateExtension: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	// Validate required fields
 	if input.Extension == "" {
+		h.logWarn("API", "CreateExtension: Extension number is required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Extension number is required"})
 	}
 
@@ -72,6 +77,7 @@ func (h *Handler) CreateExtension(c *fiber.Ctx) error {
 	// Check if extension already exists
 	var existing models.Extension
 	if err := h.DB.Where("extension = ? AND tenant_id = ?", input.Extension, tenantID).First(&existing).Error; err == nil {
+		h.logWarn("API", "CreateExtension: Extension already exists", h.reqFields(c, nil))
 		return c.Status(http.StatusConflict).JSON(fiber.Map{"error": "Extension already exists"})
 	}
 
@@ -84,6 +90,7 @@ func (h *Handler) CreateExtension(c *fiber.Ctx) error {
 	// Get tenant for domain
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		h.logError("API", "CreateExtension: Failed to fetch tenant", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch tenant"})
 	}
 
@@ -108,6 +115,7 @@ func (h *Handler) CreateExtension(c *fiber.Ctx) error {
 	// Hash web password if provided
 	if input.WebPassword != "" {
 		if err := ext.SetWebPassword(input.WebPassword); err != nil {
+			h.logError("API", "CreateExtension: Failed to hash web password", h.reqFields(c, nil))
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to hash web password"})
 		}
 	}
@@ -133,6 +141,7 @@ func generateRandomPassword(length int) string {
 func (h *Handler) GetExtension(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "GetExtension: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -140,6 +149,7 @@ func (h *Handler) GetExtension(c *fiber.Ctx) error {
 	var ext models.Extension
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).First(&ext).Error; err != nil {
+		h.logWarn("API", "GetExtension: Extension not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Extension not found"})
 	}
 
@@ -149,6 +159,7 @@ func (h *Handler) GetExtension(c *fiber.Ctx) error {
 func (h *Handler) UpdateExtension(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "UpdateExtension: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -156,6 +167,7 @@ func (h *Handler) UpdateExtension(c *fiber.Ctx) error {
 	var ext models.Extension
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).First(&ext).Error; err != nil {
+		h.logWarn("API", "UpdateExtension: Extension not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Extension not found"})
 	}
 
@@ -182,6 +194,7 @@ func (h *Handler) UpdateExtension(c *fiber.Ctx) error {
 		NoAnswerForwardTo       *string `json:"no_answer_forward_to"`
 	}
 	if err := c.BodyParser(&input); err != nil {
+		h.logWarn("API", "UpdateExtension: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
@@ -262,11 +275,13 @@ func (h *Handler) UpdateExtension(c *fiber.Ctx) error {
 	// Hash web password if provided
 	if input.WebPassword != nil && *input.WebPassword != "" {
 		if err := ext.SetWebPassword(*input.WebPassword); err != nil {
+			h.logError("API", "UpdateExtension: Failed to hash web password", h.reqFields(c, nil))
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to hash web password"})
 		}
 	}
 
 	if err := h.DB.Save(&ext).Error; err != nil {
+		h.logError("API", "UpdateExtension: Failed to update extension", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update extension"})
 	}
 
@@ -276,12 +291,14 @@ func (h *Handler) UpdateExtension(c *fiber.Ctx) error {
 func (h *Handler) DeleteExtension(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "DeleteExtension: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	id, _ := strconv.Atoi(c.Params("ext"))
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).Delete(&models.Extension{}).Error; err != nil {
+		h.logError("API", "DeleteExtension: Failed to delete extension", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete extension"})
 	}
 
@@ -294,6 +311,7 @@ func (h *Handler) GetExtensionStatus(c *fiber.Ctx) error {
 
 	var ext models.Extension
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&ext).Error; err != nil {
+		h.logWarn("API", "GetExtensionStatus: Extension not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Extension not found"})
 	}
 
@@ -343,11 +361,13 @@ func (h *Handler) GetExtensionStatus(c *fiber.Ctx) error {
 func (h *Handler) ListVoicemailBoxes(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "ListVoicemailBoxes: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var boxes []models.VoicemailBox
 	if err := h.DB.Where("tenant_id = ?", middleware.GetTenantID(c)).Find(&boxes).Error; err != nil {
+		h.logError("API", "ListVoicemailBoxes: Failed to fetch voicemail boxes", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch voicemail boxes"})
 	}
 
@@ -357,17 +377,20 @@ func (h *Handler) ListVoicemailBoxes(c *fiber.Ctx) error {
 func (h *Handler) CreateVoicemailBox(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "CreateVoicemailBox: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var box models.VoicemailBox
 	if err := c.BodyParser(&box); err != nil {
+		h.logWarn("API", "CreateVoicemailBox: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	box.TenantID = middleware.GetTenantID(c)
 
 	if err := h.DB.Create(&box).Error; err != nil {
+		h.logError("API", "CreateVoicemailBox: Failed to create voicemail box", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create voicemail box"})
 	}
 
@@ -377,6 +400,7 @@ func (h *Handler) CreateVoicemailBox(c *fiber.Ctx) error {
 func (h *Handler) GetVoicemailBox(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "GetVoicemailBox: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -384,6 +408,7 @@ func (h *Handler) GetVoicemailBox(c *fiber.Ctx) error {
 	var box models.VoicemailBox
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).Preload("Messages").First(&box).Error; err != nil {
+		h.logWarn("API", "GetVoicemailBox: Voicemail box not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Voicemail box not found"})
 	}
 
@@ -393,6 +418,7 @@ func (h *Handler) GetVoicemailBox(c *fiber.Ctx) error {
 func (h *Handler) UpdateVoicemailBox(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "UpdateVoicemailBox: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -400,14 +426,17 @@ func (h *Handler) UpdateVoicemailBox(c *fiber.Ctx) error {
 	var box models.VoicemailBox
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).First(&box).Error; err != nil {
+		h.logWarn("API", "UpdateVoicemailBox: Voicemail box not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Voicemail box not found"})
 	}
 
 	if err := c.BodyParser(&box); err != nil {
+		h.logWarn("API", "UpdateVoicemailBox: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if err := h.DB.Save(&box).Error; err != nil {
+		h.logError("API", "UpdateVoicemailBox: Failed to update voicemail box", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update voicemail box"})
 	}
 
@@ -417,12 +446,14 @@ func (h *Handler) UpdateVoicemailBox(c *fiber.Ctx) error {
 func (h *Handler) DeleteVoicemailBox(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "DeleteVoicemailBox: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	id, _ := strconv.Atoi(c.Params("id"))
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).Delete(&models.VoicemailBox{}).Error; err != nil {
+		h.logError("API", "DeleteVoicemailBox: Failed to delete voicemail box", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete voicemail box"})
 	}
 
@@ -433,6 +464,7 @@ func (h *Handler) DeleteVoicemailBox(c *fiber.Ctx) error {
 func (h *Handler) ListVoicemailMessages(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "ListVoicemailMessages: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -442,12 +474,14 @@ func (h *Handler) ListVoicemailMessages(c *fiber.Ctx) error {
 	// Find the voicemail box
 	var box models.VoicemailBox
 	if err := h.DB.Where("extension = ? AND tenant_id = ?", ext, tenantID).First(&box).Error; err != nil {
+		h.logWarn("API", "ListVoicemailMessages: Voicemail box not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Voicemail box not found"})
 	}
 
 	// Get messages
 	var messages []models.VoicemailMessage
 	if err := h.DB.Where("box_id = ?", box.ID).Order("created_at DESC").Find(&messages).Error; err != nil {
+		h.logError("API", "ListVoicemailMessages: Failed to fetch messages", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch messages"})
 	}
 
@@ -458,6 +492,7 @@ func (h *Handler) ListVoicemailMessages(c *fiber.Ctx) error {
 func (h *Handler) GetVoicemailMessage(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "GetVoicemailMessage: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -466,6 +501,7 @@ func (h *Handler) GetVoicemailMessage(c *fiber.Ctx) error {
 
 	var message models.VoicemailMessage
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&message).Error; err != nil {
+		h.logWarn("API", "GetVoicemailMessage: Message not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Message not found"})
 	}
 
@@ -476,6 +512,7 @@ func (h *Handler) GetVoicemailMessage(c *fiber.Ctx) error {
 func (h *Handler) DeleteVoicemailMessage(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "DeleteVoicemailMessage: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -484,6 +521,7 @@ func (h *Handler) DeleteVoicemailMessage(c *fiber.Ctx) error {
 
 	var message models.VoicemailMessage
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&message).Error; err != nil {
+		h.logWarn("API", "DeleteVoicemailMessage: Message not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Message not found"})
 	}
 
@@ -497,6 +535,7 @@ func (h *Handler) DeleteVoicemailMessage(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Delete(&message).Error; err != nil {
+		h.logError("API", "DeleteVoicemailMessage: Failed to delete message", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete message"})
 	}
 
@@ -507,6 +546,7 @@ func (h *Handler) DeleteVoicemailMessage(c *fiber.Ctx) error {
 func (h *Handler) MarkVoicemailRead(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "MarkVoicemailRead: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -515,11 +555,13 @@ func (h *Handler) MarkVoicemailRead(c *fiber.Ctx) error {
 
 	var message models.VoicemailMessage
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&message).Error; err != nil {
+		h.logWarn("API", "MarkVoicemailRead: Message not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Message not found"})
 	}
 
 	if message.IsNew {
 		if err := message.MarkAsRead(h.DB); err != nil {
+			h.logError("API", "MarkVoicemailRead: Failed to mark as read", h.reqFields(c, nil))
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to mark as read"})
 		}
 
@@ -537,6 +579,7 @@ func (h *Handler) MarkVoicemailRead(c *fiber.Ctx) error {
 func (h *Handler) StreamVoicemailMessage(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "StreamVoicemailMessage: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -545,10 +588,12 @@ func (h *Handler) StreamVoicemailMessage(c *fiber.Ctx) error {
 
 	var message models.VoicemailMessage
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&message).Error; err != nil {
+		h.logWarn("API", "StreamVoicemailMessage: Message not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Message not found"})
 	}
 
 	if message.FilePath == "" {
+		h.logWarn("API", "StreamVoicemailMessage: Audio file not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Audio file not found"})
 	}
 
@@ -563,11 +608,13 @@ func (h *Handler) StreamVoicemailMessage(c *fiber.Ctx) error {
 func (h *Handler) ListRecordings(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "ListRecordings: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var recordings []models.Recording
 	if err := h.DB.Where("tenant_id = ?", middleware.GetTenantID(c)).Order("created_at DESC").Find(&recordings).Error; err != nil {
+		h.logError("API", "ListRecordings: Failed to fetch recordings", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch recordings"})
 	}
 
@@ -577,6 +624,7 @@ func (h *Handler) ListRecordings(c *fiber.Ctx) error {
 func (h *Handler) GetRecording(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "GetRecording: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -584,6 +632,7 @@ func (h *Handler) GetRecording(c *fiber.Ctx) error {
 	var recording models.Recording
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).First(&recording).Error; err != nil {
+		h.logWarn("API", "GetRecording: Recording not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Recording not found"})
 	}
 
@@ -593,12 +642,14 @@ func (h *Handler) GetRecording(c *fiber.Ctx) error {
 func (h *Handler) DeleteRecording(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "DeleteRecording: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	id, _ := strconv.Atoi(c.Params("id"))
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).Delete(&models.Recording{}).Error; err != nil {
+		h.logError("API", "DeleteRecording: Failed to delete recording", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete recording"})
 	}
 
@@ -609,6 +660,7 @@ func (h *Handler) DeleteRecording(c *fiber.Ctx) error {
 func (h *Handler) StreamRecording(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "StreamRecording: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -619,6 +671,7 @@ func (h *Handler) StreamRecording(c *fiber.Ctx) error {
 	var callRec models.CallRecording
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&callRec).Error; err == nil {
 		if callRec.FilePath == "" {
+			h.logWarn("API", "StreamRecording: Recording file not found", h.reqFields(c, nil))
 			return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Recording file not found"})
 		}
 		return c.SendFile(callRec.FilePath)
@@ -626,10 +679,12 @@ func (h *Handler) StreamRecording(c *fiber.Ctx) error {
 
 	var rec models.Recording
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&rec).Error; err != nil {
+		h.logWarn("API", "StreamRecording: Recording not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Recording not found"})
 	}
 
 	if rec.FilePath == "" {
+		h.logWarn("API", "StreamRecording: Recording file not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Recording file not found"})
 	}
 
@@ -640,6 +695,7 @@ func (h *Handler) StreamRecording(c *fiber.Ctx) error {
 func (h *Handler) DownloadRecording(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "DownloadRecording: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -649,6 +705,7 @@ func (h *Handler) DownloadRecording(c *fiber.Ctx) error {
 	var callRec models.CallRecording
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&callRec).Error; err == nil {
 		if callRec.FilePath == "" {
+			h.logWarn("API", "DownloadRecording: Recording file not found", h.reqFields(c, nil))
 			return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Recording file not found"})
 		}
 		filename := callRec.FileName
@@ -661,10 +718,12 @@ func (h *Handler) DownloadRecording(c *fiber.Ctx) error {
 
 	var rec models.Recording
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&rec).Error; err != nil {
+		h.logWarn("API", "DownloadRecording: Recording not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Recording not found"})
 	}
 
 	if rec.FilePath == "" {
+		h.logWarn("API", "DownloadRecording: Recording file not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Recording file not found"})
 	}
 
@@ -680,6 +739,7 @@ func (h *Handler) DownloadRecording(c *fiber.Ctx) error {
 func (h *Handler) UpdateRecordingNotes(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "UpdateRecordingNotes: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -688,6 +748,7 @@ func (h *Handler) UpdateRecordingNotes(c *fiber.Ctx) error {
 
 	var rec models.CallRecording
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&rec).Error; err != nil {
+		h.logWarn("API", "UpdateRecordingNotes: Recording not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Recording not found"})
 	}
 
@@ -703,6 +764,7 @@ func (h *Handler) UpdateRecordingNotes(c *fiber.Ctx) error {
 	rec.Tags = input.Tags
 
 	if err := h.DB.Save(&rec).Error; err != nil {
+		h.logError("API", "UpdateRecordingNotes: Failed to update recording", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update recording"})
 	}
 
@@ -713,6 +775,7 @@ func (h *Handler) UpdateRecordingNotes(c *fiber.Ctx) error {
 func (h *Handler) GetRecordingTranscription(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "GetRecordingTranscription: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -721,6 +784,7 @@ func (h *Handler) GetRecordingTranscription(c *fiber.Ctx) error {
 
 	var rec models.CallRecording
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&rec).Error; err != nil {
+		h.logWarn("API", "GetRecordingTranscription: Recording not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Recording not found"})
 	}
 
@@ -736,6 +800,7 @@ func (h *Handler) GetRecordingTranscription(c *fiber.Ctx) error {
 func (h *Handler) GetRecordingConfig(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "GetRecordingConfig: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -757,11 +822,13 @@ func (h *Handler) GetRecordingConfig(c *fiber.Ctx) error {
 func (h *Handler) ListIVRMenus(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "ListIVRMenus: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var menus []models.IVRMenu
 	if err := h.DB.Where("tenant_id = ?", middleware.GetTenantID(c)).Preload("Options").Find(&menus).Error; err != nil {
+		h.logError("API", "ListIVRMenus: Failed to fetch IVR menus", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch IVR menus"})
 	}
 
@@ -771,17 +838,20 @@ func (h *Handler) ListIVRMenus(c *fiber.Ctx) error {
 func (h *Handler) CreateIVRMenu(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "CreateIVRMenu: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var menu models.IVRMenu
 	if err := c.BodyParser(&menu); err != nil {
+		h.logWarn("API", "CreateIVRMenu: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	menu.TenantID = middleware.GetTenantID(c)
 
 	if err := h.DB.Create(&menu).Error; err != nil {
+		h.logError("API", "CreateIVRMenu: Failed to create IVR menu", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create IVR menu"})
 	}
 
@@ -792,6 +862,7 @@ func (h *Handler) CreateIVRMenu(c *fiber.Ctx) error {
 func (h *Handler) GetIVRMenu(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "GetIVRMenu: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -799,6 +870,7 @@ func (h *Handler) GetIVRMenu(c *fiber.Ctx) error {
 	var menu models.IVRMenu
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).Preload("Options").First(&menu).Error; err != nil {
+		h.logWarn("API", "GetIVRMenu: IVR menu not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "IVR menu not found"})
 	}
 
@@ -808,6 +880,7 @@ func (h *Handler) GetIVRMenu(c *fiber.Ctx) error {
 func (h *Handler) UpdateIVRMenu(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "UpdateIVRMenu: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -815,14 +888,17 @@ func (h *Handler) UpdateIVRMenu(c *fiber.Ctx) error {
 	var menu models.IVRMenu
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).First(&menu).Error; err != nil {
+		h.logWarn("API", "UpdateIVRMenu: IVR menu not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "IVR menu not found"})
 	}
 
 	if err := c.BodyParser(&menu); err != nil {
+		h.logWarn("API", "UpdateIVRMenu: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if err := h.DB.Save(&menu).Error; err != nil {
+		h.logError("API", "UpdateIVRMenu: Failed to update IVR menu", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update IVR menu"})
 	}
 
@@ -833,12 +909,14 @@ func (h *Handler) UpdateIVRMenu(c *fiber.Ctx) error {
 func (h *Handler) DeleteIVRMenu(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "DeleteIVRMenu: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	id, _ := strconv.Atoi(c.Params("id"))
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).Delete(&models.IVRMenu{}).Error; err != nil {
+		h.logError("API", "DeleteIVRMenu: Failed to delete IVR menu", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete IVR menu"})
 	}
 
@@ -853,11 +931,13 @@ func (h *Handler) DeleteIVRMenu(c *fiber.Ctx) error {
 func (h *Handler) ListQueues(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "ListQueues: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var queues []models.Queue
 	if err := h.DB.Where("tenant_id = ?", middleware.GetTenantID(c)).Preload("Agents").Find(&queues).Error; err != nil {
+		h.logError("API", "ListQueues: Failed to fetch queues", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch queues"})
 	}
 
@@ -867,17 +947,20 @@ func (h *Handler) ListQueues(c *fiber.Ctx) error {
 func (h *Handler) CreateQueue(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "CreateQueue: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var queue models.Queue
 	if err := c.BodyParser(&queue); err != nil {
+		h.logWarn("API", "CreateQueue: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	queue.TenantID = middleware.GetTenantID(c)
 
 	if err := h.DB.Create(&queue).Error; err != nil {
+		h.logError("API", "CreateQueue: Failed to create queue", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create queue"})
 	}
 
@@ -888,6 +971,7 @@ func (h *Handler) CreateQueue(c *fiber.Ctx) error {
 func (h *Handler) GetQueue(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "GetQueue: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -895,6 +979,7 @@ func (h *Handler) GetQueue(c *fiber.Ctx) error {
 	var queue models.Queue
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).Preload("Agents").First(&queue).Error; err != nil {
+		h.logWarn("API", "GetQueue: Queue not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Queue not found"})
 	}
 
@@ -904,6 +989,7 @@ func (h *Handler) GetQueue(c *fiber.Ctx) error {
 func (h *Handler) UpdateQueue(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "UpdateQueue: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -911,14 +997,17 @@ func (h *Handler) UpdateQueue(c *fiber.Ctx) error {
 	var queue models.Queue
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).First(&queue).Error; err != nil {
+		h.logWarn("API", "UpdateQueue: Queue not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Queue not found"})
 	}
 
 	if err := c.BodyParser(&queue); err != nil {
+		h.logWarn("API", "UpdateQueue: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if err := h.DB.Save(&queue).Error; err != nil {
+		h.logError("API", "UpdateQueue: Failed to update queue", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update queue"})
 	}
 
@@ -929,12 +1018,14 @@ func (h *Handler) UpdateQueue(c *fiber.Ctx) error {
 func (h *Handler) DeleteQueue(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "DeleteQueue: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	id, _ := strconv.Atoi(c.Params("id"))
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).Delete(&models.Queue{}).Error; err != nil {
+		h.logError("API", "DeleteQueue: Failed to delete queue", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete queue"})
 	}
 
@@ -950,6 +1041,7 @@ func (h *Handler) DeleteQueue(c *fiber.Ctx) error {
 func (h *Handler) ListQueueAgents(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "ListQueueAgents: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -959,11 +1051,13 @@ func (h *Handler) ListQueueAgents(c *fiber.Ctx) error {
 	// Verify queue belongs to tenant
 	var queue models.Queue
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&queue).Error; err != nil {
+		h.logWarn("API", "ListQueueAgents: Queue not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Queue not found"})
 	}
 
 	var agents []models.QueueAgent
 	if err := h.DB.Where("queue_id = ? AND tenant_id = ?", id, tenantID).Order("tier_level ASC, tier_position ASC").Find(&agents).Error; err != nil {
+		h.logError("API", "ListQueueAgents: Failed to fetch agents", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch agents"})
 	}
 
@@ -974,6 +1068,7 @@ func (h *Handler) ListQueueAgents(c *fiber.Ctx) error {
 func (h *Handler) AddQueueAgent(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "AddQueueAgent: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -983,11 +1078,13 @@ func (h *Handler) AddQueueAgent(c *fiber.Ctx) error {
 	// Verify queue belongs to tenant
 	var queue models.Queue
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&queue).Error; err != nil {
+		h.logWarn("API", "AddQueueAgent: Queue not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Queue not found"})
 	}
 
 	var agent models.QueueAgent
 	if err := c.BodyParser(&agent); err != nil {
+		h.logWarn("API", "AddQueueAgent: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
@@ -1001,6 +1098,7 @@ func (h *Handler) AddQueueAgent(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Create(&agent).Error; err != nil {
+		h.logError("API", "AddQueueAgent: Failed to add agent", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to add agent"})
 	}
 
@@ -1012,6 +1110,7 @@ func (h *Handler) AddQueueAgent(c *fiber.Ctx) error {
 func (h *Handler) RemoveQueueAgent(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "RemoveQueueAgent: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -1022,10 +1121,12 @@ func (h *Handler) RemoveQueueAgent(c *fiber.Ctx) error {
 	// Verify queue belongs to tenant
 	var queue models.Queue
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&queue).Error; err != nil {
+		h.logWarn("API", "RemoveQueueAgent: Queue not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Queue not found"})
 	}
 
 	if err := h.DB.Where("id = ? AND queue_id = ? AND tenant_id = ?", agentID, id, tenantID).Delete(&models.QueueAgent{}).Error; err != nil {
+		h.logError("API", "RemoveQueueAgent: Failed to remove agent", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to remove agent"})
 	}
 
@@ -1037,6 +1138,7 @@ func (h *Handler) RemoveQueueAgent(c *fiber.Ctx) error {
 func (h *Handler) PauseQueueAgent(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "PauseQueueAgent: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -1046,11 +1148,13 @@ func (h *Handler) PauseQueueAgent(c *fiber.Ctx) error {
 
 	var agent models.QueueAgent
 	if err := h.DB.Where("id = ? AND queue_id = ? AND tenant_id = ?", agentID, id, tenantID).First(&agent).Error; err != nil {
+		h.logWarn("API", "PauseQueueAgent: Agent not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Agent not found"})
 	}
 
 	agent.Status = models.AgentStatusOnBreak
 	if err := h.DB.Save(&agent).Error; err != nil {
+		h.logError("API", "PauseQueueAgent: Failed to pause agent", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to pause agent"})
 	}
 
@@ -1061,6 +1165,7 @@ func (h *Handler) PauseQueueAgent(c *fiber.Ctx) error {
 func (h *Handler) UnpauseQueueAgent(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "UnpauseQueueAgent: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -1070,11 +1175,13 @@ func (h *Handler) UnpauseQueueAgent(c *fiber.Ctx) error {
 
 	var agent models.QueueAgent
 	if err := h.DB.Where("id = ? AND queue_id = ? AND tenant_id = ?", agentID, id, tenantID).First(&agent).Error; err != nil {
+		h.logWarn("API", "UnpauseQueueAgent: Agent not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Agent not found"})
 	}
 
 	agent.Status = models.AgentStatusAvailable
 	if err := h.DB.Save(&agent).Error; err != nil {
+		h.logError("API", "UnpauseQueueAgent: Failed to unpause agent", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to unpause agent"})
 	}
 
@@ -1088,11 +1195,13 @@ func (h *Handler) UnpauseQueueAgent(c *fiber.Ctx) error {
 func (h *Handler) ListRingGroups(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "ListRingGroups: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var groups []models.RingGroup
 	if err := h.DB.Where("tenant_id = ?", middleware.GetTenantID(c)).Preload("Destinations").Find(&groups).Error; err != nil {
+		h.logError("API", "ListRingGroups: Failed to fetch ring groups", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch ring groups"})
 	}
 
@@ -1102,17 +1211,20 @@ func (h *Handler) ListRingGroups(c *fiber.Ctx) error {
 func (h *Handler) CreateRingGroup(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "CreateRingGroup: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var group models.RingGroup
 	if err := c.BodyParser(&group); err != nil {
+		h.logWarn("API", "CreateRingGroup: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	group.TenantID = middleware.GetTenantID(c)
 
 	if err := h.DB.Create(&group).Error; err != nil {
+		h.logError("API", "CreateRingGroup: Failed to create ring group", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create ring group"})
 	}
 
@@ -1123,6 +1235,7 @@ func (h *Handler) CreateRingGroup(c *fiber.Ctx) error {
 func (h *Handler) GetRingGroup(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "GetRingGroup: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -1130,6 +1243,7 @@ func (h *Handler) GetRingGroup(c *fiber.Ctx) error {
 	var group models.RingGroup
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).Preload("Destinations").First(&group).Error; err != nil {
+		h.logWarn("API", "GetRingGroup: Ring group not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Ring group not found"})
 	}
 
@@ -1139,6 +1253,7 @@ func (h *Handler) GetRingGroup(c *fiber.Ctx) error {
 func (h *Handler) UpdateRingGroup(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "UpdateRingGroup: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -1146,14 +1261,17 @@ func (h *Handler) UpdateRingGroup(c *fiber.Ctx) error {
 	var group models.RingGroup
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).First(&group).Error; err != nil {
+		h.logWarn("API", "UpdateRingGroup: Ring group not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Ring group not found"})
 	}
 
 	if err := c.BodyParser(&group); err != nil {
+		h.logWarn("API", "UpdateRingGroup: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if err := h.DB.Save(&group).Error; err != nil {
+		h.logError("API", "UpdateRingGroup: Failed to update ring group", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update ring group"})
 	}
 
@@ -1164,12 +1282,14 @@ func (h *Handler) UpdateRingGroup(c *fiber.Ctx) error {
 func (h *Handler) DeleteRingGroup(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "DeleteRingGroup: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	id, _ := strconv.Atoi(c.Params("id"))
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).Delete(&models.RingGroup{}).Error; err != nil {
+		h.logError("API", "DeleteRingGroup: Failed to delete ring group", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete ring group"})
 	}
 
@@ -1184,11 +1304,13 @@ func (h *Handler) DeleteRingGroup(c *fiber.Ctx) error {
 func (h *Handler) ListConferences(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "ListConferences: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var conferences []models.Conference
 	if err := h.DB.Where("tenant_id = ?", middleware.GetTenantID(c)).Find(&conferences).Error; err != nil {
+		h.logError("API", "ListConferences: Failed to fetch conferences", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch conferences"})
 	}
 
@@ -1198,17 +1320,20 @@ func (h *Handler) ListConferences(c *fiber.Ctx) error {
 func (h *Handler) CreateConference(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "CreateConference: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var conf models.Conference
 	if err := c.BodyParser(&conf); err != nil {
+		h.logWarn("API", "CreateConference: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	conf.TenantID = middleware.GetTenantID(c)
 
 	if err := h.DB.Create(&conf).Error; err != nil {
+		h.logError("API", "CreateConference: Failed to create conference", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create conference"})
 	}
 
@@ -1219,6 +1344,7 @@ func (h *Handler) CreateConference(c *fiber.Ctx) error {
 func (h *Handler) GetConference(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "GetConference: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -1226,6 +1352,7 @@ func (h *Handler) GetConference(c *fiber.Ctx) error {
 	var conf models.Conference
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).First(&conf).Error; err != nil {
+		h.logWarn("API", "GetConference: Conference not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Conference not found"})
 	}
 
@@ -1235,6 +1362,7 @@ func (h *Handler) GetConference(c *fiber.Ctx) error {
 func (h *Handler) UpdateConference(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "UpdateConference: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -1242,14 +1370,17 @@ func (h *Handler) UpdateConference(c *fiber.Ctx) error {
 	var conf models.Conference
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).First(&conf).Error; err != nil {
+		h.logWarn("API", "UpdateConference: Conference not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Conference not found"})
 	}
 
 	if err := c.BodyParser(&conf); err != nil {
+		h.logWarn("API", "UpdateConference: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if err := h.DB.Save(&conf).Error; err != nil {
+		h.logError("API", "UpdateConference: Failed to update conference", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update conference"})
 	}
 
@@ -1260,12 +1391,14 @@ func (h *Handler) UpdateConference(c *fiber.Ctx) error {
 func (h *Handler) DeleteConference(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "DeleteConference: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	id, _ := strconv.Atoi(c.Params("id"))
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).Delete(&models.Conference{}).Error; err != nil {
+		h.logError("API", "DeleteConference: Failed to delete conference", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete conference"})
 	}
 
@@ -1287,6 +1420,7 @@ func (h *Handler) DeleteConference(c *fiber.Ctx) error {
 func (h *Handler) ListAudioFiles(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "ListAudioFiles: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -1320,6 +1454,7 @@ func (h *Handler) DeleteAudioFile(c *fiber.Ctx) error {
 func (h *Handler) ListMOHStreams(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("API", "ListMOHStreams: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -1355,6 +1490,7 @@ func (h *Handler) ListExtensionProfiles(c *fiber.Ctx) error {
 
 	var profiles []models.ExtensionProfile
 	if err := h.DB.Where("tenant_id = ?", tenantID).Order("name ASC").Find(&profiles).Error; err != nil {
+		h.logError("API", "ListExtensionProfiles: Failed to fetch extension profiles", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch extension profiles"})
 	}
 
@@ -1402,6 +1538,7 @@ func (h *Handler) CreateExtensionProfile(c *fiber.Ctx) error {
 	profile.TenantID = tenantID
 
 	if err := h.DB.Create(&profile).Error; err != nil {
+		h.logError("API", "CreateExtensionProfile: Failed to create extension profile", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create extension profile"})
 	}
 
@@ -1414,6 +1551,7 @@ func (h *Handler) GetExtensionProfile(c *fiber.Ctx) error {
 
 	var profile models.ExtensionProfile
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&profile).Error; err != nil {
+		h.logWarn("API", "GetExtensionProfile: Extension profile not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Extension profile not found"})
 	}
 
@@ -1426,6 +1564,7 @@ func (h *Handler) UpdateExtensionProfile(c *fiber.Ctx) error {
 
 	var profile models.ExtensionProfile
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&profile).Error; err != nil {
+		h.logWarn("API", "UpdateExtensionProfile: Extension profile not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Extension profile not found"})
 	}
 
@@ -1441,6 +1580,7 @@ func (h *Handler) UpdateExtensionProfile(c *fiber.Ctx) error {
 	profile.RoutingOverride = input.RoutingOverride
 
 	if err := h.DB.Save(&profile).Error; err != nil {
+		h.logError("API", "UpdateExtensionProfile: Failed to update extension profile", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update extension profile"})
 	}
 
@@ -1458,10 +1598,12 @@ func (h *Handler) DeleteExtensionProfile(c *fiber.Ctx) error {
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.ExtensionProfile{})
 	if result.Error != nil {
+		h.logError("API", "DeleteExtensionProfile: Failed to delete extension profile", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete extension profile"})
 	}
 
 	if result.RowsAffected == 0 {
+		h.logWarn("API", "DeleteExtensionProfile: Extension profile not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Extension profile not found"})
 	}
 
@@ -1477,6 +1619,7 @@ func (h *Handler) ListSpeedDialGroups(c *fiber.Ctx) error {
 
 	var groups []models.SpeedDialGroup
 	if err := h.DB.Where("tenant_id = ?", tenantID).Order("name ASC").Find(&groups).Error; err != nil {
+		h.logError("API", "ListSpeedDialGroups: Failed to fetch speed dial groups", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch speed dial groups"})
 	}
 
@@ -1497,6 +1640,7 @@ func (h *Handler) CreateSpeedDialGroup(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Create(&group).Error; err != nil {
+		h.logError("API", "CreateSpeedDialGroup: Failed to create speed dial group", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create speed dial group"})
 	}
 
@@ -1509,6 +1653,7 @@ func (h *Handler) GetSpeedDialGroup(c *fiber.Ctx) error {
 
 	var group models.SpeedDialGroup
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&group).Error; err != nil {
+		h.logWarn("API", "GetSpeedDialGroup: Speed dial group not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Speed dial group not found"})
 	}
 
@@ -1521,6 +1666,7 @@ func (h *Handler) UpdateSpeedDialGroup(c *fiber.Ctx) error {
 
 	var group models.SpeedDialGroup
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&group).Error; err != nil {
+		h.logWarn("API", "UpdateSpeedDialGroup: Speed dial group not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Speed dial group not found"})
 	}
 
@@ -1536,6 +1682,7 @@ func (h *Handler) UpdateSpeedDialGroup(c *fiber.Ctx) error {
 	group.Entries = input.Entries
 
 	if err := h.DB.Save(&group).Error; err != nil {
+		h.logError("API", "UpdateSpeedDialGroup: Failed to update speed dial group", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update speed dial group"})
 	}
 
@@ -1548,10 +1695,12 @@ func (h *Handler) DeleteSpeedDialGroup(c *fiber.Ctx) error {
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.SpeedDialGroup{})
 	if result.Error != nil {
+		h.logError("API", "DeleteSpeedDialGroup: Failed to delete speed dial group", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete speed dial group"})
 	}
 
 	if result.RowsAffected == 0 {
+		h.logWarn("API", "DeleteSpeedDialGroup: Speed dial group not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Speed dial group not found"})
 	}
 

@@ -18,6 +18,7 @@ type LogManager struct {
 	Templates  map[string]string
 	LokiClient *LokiClient
 	LogChannel chan *LogEntry
+	useLoki    bool
 	wg         sync.WaitGroup
 	closed     bool
 	mu         sync.RWMutex
@@ -120,16 +121,23 @@ func (c *LokiClient) PushLog(labels map[string]string, timestamp time.Time, line
 }
 
 // NewLogManager initializes a new LogManager.
-func NewLogManager(lokiClient *LokiClient) *LogManager {
+// When useLoki is false, no channel or goroutine is created (standard mode).
+func NewLogManager(lokiClient *LokiClient, useLoki bool) *LogManager {
 	lm := &LogManager{
 		Templates:  make(map[string]string),
 		LokiClient: lokiClient,
-		LogChannel: make(chan *LogEntry, 1000), // Buffered to prevent blocking
+		useLoki:    useLoki,
 		closed:     false,
 	}
 	lm.LoadTemplates()
-	lm.wg.Add(1)
-	go lm.processLogChannel()
+
+	// Only start the Loki push channel/goroutine if Loki mode is active
+	if useLoki && lokiClient != nil {
+		lm.LogChannel = make(chan *LogEntry, 1000)
+		lm.wg.Add(1)
+		go lm.processLogChannel()
+	}
+
 	return lm
 }
 
@@ -221,10 +229,16 @@ func (lm *LogManager) ErrorWithErr(logType string, err error, fields map[string]
 	lm.SendLog(entry)
 }
 
-// SendLog sends a log to Loki asynchronously via the log channel.
+// SendLog sends a log entry. In standard mode it only prints locally.
+// In Loki mode it also pushes to the Loki channel asynchronously.
 func (lm *LogManager) SendLog(log *LogEntry) {
 	// Always print locally first
 	log.Print()
+
+	// Skip Loki push if not in Loki mode
+	if !lm.useLoki || lm.LogChannel == nil {
+		return
+	}
 
 	// Check if closed before sending to channel
 	lm.mu.RLock()
@@ -331,8 +345,10 @@ func (lm *LogManager) Close() {
 	lm.closed = true
 	lm.mu.Unlock()
 
-	close(lm.LogChannel)
-	lm.wg.Wait()
+	if lm.LogChannel != nil {
+		close(lm.LogChannel)
+		lm.wg.Wait()
+	}
 }
 
 // AddField adds a new field to an already built log entry.

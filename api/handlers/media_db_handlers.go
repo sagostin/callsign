@@ -22,6 +22,7 @@ import (
 func (h *Handler) ListMediaFiles(c *fiber.Ctx) error {
 	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("MEDIA_DB", "ListMediaFiles: Tenant context required", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
@@ -41,6 +42,7 @@ func (h *Handler) ListMediaFiles(c *fiber.Ctx) error {
 	}
 
 	if err := query.Find(&files).Error; err != nil {
+		h.logError("MEDIA_DB", "ListMediaFiles: Failed to fetch files", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch files"})
 	}
 
@@ -131,6 +133,7 @@ func (h *Handler) syncTenantMediaFiles(tenantID uint) ([]models.MediaFile, error
 func (h *Handler) UploadMediaFile(c *fiber.Ctx) error {
 	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("MEDIA_DB", "UploadMediaFile: Tenant context required", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
@@ -141,16 +144,19 @@ func (h *Handler) UploadMediaFile(c *fiber.Ctx) error {
 	category := c.FormValue("category")
 
 	if name == "" {
+		h.logWarn("MEDIA_DB", "UploadMediaFile: Name is required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Name is required"})
 	}
 
 	// File upload
 	header, err := c.FormFile("file")
 	if err != nil {
+		h.logWarn("MEDIA_DB", "UploadMediaFile: Failed to read file", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Failed to read file"})
 	}
 	file, err := header.Open()
 	if err != nil {
+		h.logError("MEDIA_DB", "UploadMediaFile: Failed to open file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to open file"})
 	}
 	defer file.Close()
@@ -158,6 +164,7 @@ func (h *Handler) UploadMediaFile(c *fiber.Ctx) error {
 	// Validate extension
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".wav" && ext != ".mp3" && ext != ".ogg" {
+		h.logWarn("MEDIA_DB", "UploadMediaFile: Invalid file type. Only .wav, .mp3, .ogg allowed", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file type. Only .wav, .mp3, .ogg allowed"})
 	}
 
@@ -172,6 +179,7 @@ func (h *Handler) UploadMediaFile(c *fiber.Ctx) error {
 	fullDir := filepath.Join(storageRoot, relPath)
 
 	if err := os.MkdirAll(fullDir, 0755); err != nil {
+		h.logError("MEDIA_DB", "UploadMediaFile: Failed to create directory", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create directory"})
 	}
 
@@ -183,12 +191,14 @@ func (h *Handler) UploadMediaFile(c *fiber.Ctx) error {
 
 	out, err := os.Create(dstPath)
 	if err != nil {
+		h.logError("MEDIA_DB", "UploadMediaFile: Failed to create destination file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create destination file"})
 	}
 	defer out.Close()
 
 	written, err := io.Copy(out, file)
 	if err != nil {
+		h.logError("MEDIA_DB", "UploadMediaFile: Failed to save file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
 	}
 
@@ -206,6 +216,7 @@ func (h *Handler) UploadMediaFile(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Create(&mediaFile).Error; err != nil {
+		h.logError("MEDIA_DB", "UploadMediaFile: Failed to create database record", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create database record"})
 	}
 
@@ -216,6 +227,7 @@ func (h *Handler) UploadMediaFile(c *fiber.Ctx) error {
 func (h *Handler) UpdateMediaFile(c *fiber.Ctx) error {
 	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("MEDIA_DB", "UpdateMediaFile: Tenant context required", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
@@ -223,6 +235,7 @@ func (h *Handler) UpdateMediaFile(c *fiber.Ctx) error {
 	var mediaFile models.MediaFile
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&mediaFile).Error; err != nil {
+		h.logWarn("MEDIA_DB", "UpdateMediaFile: File not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 	}
 
@@ -235,6 +248,7 @@ func (h *Handler) UpdateMediaFile(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&input); err != nil {
+		h.logWarn("MEDIA_DB", "UpdateMediaFile: Invalid input", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
 	}
 
@@ -246,6 +260,7 @@ func (h *Handler) UpdateMediaFile(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Save(&mediaFile).Error; err != nil {
+		h.logError("MEDIA_DB", "UpdateMediaFile: Failed to update record", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update record"})
 	}
 
@@ -256,6 +271,7 @@ func (h *Handler) UpdateMediaFile(c *fiber.Ctx) error {
 func (h *Handler) DeleteMediaFile(c *fiber.Ctx) error {
 	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("MEDIA_DB", "DeleteMediaFile: Tenant context required", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
@@ -263,6 +279,7 @@ func (h *Handler) DeleteMediaFile(c *fiber.Ctx) error {
 	var mediaFile models.MediaFile
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&mediaFile).Error; err != nil {
+		h.logWarn("MEDIA_DB", "DeleteMediaFile: File not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 	}
 
@@ -276,6 +293,7 @@ func (h *Handler) DeleteMediaFile(c *fiber.Ctx) error {
 
 	if err := tx.Delete(&mediaFile).Error; err != nil {
 		tx.Rollback()
+		h.logError("MEDIA_DB", "DeleteMediaFile: Failed to delete database record", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete database record"})
 	}
 
@@ -299,6 +317,7 @@ func (h *Handler) StreamMediaFile(c *fiber.Ctx) error {
 		tenantID = middleware.GetTenantID(c)
 	}
 	if tenantID == 0 {
+		h.logWarn("MEDIA_DB", "StreamMediaFile: Tenant context required", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
@@ -306,6 +325,7 @@ func (h *Handler) StreamMediaFile(c *fiber.Ctx) error {
 	var mediaFile models.MediaFile
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&mediaFile).Error; err != nil {
+		h.logWarn("MEDIA_DB", "StreamMediaFile: File not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 	}
 
@@ -314,6 +334,7 @@ func (h *Handler) StreamMediaFile(c *fiber.Ctx) error {
 
 	// Check file exists
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		h.logWarn("MEDIA_DB", "StreamMediaFile: File not found on disk", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found on disk"})
 	}
 

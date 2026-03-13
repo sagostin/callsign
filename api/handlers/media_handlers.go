@@ -63,17 +63,20 @@ func (h *Handler) ListSystemMusic(c *fiber.Ctx) error {
 func (h *Handler) StreamSystemSound(c *fiber.Ctx) error {
 	path := c.Query("path")
 	if path == "" {
+		h.logWarn("MEDIA", "StreamSystemSound: Path is required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Path is required"})
 	}
 
 	// Security: prevent directory traversal
 	if strings.Contains(path, "..") {
+		h.logWarn("MEDIA", "StreamSystemSound: Invalid path", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
 	fullPath := filepath.Join("/usr/share/freeswitch/sounds", path)
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		h.logWarn("MEDIA", "StreamSystemSound: File not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 	}
 
@@ -84,16 +87,19 @@ func (h *Handler) StreamSystemSound(c *fiber.Ctx) error {
 func (h *Handler) StreamSystemMusic(c *fiber.Ctx) error {
 	path := c.Query("path")
 	if path == "" {
+		h.logWarn("MEDIA", "StreamSystemMusic: Path is required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Path is required"})
 	}
 
 	if strings.Contains(path, "..") {
+		h.logWarn("MEDIA", "StreamSystemMusic: Invalid path", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
 	fullPath := filepath.Join("/usr/share/freeswitch/sounds/music", path)
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		h.logWarn("MEDIA", "StreamSystemMusic: File not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 	}
 
@@ -172,20 +178,24 @@ func (h *Handler) UploadSystemSound(c *fiber.Ctx) error {
 	// Path should be relative to /usr/share/freeswitch/sounds (e.g., "en/us/callie/ivr")
 	targetPath := c.FormValue("path")
 	if targetPath == "" {
+		h.logWarn("MEDIA", "UploadSystemSound: Target path is required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Target path is required"})
 	}
 
 	// Prevent directory traversal
 	if strings.Contains(targetPath, "..") {
+		h.logWarn("MEDIA", "UploadSystemSound: Invalid path", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
 	header, err := c.FormFile("file")
 	if err != nil {
+		h.logWarn("MEDIA", "UploadSystemSound: Failed to read file", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Failed to read file"})
 	}
 	file, err := header.Open()
 	if err != nil {
+		h.logError("MEDIA", "UploadSystemSound: Failed to open file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to open file"})
 	}
 	defer file.Close()
@@ -193,6 +203,7 @@ func (h *Handler) UploadSystemSound(c *fiber.Ctx) error {
 	// Validate extension
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".wav" && ext != ".mp3" && ext != ".ogg" {
+		h.logWarn("MEDIA", "UploadSystemSound: Invalid file type. Only .wav, .mp3, .ogg allowed", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file type. Only .wav, .mp3, .ogg allowed"})
 	}
 
@@ -200,6 +211,7 @@ func (h *Handler) UploadSystemSound(c *fiber.Ctx) error {
 
 	// Ensure directory exists
 	if err := os.MkdirAll(fullPath, 0755); err != nil {
+		h.logError("MEDIA", "UploadSystemSound: Failed to create directory", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create directory"})
 	}
 
@@ -208,11 +220,13 @@ func (h *Handler) UploadSystemSound(c *fiber.Ctx) error {
 	dstPath := filepath.Join(fullPath, finalFilename)
 	out, err := os.Create(dstPath)
 	if err != nil {
+		h.logError("MEDIA", "UploadSystemSound: Failed to create destination file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create destination file"})
 	}
 	defer out.Close()
 
 	if _, err := io.Copy(out, file); err != nil {
+		h.logError("MEDIA", "UploadSystemSound: Failed to save file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
 	}
 
@@ -224,27 +238,32 @@ func (h *Handler) UploadSystemMusic(c *fiber.Ctx) error {
 	// Rate folder (e.g., "8000", "16000", "32000", "48000")
 	rate := c.FormValue("rate")
 	if rate != "8000" && rate != "16000" && rate != "32000" && rate != "48000" {
+		h.logWarn("MEDIA", "UploadSystemMusic: Invalid sample rate. Must be 8000, 16000, 32000, or 48000", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid sample rate. Must be 8000, 16000, 32000, or 48000"})
 	}
 
 	header, err := c.FormFile("file")
 	if err != nil {
+		h.logWarn("MEDIA", "UploadSystemMusic: Failed to read file", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Failed to read file"})
 	}
 	file, err := header.Open()
 	if err != nil {
+		h.logError("MEDIA", "UploadSystemMusic: Failed to open file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to open file"})
 	}
 	defer file.Close()
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".wav" && ext != ".mp3" && ext != ".ogg" {
+		h.logWarn("MEDIA", "UploadSystemMusic: Invalid file type. Only .wav, .mp3, .ogg allowed", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file type. Only .wav, .mp3, .ogg allowed"})
 	}
 
 	// Optional folder/genre parameter
 	folder := c.FormValue("folder")
 	if folder != "" && strings.Contains(folder, "..") {
+		h.logWarn("MEDIA", "UploadSystemMusic: Invalid folder name", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid folder name"})
 	}
 
@@ -256,6 +275,7 @@ func (h *Handler) UploadSystemMusic(c *fiber.Ctx) error {
 
 	// Ensure directory exists
 	if err := os.MkdirAll(fullPath, 0755); err != nil {
+		h.logError("MEDIA", "UploadSystemMusic: Failed to create directory", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create directory"})
 	}
 
@@ -264,11 +284,13 @@ func (h *Handler) UploadSystemMusic(c *fiber.Ctx) error {
 	dstPath := filepath.Join(fullPath, finalFilename)
 	out, err := os.Create(dstPath)
 	if err != nil {
+		h.logError("MEDIA", "UploadSystemMusic: Failed to create destination file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create destination file"})
 	}
 	defer out.Close()
 
 	if _, err := io.Copy(out, file); err != nil {
+		h.logError("MEDIA", "UploadSystemMusic: Failed to save file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
 	}
 
@@ -284,6 +306,7 @@ func (h *Handler) UploadSystemMusic(c *fiber.Ctx) error {
 func (h *Handler) ListTenantSounds(c *fiber.Ctx) error {
 	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("MEDIA", "ListTenantSounds: Tenant context required", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
@@ -363,31 +386,37 @@ func mergeTrees(systemNode, tenantNode *FileNode) {
 func (h *Handler) UploadTenantSound(c *fiber.Ctx) error {
 	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("MEDIA", "UploadTenantSound: Tenant context required", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
 	// Path relative to sounds root (e.g., "en/us/callie/ivr")
 	targetPath := c.FormValue("path")
 	if targetPath == "" {
+		h.logWarn("MEDIA", "UploadTenantSound: Target path is required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Target path is required"})
 	}
 
 	if strings.Contains(targetPath, "..") {
+		h.logWarn("MEDIA", "UploadTenantSound: Invalid path", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
 	header, err := c.FormFile("file")
 	if err != nil {
+		h.logWarn("MEDIA", "UploadTenantSound: Failed to read file", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Failed to read file"})
 	}
 	file, err := header.Open()
 	if err != nil {
+		h.logError("MEDIA", "UploadTenantSound: Failed to open file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to open file"})
 	}
 	defer file.Close()
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".wav" && ext != ".mp3" && ext != ".ogg" {
+		h.logWarn("MEDIA", "UploadTenantSound: Invalid file type", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file type"})
 	}
 
@@ -396,6 +425,7 @@ func (h *Handler) UploadTenantSound(c *fiber.Ctx) error {
 	fullDirPath := filepath.Join(baseDir, targetPath)
 
 	if err := os.MkdirAll(fullDirPath, 0755); err != nil {
+		h.logError("MEDIA", "UploadTenantSound: Failed to create tenant directory", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create tenant directory"})
 	}
 
@@ -404,11 +434,13 @@ func (h *Handler) UploadTenantSound(c *fiber.Ctx) error {
 	dstPath := filepath.Join(fullDirPath, finalFilename)
 	out, err := os.Create(dstPath)
 	if err != nil {
+		h.logError("MEDIA", "UploadTenantSound: Failed to create destination file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create destination file"})
 	}
 	defer out.Close()
 
 	if _, err := io.Copy(out, file); err != nil {
+		h.logError("MEDIA", "UploadTenantSound: Failed to save file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
 	}
 
@@ -419,16 +451,19 @@ func (h *Handler) UploadTenantSound(c *fiber.Ctx) error {
 func (h *Handler) DeleteTenantSound(c *fiber.Ctx) error {
 	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("MEDIA", "DeleteTenantSound: Tenant context required", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
 	// Full logical path relative to sounds root, e.g. "en/us/callie/ivr/welcome.wav"
 	targetPath := c.Query("path")
 	if targetPath == "" {
+		h.logWarn("MEDIA", "DeleteTenantSound: Path required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Path required"})
 	}
 
 	if strings.Contains(targetPath, "..") {
+		h.logWarn("MEDIA", "DeleteTenantSound: Invalid path", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
@@ -437,8 +472,10 @@ func (h *Handler) DeleteTenantSound(c *fiber.Ctx) error {
 
 	if err := os.Remove(fullPath); err != nil {
 		if os.IsNotExist(err) {
+			h.logWarn("MEDIA", "DeleteTenantSound: File not found", h.reqFields(c, nil))
 			return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 		}
+		h.logError("MEDIA", "DeleteTenantSound: Failed to delete file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete file"})
 	}
 
@@ -449,6 +486,7 @@ func (h *Handler) DeleteTenantSound(c *fiber.Ctx) error {
 func (h *Handler) ListTenantMusic(c *fiber.Ctx) error {
 	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("MEDIA", "ListTenantMusic: Tenant context required", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
@@ -484,33 +522,39 @@ func (h *Handler) ListTenantMusic(c *fiber.Ctx) error {
 func (h *Handler) UploadTenantMusic(c *fiber.Ctx) error {
 	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("MEDIA", "UploadTenantMusic: Tenant context required", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
 	// Rate folder (e.g., "8000", "16000", "32000", "48000")
 	rate := c.FormValue("rate")
 	if rate != "8000" && rate != "16000" && rate != "32000" && rate != "48000" {
+		h.logWarn("MEDIA", "UploadTenantMusic: Invalid sample rate", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid sample rate"})
 	}
 
 	header, err := c.FormFile("file")
 	if err != nil {
+		h.logWarn("MEDIA", "UploadTenantMusic: Failed to read file", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Failed to read file"})
 	}
 	file, err := header.Open()
 	if err != nil {
+		h.logError("MEDIA", "UploadTenantMusic: Failed to open file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to open file"})
 	}
 	defer file.Close()
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".wav" && ext != ".mp3" && ext != ".ogg" {
+		h.logWarn("MEDIA", "UploadTenantMusic: Invalid file type", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file type"})
 	}
 
 	// Optional folder/genre parameter
 	folder := c.FormValue("folder")
 	if folder != "" && strings.Contains(folder, "..") {
+		h.logWarn("MEDIA", "UploadTenantMusic: Invalid folder name", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid folder name"})
 	}
 
@@ -522,6 +566,7 @@ func (h *Handler) UploadTenantMusic(c *fiber.Ctx) error {
 	}
 
 	if err := os.MkdirAll(fullRatePath, 0755); err != nil {
+		h.logError("MEDIA", "UploadTenantMusic: Failed to create tenant directory", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create tenant directory"})
 	}
 
@@ -530,11 +575,13 @@ func (h *Handler) UploadTenantMusic(c *fiber.Ctx) error {
 	dstPath := filepath.Join(fullRatePath, finalFilename)
 	out, err := os.Create(dstPath)
 	if err != nil {
+		h.logError("MEDIA", "UploadTenantMusic: Failed to create destination file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create destination file"})
 	}
 	defer out.Close()
 
 	if _, err := io.Copy(out, file); err != nil {
+		h.logError("MEDIA", "UploadTenantMusic: Failed to save file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
 	}
 
@@ -550,16 +597,19 @@ func (h *Handler) UploadTenantMusic(c *fiber.Ctx) error {
 func (h *Handler) DeleteTenantMusic(c *fiber.Ctx) error {
 	tenantID := middleware.GetScopedTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("MEDIA", "DeleteTenantMusic: Tenant context required", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Tenant context required"})
 	}
 
 	// Path relative to music/tenant root (e.g. "8000/music.wav")
 	targetPath := c.Query("path")
 	if targetPath == "" {
+		h.logWarn("MEDIA", "DeleteTenantMusic: Path required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Path required"})
 	}
 
 	if strings.Contains(targetPath, "..") {
+		h.logWarn("MEDIA", "DeleteTenantMusic: Invalid path", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid path"})
 	}
 
@@ -568,8 +618,10 @@ func (h *Handler) DeleteTenantMusic(c *fiber.Ctx) error {
 
 	if err := os.Remove(fullPath); err != nil {
 		if os.IsNotExist(err) {
+			h.logWarn("MEDIA", "DeleteTenantMusic: File not found", h.reqFields(c, nil))
 			return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "File not found"})
 		}
+		h.logError("MEDIA", "DeleteTenantMusic: Failed to delete file", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete file"})
 	}
 

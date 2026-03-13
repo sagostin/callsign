@@ -62,6 +62,7 @@ func (h *Handler) ListInboundRoutes(c *fiber.Ctx) error {
 			return db.Order("detail_order ASC")
 		}).
 		Order("dialplan_order ASC").Find(&routes).Error; err != nil {
+		h.logError("ROUTING", "ListInboundRoutes: Failed to retrieve inbound routes", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve inbound routes"})
 	}
 
@@ -82,6 +83,7 @@ func (h *Handler) CreateInboundRoute(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Create(&route).Error; err != nil {
+		h.logError("ROUTING", "CreateInboundRoute: Failed to create inbound route", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create inbound route"})
 	}
 
@@ -99,6 +101,7 @@ func (h *Handler) GetInboundRoute(c *fiber.Ctx) error {
 		Preload("Details", func(db *gorm.DB) *gorm.DB {
 			return db.Order("detail_order ASC")
 		}).First(&route).Error; err != nil {
+		h.logWarn("ROUTING", "GetInboundRoute: Inbound route not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Inbound route not found"})
 	}
 
@@ -111,6 +114,7 @@ func (h *Handler) UpdateInboundRoute(c *fiber.Ctx) error {
 
 	var route models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context = ?", id, tenantID, "public").First(&route).Error; err != nil {
+		h.logWarn("ROUTING", "UpdateInboundRoute: Inbound route not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Inbound route not found"})
 	}
 
@@ -123,6 +127,7 @@ func (h *Handler) UpdateInboundRoute(c *fiber.Ctx) error {
 	route.DialplanContext = "public"
 
 	if err := h.DB.Save(&route).Error; err != nil {
+		h.logError("ROUTING", "UpdateInboundRoute: Failed to update inbound route", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update inbound route"})
 	}
 
@@ -150,6 +155,7 @@ func (h *Handler) DeleteInboundRoute(c *fiber.Ctx) error {
 
 	var route models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context = ?", id, tenantID, "public").First(&route).Error; err != nil {
+		h.logWarn("ROUTING", "DeleteInboundRoute: Inbound route not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Inbound route not found"})
 	}
 
@@ -175,6 +181,7 @@ func (h *Handler) ReorderInboundRoutes(c *fiber.Ctx) error {
 			Where("id = ? AND tenant_id = ? AND dialplan_context = ?", item.ID, tenantID, "public").
 			Update("dialplan_order", item.Order).Error; err != nil {
 			tx.Rollback()
+			h.logError("ROUTING", "ReorderInboundRoutes: Failed to reorder routes", h.reqFields(c, nil))
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to reorder routes"})
 		}
 	}
@@ -197,6 +204,7 @@ func (h *Handler) ListOutboundRoutes(c *fiber.Ctx) error {
 			return db.Order("detail_order ASC")
 		}).
 		Order("dialplan_order ASC").Find(&routes).Error; err != nil {
+		h.logError("ROUTING", "ListOutboundRoutes: Failed to retrieve outbound routes", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve outbound routes"})
 	}
 
@@ -217,6 +225,7 @@ func (h *Handler) CreateOutboundRoute(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Create(&route).Error; err != nil {
+		h.logError("ROUTING", "CreateOutboundRoute: Failed to create outbound route", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create outbound route"})
 	}
 
@@ -233,6 +242,7 @@ func (h *Handler) GetOutboundRoute(c *fiber.Ctx) error {
 		Preload("Details", func(db *gorm.DB) *gorm.DB {
 			return db.Order("detail_order ASC")
 		}).First(&route).Error; err != nil {
+		h.logWarn("ROUTING", "GetOutboundRoute: Outbound route not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Outbound route not found"})
 	}
 
@@ -245,6 +255,7 @@ func (h *Handler) UpdateOutboundRoute(c *fiber.Ctx) error {
 
 	var route models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context != ?", id, tenantID, "public").First(&route).Error; err != nil {
+		h.logWarn("ROUTING", "UpdateOutboundRoute: Outbound route not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Outbound route not found"})
 	}
 
@@ -262,6 +273,7 @@ func (h *Handler) UpdateOutboundRoute(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Save(&route).Error; err != nil {
+		h.logError("ROUTING", "UpdateOutboundRoute: Failed to update outbound route", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update outbound route"})
 	}
 
@@ -289,6 +301,7 @@ func (h *Handler) DeleteOutboundRoute(c *fiber.Ctx) error {
 
 	var route models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ? AND dialplan_context != ?", id, tenantID, "public").First(&route).Error; err != nil {
+		h.logWarn("ROUTING", "DeleteOutboundRoute: Outbound route not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Outbound route not found"})
 	}
 
@@ -314,6 +327,7 @@ func (h *Handler) ReorderOutboundRoutes(c *fiber.Ctx) error {
 			Where("id = ? AND tenant_id = ? AND dialplan_context != ?", item.ID, tenantID, "public").
 			Update("dialplan_order", item.Order).Error; err != nil {
 			tx.Rollback()
+			h.logError("ROUTING", "ReorderOutboundRoutes: Failed to reorder routes", h.reqFields(c, nil))
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to reorder routes"})
 		}
 	}
@@ -336,6 +350,7 @@ func (h *Handler) ListDialPlans(c *fiber.Ctx) error {
 			return db.Order("detail_order ASC")
 		}).
 		Order("dialplan_order ASC").Find(&dialplans).Error; err != nil {
+		h.logError("ROUTING", "ListDialPlans: Failed to retrieve dial plans", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve dial plans"})
 	}
 	return c.JSON(dialplans)
@@ -352,6 +367,7 @@ func (h *Handler) CreateDialPlan(c *fiber.Ctx) error {
 	dialplan.TenantID = &tenantID
 
 	if err := h.DB.Create(&dialplan).Error; err != nil {
+		h.logError("ROUTING", "CreateDialPlan: Failed to create dial plan", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create dial plan"})
 	}
 
@@ -369,6 +385,7 @@ func (h *Handler) GetDialPlan(c *fiber.Ctx) error {
 			return db.Order("detail_order ASC")
 		}).
 		First(&dialplan).Error; err != nil {
+		h.logWarn("ROUTING", "GetDialPlan: Dial plan not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Dial plan not found"})
 	}
 
@@ -381,6 +398,7 @@ func (h *Handler) UpdateDialPlan(c *fiber.Ctx) error {
 
 	var dialplan models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&dialplan).Error; err != nil {
+		h.logWarn("ROUTING", "UpdateDialPlan: Dial plan not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Dial plan not found"})
 	}
 
@@ -392,6 +410,7 @@ func (h *Handler) UpdateDialPlan(c *fiber.Ctx) error {
 	dialplan.TenantID = &tenantID
 
 	if err := h.DB.Save(&dialplan).Error; err != nil {
+		h.logError("ROUTING", "UpdateDialPlan: Failed to update dial plan", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update dial plan"})
 	}
 
@@ -420,6 +439,7 @@ func (h *Handler) DeleteDialPlan(c *fiber.Ctx) error {
 
 	var dialplan models.Dialplan
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&dialplan).Error; err != nil {
+		h.logWarn("ROUTING", "DeleteDialPlan: Dial plan not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Dial plan not found"})
 	}
 
@@ -479,6 +499,7 @@ func (h *Handler) GetFeatureCode(c *fiber.Ctx) error {
 
 	var code models.FeatureCode
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&code).Error; err != nil {
+		h.logWarn("ROUTING", "GetFeatureCode: Feature code not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Feature code not found"})
 	}
 
@@ -491,6 +512,7 @@ func (h *Handler) UpdateFeatureCode(c *fiber.Ctx) error {
 
 	var code models.FeatureCode
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&code).Error; err != nil {
+		h.logWarn("ROUTING", "UpdateFeatureCode: Feature code not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Feature code not found"})
 	}
 
@@ -510,6 +532,7 @@ func (h *Handler) DeleteFeatureCode(c *fiber.Ctx) error {
 
 	var code models.FeatureCode
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&code).Error; err != nil {
+		h.logWarn("ROUTING", "DeleteFeatureCode: Feature code not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Feature code not found"})
 	}
 
@@ -620,6 +643,7 @@ func (h *Handler) GetTimeCondition(c *fiber.Ctx) error {
 
 	var condition models.TimeCondition
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&condition).Error; err != nil {
+		h.logWarn("ROUTING", "GetTimeCondition: Time condition not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Time condition not found"})
 	}
 
@@ -632,6 +656,7 @@ func (h *Handler) UpdateTimeCondition(c *fiber.Ctx) error {
 
 	var condition models.TimeCondition
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&condition).Error; err != nil {
+		h.logWarn("ROUTING", "UpdateTimeCondition: Time condition not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Time condition not found"})
 	}
 
@@ -651,6 +676,7 @@ func (h *Handler) DeleteTimeCondition(c *fiber.Ctx) error {
 
 	var condition models.TimeCondition
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&condition).Error; err != nil {
+		h.logWarn("ROUTING", "DeleteTimeCondition: Time condition not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Time condition not found"})
 	}
 
@@ -681,6 +707,7 @@ func (h *Handler) CreateHolidayList(c *fiber.Ctx) error {
 
 	list.TenantID = tenantID
 	if err := h.DB.Create(&list).Error; err != nil {
+		h.logError("ROUTING", "CreateHolidayList: Failed to create holiday list", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create holiday list"})
 	}
 
@@ -693,6 +720,7 @@ func (h *Handler) GetHolidayList(c *fiber.Ctx) error {
 
 	var list models.HolidayList
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&list).Error; err != nil {
+		h.logWarn("ROUTING", "GetHolidayList: Holiday list not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Holiday list not found"})
 	}
 
@@ -705,6 +733,7 @@ func (h *Handler) UpdateHolidayList(c *fiber.Ctx) error {
 
 	var list models.HolidayList
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&list).Error; err != nil {
+		h.logWarn("ROUTING", "UpdateHolidayList: Holiday list not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Holiday list not found"})
 	}
 
@@ -723,6 +752,7 @@ func (h *Handler) DeleteHolidayList(c *fiber.Ctx) error {
 
 	var list models.HolidayList
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&list).Error; err != nil {
+		h.logWarn("ROUTING", "DeleteHolidayList: Holiday list not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Holiday list not found"})
 	}
 
@@ -737,10 +767,12 @@ func (h *Handler) SyncHolidayList(c *fiber.Ctx) error {
 
 	var list models.HolidayList
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&list).Error; err != nil {
+		h.logWarn("ROUTING", "SyncHolidayList: Holiday list not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Holiday list not found"})
 	}
 
 	if list.ExternalURL == "" {
+		h.logWarn("ROUTING", "SyncHolidayList: No external URL configured for this holiday list", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "No external URL configured for this holiday list"})
 	}
 
@@ -790,6 +822,7 @@ func (h *Handler) GetCallFlow(c *fiber.Ctx) error {
 
 	var flow models.CallFlow
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&flow).Error; err != nil {
+		h.logWarn("ROUTING", "GetCallFlow: Call flow not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call flow not found"})
 	}
 
@@ -802,6 +835,7 @@ func (h *Handler) UpdateCallFlow(c *fiber.Ctx) error {
 
 	var flow models.CallFlow
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&flow).Error; err != nil {
+		h.logWarn("ROUTING", "UpdateCallFlow: Call flow not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call flow not found"})
 	}
 
@@ -821,6 +855,7 @@ func (h *Handler) DeleteCallFlow(c *fiber.Ctx) error {
 
 	var flow models.CallFlow
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&flow).Error; err != nil {
+		h.logWarn("ROUTING", "DeleteCallFlow: Call flow not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call flow not found"})
 	}
 
@@ -836,6 +871,7 @@ func (h *Handler) ToggleCallFlow(c *fiber.Ctx) error {
 
 	var flow models.CallFlow
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&flow).Error; err != nil {
+		h.logWarn("ROUTING", "ToggleCallFlow: Call flow not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call flow not found"})
 	}
 
@@ -871,6 +907,7 @@ func (h *Handler) ListNumbers(c *fiber.Ctx) error {
 
 	var numbers []models.Destination
 	if err := h.DB.Where("tenant_id = ?", tenantID).Order("destination_number").Find(&numbers).Error; err != nil {
+		h.logError("ROUTING", "ListNumbers: Failed to retrieve numbers", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve numbers"})
 	}
 	return c.JSON(fiber.Map{"data": numbers})
@@ -908,6 +945,7 @@ func (h *Handler) CreateNumber(c *fiber.Ctx) error {
 	number.DestinationNumber = normalized
 
 	if err := h.DB.Create(&number).Error; err != nil {
+		h.logError("ROUTING", "CreateNumber: Failed to create number", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create number"})
 	}
 
@@ -921,6 +959,7 @@ func (h *Handler) GetNumber(c *fiber.Ctx) error {
 
 	var number models.Destination
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&number).Error; err != nil {
+		h.logWarn("ROUTING", "GetNumber: Number not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number not found"})
 	}
 
@@ -933,6 +972,7 @@ func (h *Handler) UpdateNumber(c *fiber.Ctx) error {
 
 	var number models.Destination
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&number).Error; err != nil {
+		h.logWarn("ROUTING", "UpdateNumber: Number not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number not found"})
 	}
 
@@ -968,6 +1008,7 @@ func (h *Handler) DeleteNumber(c *fiber.Ctx) error {
 
 	var number models.Destination
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&number).Error; err != nil {
+		h.logWarn("ROUTING", "DeleteNumber: Number not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Number not found"})
 	}
 
@@ -1045,6 +1086,7 @@ func (h *Handler) ListCallBlocks(c *fiber.Ctx) error {
 
 	var blocks []models.CallBlock
 	if err := h.DB.Where("tenant_id = ?", tenantID).Order("created_at DESC").Find(&blocks).Error; err != nil {
+		h.logError("ROUTING", "ListCallBlocks: Failed to retrieve call blocks", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve call blocks"})
 	}
 
@@ -1073,6 +1115,7 @@ func (h *Handler) CreateCallBlock(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Create(&block).Error; err != nil {
+		h.logError("ROUTING", "CreateCallBlock: Failed to create call block", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create call block"})
 	}
 
@@ -1085,6 +1128,7 @@ func (h *Handler) UpdateCallBlock(c *fiber.Ctx) error {
 
 	var block models.CallBlock
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&block).Error; err != nil {
+		h.logWarn("ROUTING", "UpdateCallBlock: Call block not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call block not found"})
 	}
 
@@ -1100,6 +1144,7 @@ func (h *Handler) UpdateCallBlock(c *fiber.Ctx) error {
 	block.Notes = input.Notes
 
 	if err := h.DB.Save(&block).Error; err != nil {
+		h.logError("ROUTING", "UpdateCallBlock: Failed to update call block", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update call block"})
 	}
 
@@ -1112,10 +1157,12 @@ func (h *Handler) DeleteCallBlock(c *fiber.Ctx) error {
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.CallBlock{})
 	if result.Error != nil {
+		h.logError("ROUTING", "DeleteCallBlock: Failed to delete call block", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete call block"})
 	}
 
 	if result.RowsAffected == 0 {
+		h.logWarn("ROUTING", "DeleteCallBlock: Call block not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call block not found"})
 	}
 

@@ -34,6 +34,7 @@ func (h *Handler) GetConversation(c *fiber.Ctx) error {
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).
 		Preload("Messages").
 		First(&conversation).Error; err != nil {
+		h.logWarn("MESSAGING", "GetConversation: Conversation not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Conversation not found"})
 	}
 
@@ -106,6 +107,7 @@ func (h *Handler) GetContact(c *fiber.Ctx) error {
 
 	var contact models.Contact
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&contact).Error; err != nil {
+		h.logWarn("MESSAGING", "GetContact: Contact not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
@@ -118,6 +120,7 @@ func (h *Handler) UpdateContact(c *fiber.Ctx) error {
 
 	var contact models.Contact
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&contact).Error; err != nil {
+		h.logWarn("MESSAGING", "UpdateContact: Contact not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
@@ -136,6 +139,7 @@ func (h *Handler) DeleteContact(c *fiber.Ctx) error {
 
 	var contact models.Contact
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&contact).Error; err != nil {
+		h.logWarn("MESSAGING", "DeleteContact: Contact not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
@@ -150,6 +154,7 @@ func (h *Handler) SyncContact(c *fiber.Ctx) error {
 
 	var contact models.Contact
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&contact).Error; err != nil {
+		h.logWarn("MESSAGING", "SyncContact: Contact not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
@@ -164,6 +169,7 @@ func (h *Handler) GetContactByPhone(c *fiber.Ctx) error {
 	var contact models.Contact
 	if err := h.DB.Where("tenant_id = ? AND (phone = ? OR mobile_phone = ? OR phone_alt = ?)",
 		tenantID, phone, phone, phone).First(&contact).Error; err != nil {
+		h.logWarn("MESSAGING", "GetContactByPhone: Contact not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
@@ -220,6 +226,7 @@ func (h *Handler) GetChatThread(c *fiber.Ctx) error {
 		}).
 		Preload("Messages.Attachments").
 		First(&thread).Error; err != nil {
+		h.logWarn("MESSAGING", "GetChatThread: Thread not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Thread not found"})
 	}
 
@@ -234,6 +241,7 @@ func (h *Handler) SendChatMessage(c *fiber.Ctx) error {
 	// Verify thread exists
 	var thread models.ChatThread
 	if err := h.DB.Where("id = ? AND tenant_id = ?", threadID, tenantID).First(&thread).Error; err != nil {
+		h.logWarn("MESSAGING", "SendChatMessage: Thread not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Thread not found"})
 	}
 
@@ -293,6 +301,7 @@ func (h *Handler) JoinChatRoom(c *fiber.Ctx) error {
 
 	var room models.ChatRoom
 	if err := h.DB.Where("id = ? AND tenant_id = ?", roomID, tenantID).First(&room).Error; err != nil {
+		h.logWarn("MESSAGING", "JoinChatRoom: Room not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Room not found"})
 	}
 

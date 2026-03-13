@@ -51,11 +51,13 @@ type TenantSettings struct {
 func (h *Handler) GetTenantSettings(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("SETTINGS", "GetTenantSettings: Tenant ID required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		h.logWarn("SETTINGS", "GetTenantSettings: Tenant not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
@@ -84,11 +86,13 @@ func (h *Handler) GetTenantSettings(c *fiber.Ctx) error {
 func (h *Handler) UpdateTenantSettings(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("SETTINGS", "UpdateTenantSettings: Tenant ID required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		h.logWarn("SETTINGS", "UpdateTenantSettings: Tenant not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
@@ -103,6 +107,7 @@ func (h *Handler) UpdateTenantSettings(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("SETTINGS", "UpdateTenantSettings: Invalid request body", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -130,6 +135,7 @@ func (h *Handler) UpdateTenantSettings(c *fiber.Ctx) error {
 	tenant.Settings = string(settingsJSON)
 
 	if err := h.DB.Save(&tenant).Error; err != nil {
+		h.logError("SETTINGS", "UpdateTenantSettings: Failed to save settings", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save settings"})
 	}
 
@@ -140,11 +146,13 @@ func (h *Handler) UpdateTenantSettings(c *fiber.Ctx) error {
 func (h *Handler) GetTenantBranding(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("SETTINGS", "GetTenantBranding: Tenant ID required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		h.logWarn("SETTINGS", "GetTenantBranding: Tenant not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
@@ -162,11 +170,13 @@ func (h *Handler) GetTenantBranding(c *fiber.Ctx) error {
 func (h *Handler) UpdateTenantBranding(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("SETTINGS", "UpdateTenantBranding: Tenant ID required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		h.logWarn("SETTINGS", "UpdateTenantBranding: Tenant not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
@@ -177,6 +187,7 @@ func (h *Handler) UpdateTenantBranding(c *fiber.Ctx) error {
 		PrimaryColor      string `json:"primary_color"`
 	}
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("SETTINGS", "UpdateTenantBranding: Invalid request body", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -186,6 +197,7 @@ func (h *Handler) UpdateTenantBranding(c *fiber.Ctx) error {
 	tenant.WhitelabelPrimary = req.PrimaryColor
 
 	if err := h.DB.Save(&tenant).Error; err != nil {
+		h.logError("SETTINGS", "UpdateTenantBranding: Failed to save branding", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save branding"})
 	}
 
@@ -196,11 +208,13 @@ func (h *Handler) UpdateTenantBranding(c *fiber.Ctx) error {
 func (h *Handler) GetTenantSMTP(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("SETTINGS", "GetTenantSMTP: Tenant ID required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		h.logWarn("SETTINGS", "GetTenantSMTP: Tenant not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
@@ -225,11 +239,13 @@ func (h *Handler) GetTenantSMTP(c *fiber.Ctx) error {
 func (h *Handler) UpdateTenantSMTP(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("SETTINGS", "UpdateTenantSMTP: Tenant ID required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		h.logWarn("SETTINGS", "UpdateTenantSMTP: Tenant not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
@@ -248,6 +264,7 @@ func (h *Handler) UpdateTenantSMTP(c *fiber.Ctx) error {
 		Encryption string `json:"encryption"`
 	}
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("SETTINGS", "UpdateTenantSMTP: Invalid request body", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -265,6 +282,7 @@ func (h *Handler) UpdateTenantSMTP(c *fiber.Ctx) error {
 	tenant.Settings = string(settingsJSON)
 
 	if err := h.DB.Save(&tenant).Error; err != nil {
+		h.logError("SETTINGS", "UpdateTenantSMTP: Failed to save SMTP settings", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save SMTP settings"})
 	}
 
@@ -279,6 +297,7 @@ func (h *Handler) TestTenantSMTP(c *fiber.Ctx) error {
 	// Get tenant SMTP settings
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		h.logWarn("SETTINGS", "TestTenantSMTP: Tenant not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
@@ -289,6 +308,7 @@ func (h *Handler) TestTenantSMTP(c *fiber.Ctx) error {
 	}
 
 	if settings.SMTPHost == "" {
+		h.logWarn("SETTINGS", "TestTenantSMTP: SMTP not configured", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "SMTP not configured"})
 	}
 
@@ -308,6 +328,7 @@ func (h *Handler) TestTenantSMTP(c *fiber.Ctx) error {
 	}
 
 	if recipient == "" {
+		h.logWarn("SETTINGS", "TestTenantSMTP: No recipient email available", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "No recipient email available"})
 	}
 
@@ -345,11 +366,13 @@ func (h *Handler) TestTenantSMTP(c *fiber.Ctx) error {
 func (h *Handler) GetTenantMessaging(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("SETTINGS", "GetTenantMessaging: Tenant ID required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		h.logWarn("SETTINGS", "GetTenantMessaging: Tenant not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
@@ -370,11 +393,13 @@ func (h *Handler) GetTenantMessaging(c *fiber.Ctx) error {
 func (h *Handler) UpdateTenantMessaging(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("SETTINGS", "UpdateTenantMessaging: Tenant ID required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		h.logWarn("SETTINGS", "UpdateTenantMessaging: Tenant not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
@@ -389,6 +414,7 @@ func (h *Handler) UpdateTenantMessaging(c *fiber.Ctx) error {
 		AuthToken  string `json:"auth_token"`
 	}
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("SETTINGS", "UpdateTenantMessaging: Invalid request body", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -402,6 +428,7 @@ func (h *Handler) UpdateTenantMessaging(c *fiber.Ctx) error {
 	tenant.Settings = string(settingsJSON)
 
 	if err := h.DB.Save(&tenant).Error; err != nil {
+		h.logError("SETTINGS", "UpdateTenantMessaging: Failed to save messaging settings", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save messaging settings"})
 	}
 
@@ -412,11 +439,13 @@ func (h *Handler) UpdateTenantMessaging(c *fiber.Ctx) error {
 func (h *Handler) GetTenantHospitality(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("SETTINGS", "GetTenantHospitality: Tenant ID required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		h.logWarn("SETTINGS", "GetTenantHospitality: Tenant not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
@@ -436,11 +465,13 @@ func (h *Handler) GetTenantHospitality(c *fiber.Ctx) error {
 func (h *Handler) UpdateTenantHospitality(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	if tenantID == 0 {
+		h.logWarn("SETTINGS", "UpdateTenantHospitality: Tenant ID required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Tenant ID required"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		h.logWarn("SETTINGS", "UpdateTenantHospitality: Tenant not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
@@ -453,6 +484,7 @@ func (h *Handler) UpdateTenantHospitality(c *fiber.Ctx) error {
 		Enabled bool `json:"enabled"`
 	}
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("SETTINGS", "UpdateTenantHospitality: Invalid request body", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -462,6 +494,7 @@ func (h *Handler) UpdateTenantHospitality(c *fiber.Ctx) error {
 	tenant.Settings = string(settingsJSON)
 
 	if err := h.DB.Save(&tenant).Error; err != nil {
+		h.logError("SETTINGS", "UpdateTenantHospitality: Failed to save hospitality settings", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save hospitality settings"})
 	}
 

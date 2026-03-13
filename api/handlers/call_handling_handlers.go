@@ -19,6 +19,7 @@ func (h *Handler) ListCallHandlingRules(c *fiber.Ctx) error {
 	if err := h.DB.Where("extension_id = ? AND tenant_id = ?", extID, tenantID).
 		Order("priority ASC, id ASC").
 		Find(&rules).Error; err != nil {
+		h.logError("CALL", "ListCallHandlingRules: Failed to load call handling rules", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to load call handling rules"})
 	}
 
@@ -33,6 +34,7 @@ func (h *Handler) CreateCallHandlingRule(c *fiber.Ctx) error {
 	// Verify extension belongs to tenant
 	var ext models.Extension
 	if err := h.DB.Where("id = ? AND tenant_id = ?", extID, tenantID).First(&ext).Error; err != nil {
+		h.logWarn("CALL", "CreateCallHandlingRule: Extension not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Extension not found"})
 	}
 
@@ -56,6 +58,7 @@ func (h *Handler) CreateCallHandlingRule(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Create(&rule).Error; err != nil {
+		h.logError("CALL", "CreateCallHandlingRule: Failed to create call handling rule", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create call handling rule"})
 	}
 
@@ -69,6 +72,7 @@ func (h *Handler) UpdateCallHandlingRule(c *fiber.Ctx) error {
 
 	var rule models.CallHandlingRule
 	if err := h.DB.Where("id = ? AND tenant_id = ?", ruleID, tenantID).First(&rule).Error; err != nil {
+		h.logWarn("CALL", "UpdateCallHandlingRule: Call handling rule not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call handling rule not found"})
 	}
 
@@ -89,6 +93,7 @@ func (h *Handler) UpdateCallHandlingRule(c *fiber.Ctx) error {
 	rule.ActionParams = input.ActionParams
 
 	if err := h.DB.Save(&rule).Error; err != nil {
+		h.logError("CALL", "UpdateCallHandlingRule: Failed to update call handling rule", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update call handling rule"})
 	}
 
@@ -102,6 +107,7 @@ func (h *Handler) DeleteCallHandlingRule(c *fiber.Ctx) error {
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", ruleID, tenantID).
 		Delete(&models.CallHandlingRule{}).Error; err != nil {
+		h.logError("CALL", "DeleteCallHandlingRule: Failed to delete call handling rule", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete call handling rule"})
 	}
 
@@ -141,6 +147,7 @@ func (h *Handler) ListProfileCallHandlingRules(c *fiber.Ctx) error {
 	if err := h.DB.Where("profile_id = ? AND tenant_id = ?", profileID, tenantID).
 		Order("priority ASC, id ASC").
 		Find(&rules).Error; err != nil {
+		h.logError("CALL", "ListProfileCallHandlingRules: Failed to load call handling rules", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to load call handling rules"})
 	}
 
@@ -155,6 +162,7 @@ func (h *Handler) CreateProfileCallHandlingRule(c *fiber.Ctx) error {
 	// Verify profile belongs to tenant
 	var profile models.ExtensionProfile
 	if err := h.DB.Where("id = ? AND tenant_id = ?", profileID, tenantID).First(&profile).Error; err != nil {
+		h.logWarn("CALL", "CreateProfileCallHandlingRule: Extension profile not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Extension profile not found"})
 	}
 
@@ -178,6 +186,7 @@ func (h *Handler) CreateProfileCallHandlingRule(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Create(&rule).Error; err != nil {
+		h.logError("CALL", "CreateProfileCallHandlingRule: Failed to create call handling rule", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create call handling rule"})
 	}
 
@@ -191,6 +200,7 @@ func (h *Handler) UpdateProfileCallHandlingRule(c *fiber.Ctx) error {
 
 	var rule models.CallHandlingRule
 	if err := h.DB.Where("id = ? AND tenant_id = ?", ruleID, tenantID).First(&rule).Error; err != nil {
+		h.logWarn("CALL", "UpdateProfileCallHandlingRule: Call handling rule not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Call handling rule not found"})
 	}
 
@@ -210,6 +220,7 @@ func (h *Handler) UpdateProfileCallHandlingRule(c *fiber.Ctx) error {
 	rule.ActionParams = input.ActionParams
 
 	if err := h.DB.Save(&rule).Error; err != nil {
+		h.logError("CALL", "UpdateProfileCallHandlingRule: Failed to update call handling rule", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update call handling rule"})
 	}
 
@@ -223,6 +234,7 @@ func (h *Handler) DeleteProfileCallHandlingRule(c *fiber.Ctx) error {
 
 	if err := h.DB.Where("id = ? AND tenant_id = ?", ruleID, tenantID).
 		Delete(&models.CallHandlingRule{}).Error; err != nil {
+		h.logError("CALL", "DeleteProfileCallHandlingRule: Failed to delete call handling rule", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete call handling rule"})
 	}
 

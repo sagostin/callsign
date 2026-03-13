@@ -40,6 +40,7 @@ func main() {
 		Level:  cfg.LogLevel,
 		Format: cfg.LogFormat,
 		Output: "stdout",
+		Method: cfg.LogMethod,
 		Loki: logging.LokiConfig{
 			Enabled:  cfg.LokiEnabled,
 			PushURL:  cfg.LokiPushURL,

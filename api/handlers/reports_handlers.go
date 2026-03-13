@@ -276,6 +276,7 @@ func (h *Handler) ExportReport(c *fiber.Ctx) error {
 			c.WriteString(fmt.Sprintf("%s,%d,%d,%d,%.1f\n", r.Period, r.TotalCalls, r.Answered, r.Missed, r.AvgDur))
 		}
 	default:
+		h.logWarn("REPORT", "ExportReport: Unknown report type", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Unknown report type"})
 	}
 	return nil

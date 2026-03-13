@@ -49,6 +49,7 @@ type Config struct {
 	// Logging settings
 	LogLevel  string // debug, info, warn, error
 	LogFormat string // json, text
+	LogMethod string // standard (stdout only), loki (stdout + Loki push)
 
 	// Loki settings
 	LokiEnabled  bool
@@ -136,6 +137,7 @@ func Load() *Config {
 		// Logging
 		LogLevel:  getEnv("LOG_LEVEL", "info"),
 		LogFormat: getEnv("LOG_FORMAT", "text"),
+		LogMethod: getEnv("LOG_METHOD", "standard"),
 
 		// Loki - matches LOKI_URL from docker-compose
 		LokiEnabled:  getEnvAsBool("LOKI_ENABLED", false),

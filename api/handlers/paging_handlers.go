@@ -49,6 +49,7 @@ func (h *Handler) GetPageGroup(c *fiber.Ctx) error {
 	var group models.PageGroup
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).
 		Preload("Destinations").First(&group).Error; err != nil {
+		h.logWarn("PAGING", "GetPageGroup: Page group not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Page group not found"})
 	}
 
@@ -61,6 +62,7 @@ func (h *Handler) UpdatePageGroup(c *fiber.Ctx) error {
 
 	var group models.PageGroup
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&group).Error; err != nil {
+		h.logWarn("PAGING", "UpdatePageGroup: Page group not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Page group not found"})
 	}
 
@@ -79,6 +81,7 @@ func (h *Handler) DeletePageGroup(c *fiber.Ctx) error {
 
 	var group models.PageGroup
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&group).Error; err != nil {
+		h.logWarn("PAGING", "DeletePageGroup: Page group not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Page group not found"})
 	}
 
@@ -128,6 +131,7 @@ func (h *Handler) GetProvisioningTemplate(c *fiber.Ctx) error {
 	var tmpl models.ProvisioningTemplate
 	if err := h.DB.Where("id = ? AND (tenant_id IS NULL OR tenant_id = ?)", id, tenantID).
 		First(&tmpl).Error; err != nil {
+		h.logWarn("PAGING", "GetProvisioningTemplate: Template not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Template not found"})
 	}
 
@@ -141,6 +145,7 @@ func (h *Handler) UpdateProvisioningTemplate(c *fiber.Ctx) error {
 	var tmpl models.ProvisioningTemplate
 	if err := h.DB.Where("id = ? AND (tenant_id IS NULL OR tenant_id = ?)", id, tenantID).
 		First(&tmpl).Error; err != nil {
+		h.logWarn("PAGING", "UpdateProvisioningTemplate: Template not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Template not found"})
 	}
 
@@ -158,6 +163,7 @@ func (h *Handler) DeleteProvisioningTemplate(c *fiber.Ctx) error {
 
 	var tmpl models.ProvisioningTemplate
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&tmpl).Error; err != nil {
+		h.logWarn("PAGING", "DeleteProvisioningTemplate: Template not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Template not found"})
 	}
 
@@ -268,6 +274,7 @@ func (h *Handler) DeviceHangup(c *fiber.Ctx) error {
 	// Find device's current call UUID
 	deviceCallUUID, err := h.getDeviceActiveCallUUID(tenantID, mac)
 	if err != nil {
+		h.logWarn("PAGING", "DeviceHangup: No active call found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "No active call found"})
 	}
 
@@ -296,6 +303,7 @@ func (h *Handler) DeviceTransfer(c *fiber.Ctx) error {
 
 	deviceCallUUID, err := h.getDeviceActiveCallUUID(tenantID, mac)
 	if err != nil {
+		h.logWarn("PAGING", "DeviceTransfer: No active call found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "No active call found"})
 	}
 
@@ -326,6 +334,7 @@ func (h *Handler) DeviceHold(c *fiber.Ctx) error {
 
 	deviceCallUUID, err := h.getDeviceActiveCallUUID(tenantID, mac)
 	if err != nil {
+		h.logWarn("PAGING", "DeviceHold: No active call found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "No active call found"})
 	}
 
@@ -371,6 +380,7 @@ func (h *Handler) DeviceDial(c *fiber.Ctx) error {
 		First(&device).Error
 
 	if err != nil {
+		h.logWarn("PAGING", "DeviceDial: Device not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
 	}
 

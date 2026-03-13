@@ -24,10 +24,12 @@ func (h *Handler) StartCallRecording(c *fiber.Ctx) error {
 		UUID string `json:"uuid"` // Channel UUID to record
 	}
 	if err := c.BodyParser(&req); err != nil || req.UUID == "" {
+		h.logWarn("LIVE", "StartCallRecording: Channel UUID required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Channel UUID required"})
 	}
 
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		h.logWarn("LIVE", "StartCallRecording: FreeSWITCH not connected", h.reqFields(c, nil))
 		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH not connected"})
 	}
 
@@ -66,10 +68,12 @@ func (h *Handler) StopCallRecording(c *fiber.Ctx) error {
 		UUID string `json:"uuid"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.UUID == "" {
+		h.logWarn("LIVE", "StopCallRecording: Channel UUID required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Channel UUID required"})
 	}
 
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		h.logWarn("LIVE", "StopCallRecording: FreeSWITCH not connected", h.reqFields(c, nil))
 		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH not connected"})
 	}
 
@@ -100,6 +104,7 @@ func (h *Handler) GetActiveCallsData(c *fiber.Ctx) error {
 
 	result, err := h.ESLManager.Client.API("show channels as json")
 	if err != nil {
+		h.logError("LIVE", "GetActiveCallsData: Failed to get active calls", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get active calls"})
 	}
 
@@ -169,22 +174,26 @@ func (h *Handler) ScheduleWakeupESL(c *fiber.Ctx) error {
 
 	var req WakeupCallSchedule
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("LIVE", "ScheduleWakeupESL: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		h.logWarn("LIVE", "ScheduleWakeupESL: FreeSWITCH not connected", h.reqFields(c, nil))
 		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH not connected"})
 	}
 
 	// Parse the target time
 	targetTime, err := time.Parse("2006-01-02 15:04", req.Date+" "+req.Time)
 	if err != nil {
+		h.logWarn("LIVE", "ScheduleWakeupESL: Invalid date/time format", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid date/time format"})
 	}
 
 	// Calculate seconds from now
 	delay := int(time.Until(targetTime).Seconds())
 	if delay <= 0 {
+		h.logWarn("LIVE", "ScheduleWakeupESL: Scheduled time must be in the future", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Scheduled time must be in the future"})
 	}
 
@@ -226,6 +235,7 @@ func (h *Handler) GetDeviceRegistrations(c *fiber.Ctx) error {
 	// Query Sofia for all registrations
 	result, err := h.ESLManager.Client.API("sofia status profile internal reg")
 	if err != nil {
+		h.logError("LIVE", "GetDeviceRegistrations: Failed to query registrations", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query registrations"})
 	}
 

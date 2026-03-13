@@ -211,6 +211,7 @@ func (h *Handler) UpdateExtensionSettings(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("EXT_PORTAL", "UpdateExtensionSettings: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
@@ -275,6 +276,7 @@ func (h *Handler) UpdateExtensionSettings(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Save(ext).Error; err != nil {
+		h.logError("EXT_PORTAL", "UpdateExtensionSettings: Failed to update settings", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update settings"})
 	}
 
@@ -293,25 +295,30 @@ func (h *Handler) ChangeExtensionPassword(c *fiber.Ctx) error {
 		NewPassword     string `json:"new_password"`
 	}
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("EXT_PORTAL", "ChangeExtensionPassword: Invalid request", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
 	}
 
 	if req.NewPassword == "" {
+		h.logWarn("EXT_PORTAL", "ChangeExtensionPassword: New password is required", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "New password is required"})
 	}
 
 	// If web password is set, verify current password
 	if ext.WebPassword != "" {
 		if bcrypt.CompareHashAndPassword([]byte(ext.WebPassword), []byte(req.CurrentPassword)) != nil {
+			h.logWarn("EXT_PORTAL", "ChangeExtensionPassword: Current password is incorrect", h.reqFields(c, nil))
 			return c.Status(http.StatusForbidden).JSON(fiber.Map{"error": "Current password is incorrect"})
 		}
 	}
 
 	if err := ext.SetWebPassword(req.NewPassword); err != nil {
+		h.logError("EXT_PORTAL", "ChangeExtensionPassword: Failed to hash password", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to hash password"})
 	}
 
 	if err := h.DB.Save(ext).Error; err != nil {
+		h.logError("EXT_PORTAL", "ChangeExtensionPassword: Failed to update password", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update password"})
 	}
 
@@ -344,6 +351,7 @@ func (h *Handler) CreateExtensionContact(c *fiber.Ctx) error {
 
 	var contact models.Contact
 	if err := c.BodyParser(&contact); err != nil {
+		h.logWarn("EXT_PORTAL", "CreateExtensionContact: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
@@ -352,6 +360,7 @@ func (h *Handler) CreateExtensionContact(c *fiber.Ctx) error {
 	_ = ext // available for future extension_id association
 
 	if err := h.DB.Create(&contact).Error; err != nil {
+		h.logError("EXT_PORTAL", "CreateExtensionContact: Failed to create contact", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create contact"})
 	}
 

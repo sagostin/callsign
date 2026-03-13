@@ -3,6 +3,7 @@ package logging
 import (
 	"io"
 	"os"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 )
@@ -12,6 +13,7 @@ type Config struct {
 	Level  string // debug, info, warn, error
 	Format string // json, text
 	Output string // stdout, stderr, or file path
+	Method string // "standard" (stdout only) or "loki" (stdout + Loki push)
 	Loki   LokiConfig
 }
 
@@ -21,6 +23,7 @@ func DefaultConfig() Config {
 		Level:  "info",
 		Format: "text",
 		Output: "stdout",
+		Method: "standard",
 		Loki: LokiConfig{
 			Enabled: false,
 			PushURL: "",
@@ -74,14 +77,18 @@ func SetupLogrus(cfg Config) {
 func NewLogManagerFromConfig(cfg Config) *LogManager {
 	SetupLogrus(cfg)
 
-	var lokiClient *LokiClient
-	if cfg.Loki.Enabled {
-		lokiClient = NewLokiClient(cfg.Loki)
-		logrus.Infof("Loki logging enabled: %s (job: %s)", cfg.Loki.PushURL, cfg.Loki.Job)
-	} else {
-		lokiClient = NewLokiClient(LokiConfig{Enabled: false})
-		logrus.Debug("Loki logging disabled")
+	method := strings.ToLower(cfg.Method)
+	if method == "" {
+		method = "standard"
 	}
 
-	return NewLogManager(lokiClient)
+	// Only create Loki client if method is "loki" AND Loki config is enabled
+	if method == "loki" && cfg.Loki.Enabled {
+		lokiClient := NewLokiClient(cfg.Loki)
+		logrus.Infof("Loki logging enabled: %s (job: %s)", cfg.Loki.PushURL, cfg.Loki.Job)
+		return NewLogManager(lokiClient, true)
+	}
+
+	logrus.Infof("Logging method: %s (stdout only)", method)
+	return NewLogManager(nil, false)
 }

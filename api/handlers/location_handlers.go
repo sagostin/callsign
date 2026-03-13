@@ -19,6 +19,7 @@ func (h *Handler) ListLocations(c *fiber.Ctx) error {
 
 	var locations []models.Location
 	if err := h.DB.Where("tenant_id = ?", tenantID).Order("is_default DESC, name ASC").Find(&locations).Error; err != nil {
+		h.logError("LOCATION", "ListLocations: Failed to retrieve locations", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve locations"})
 	}
 
@@ -31,6 +32,7 @@ func (h *Handler) CreateLocation(c *fiber.Ctx) error {
 
 	var location models.Location
 	if err := c.BodyParser(&location); err != nil {
+		h.logWarn("LOCATION", "CreateLocation: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
@@ -42,6 +44,7 @@ func (h *Handler) CreateLocation(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Create(&location).Error; err != nil {
+		h.logError("LOCATION", "CreateLocation: Failed to create location", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create location"})
 	}
 
@@ -53,11 +56,13 @@ func (h *Handler) GetLocation(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
+		h.logWarn("LOCATION", "GetLocation: Invalid location ID", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid location ID"})
 	}
 
 	var location models.Location
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&location).Error; err != nil {
+		h.logWarn("LOCATION", "GetLocation: Location not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Location not found"})
 	}
 
@@ -69,16 +74,19 @@ func (h *Handler) UpdateLocation(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
+		h.logWarn("LOCATION", "UpdateLocation: Invalid location ID", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid location ID"})
 	}
 
 	var existing models.Location
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&existing).Error; err != nil {
+		h.logWarn("LOCATION", "UpdateLocation: Location not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Location not found"})
 	}
 
 	var updates models.Location
 	if err := c.BodyParser(&updates); err != nil {
+		h.logWarn("LOCATION", "UpdateLocation: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
@@ -91,6 +99,7 @@ func (h *Handler) UpdateLocation(c *fiber.Ctx) error {
 	updates.ID = existing.ID
 	updates.TenantID = tenantID
 	if err := h.DB.Model(&existing).Updates(updates).Error; err != nil {
+		h.logError("LOCATION", "UpdateLocation: Failed to update location", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update location"})
 	}
 
@@ -103,11 +112,13 @@ func (h *Handler) DeleteLocation(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
+		h.logWarn("LOCATION", "DeleteLocation: Invalid location ID", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid location ID"})
 	}
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.Location{})
 	if result.RowsAffected == 0 {
+		h.logWarn("LOCATION", "DeleteLocation: Location not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Location not found"})
 	}
 

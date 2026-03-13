@@ -21,6 +21,7 @@ func (h *Handler) GetOperatorPanelData(c *fiber.Ctx) error {
 	var extensions []models.Extension
 	if err := h.DB.Where("tenant_id = ?", tenantID).
 		Order("extension ASC").Find(&extensions).Error; err != nil {
+		h.logError("OPERATOR", "GetOperatorPanelData: Failed to retrieve extensions", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve extensions"})
 	}
 

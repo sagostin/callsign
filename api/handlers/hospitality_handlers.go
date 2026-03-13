@@ -44,6 +44,7 @@ func (h *Handler) CreateRoom(c *fiber.Ctx) error {
 	room.TenantID = tenantID
 
 	if err := h.DB.Create(&room).Error; err != nil {
+		h.logError("HOSPITALITY", "CreateRoom: Failed to create room", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create room"})
 	}
 
@@ -57,6 +58,7 @@ func (h *Handler) GetRoom(c *fiber.Ctx) error {
 
 	var room models.HotelRoom
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&room).Error; err != nil {
+		h.logWarn("HOSPITALITY", "GetRoom: Room not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Room not found"})
 	}
 
@@ -70,6 +72,7 @@ func (h *Handler) UpdateRoom(c *fiber.Ctx) error {
 
 	var room models.HotelRoom
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&room).Error; err != nil {
+		h.logWarn("HOSPITALITY", "UpdateRoom: Room not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Room not found"})
 	}
 
@@ -90,6 +93,7 @@ func (h *Handler) DeleteRoom(c *fiber.Ctx) error {
 
 	result := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&models.HotelRoom{})
 	if result.RowsAffected == 0 {
+		h.logWarn("HOSPITALITY", "DeleteRoom: Room not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Room not found"})
 	}
 
@@ -103,6 +107,7 @@ func (h *Handler) CheckInGuest(c *fiber.Ctx) error {
 
 	var room models.HotelRoom
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&room).Error; err != nil {
+		h.logWarn("HOSPITALITY", "CheckInGuest: Room not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Room not found"})
 	}
 
@@ -138,6 +143,7 @@ func (h *Handler) CheckOutGuest(c *fiber.Ctx) error {
 
 	var room models.HotelRoom
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&room).Error; err != nil {
+		h.logWarn("HOSPITALITY", "CheckOutGuest: Room not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Room not found"})
 	}
 
@@ -163,6 +169,7 @@ func (h *Handler) ScheduleWakeupCall(c *fiber.Ctx) error {
 
 	var room models.HotelRoom
 	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&room).Error; err != nil {
+		h.logWarn("HOSPITALITY", "ScheduleWakeupCall: Room not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Room not found"})
 	}
 

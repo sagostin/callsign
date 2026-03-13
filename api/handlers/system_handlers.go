@@ -25,6 +25,7 @@ import (
 func (h *Handler) ListTenants(c *fiber.Ctx) error {
 	var tenants []models.Tenant
 	if err := h.DB.Preload("Profile").Find(&tenants).Error; err != nil {
+		h.logError("TENANT", "ListTenants: failed to retrieve tenants", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve tenants"})
 	}
 	return c.JSON(fiber.Map{"data": tenants})
@@ -41,6 +42,7 @@ func (h *Handler) CreateTenant(c *fiber.Ctx) error {
 		Settings    string `json:"settings"`
 	}
 	if err := c.BodyParser(&input); err != nil {
+		h.logWarn("TENANT", "CreateTenant: invalid request payload", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
@@ -54,28 +56,33 @@ func (h *Handler) CreateTenant(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Create(&tenant).Error; err != nil {
+		h.logError("TENANT", "CreateTenant: failed to create tenant", h.reqFields(c, map[string]interface{}{"error": err.Error(), "name": input.Name, "domain": input.Domain}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create tenant"})
 	}
 
 	// Provision FreeSWITCH resources (feature codes, park slots, dialplans)
 	if err := models.ProvisionTenant(h.DB, &tenant); err != nil {
+		h.logWarn("TENANT", "CreateTenant: tenant created but provisioning failed", h.reqFields(c, map[string]interface{}{"error": err.Error(), "tenant_id": tenant.ID}))
 		log.WithError(err).WithField("tenant_id", tenant.ID).Warn("Tenant created but provisioning failed")
 	}
 
 	// Reload FreeSWITCH so new dialplan context is available
 	h.reloadXML()
 
+	h.logInfo("TENANT", "CreateTenant: tenant created successfully", h.reqFields(c, map[string]interface{}{"tenant_id": tenant.ID, "name": tenant.Name, "domain": tenant.Domain}))
 	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": tenant})
 }
 
 func (h *Handler) GetTenant(c *fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
+		h.logWarn("TENANT", "GetTenant: invalid tenant ID", h.reqFields(c, map[string]interface{}{"raw_id": c.Params("id")}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid tenant ID"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.Preload("Profile").First(&tenant, id).Error; err != nil {
+		h.logWarn("TENANT", "GetTenant: tenant not found", h.reqFields(c, map[string]interface{}{"tenant_id": id}))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
@@ -85,51 +92,61 @@ func (h *Handler) GetTenant(c *fiber.Ctx) error {
 func (h *Handler) UpdateTenant(c *fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
+		h.logWarn("TENANT", "UpdateTenant: invalid tenant ID", h.reqFields(c, map[string]interface{}{"raw_id": c.Params("id")}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid tenant ID"})
 	}
 
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, id).Error; err != nil {
+		h.logWarn("TENANT", "UpdateTenant: tenant not found", h.reqFields(c, map[string]interface{}{"tenant_id": id}))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	if err := c.BodyParser(&tenant); err != nil {
+		h.logWarn("TENANT", "UpdateTenant: invalid request payload", h.reqFields(c, map[string]interface{}{"error": err.Error(), "tenant_id": id}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	tenant.ID = uint(id)
 	if err := h.DB.Save(&tenant).Error; err != nil {
+		h.logError("TENANT", "UpdateTenant: failed to save tenant", h.reqFields(c, map[string]interface{}{"error": err.Error(), "tenant_id": id}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update tenant"})
 	}
 
+	h.logInfo("TENANT", "UpdateTenant: tenant updated successfully", h.reqFields(c, map[string]interface{}{"tenant_id": id, "name": tenant.Name}))
 	return c.JSON(tenant)
 }
 
 func (h *Handler) DeleteTenant(c *fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
+		h.logWarn("TENANT", "DeleteTenant: invalid tenant ID", h.reqFields(c, map[string]interface{}{"raw_id": c.Params("id")}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid tenant ID"})
 	}
 
 	// Verify the tenant exists before proceeding
 	var tenant models.Tenant
 	if err := h.DB.First(&tenant, id).Error; err != nil {
+		h.logWarn("TENANT", "DeleteTenant: tenant not found", h.reqFields(c, map[string]interface{}{"tenant_id": id}))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
 	}
 
 	// Deprovision all tenant resources before deleting tenant
 	if err := models.DeprovisionTenant(h.DB, uint(id)); err != nil {
+		h.logWarn("TENANT", "DeleteTenant: deprovisioning failed", h.reqFields(c, map[string]interface{}{"error": err.Error(), "tenant_id": id}))
 		log.WithError(err).WithField("tenant_id", id).Warn("Tenant deprovisioning failed")
 	}
 
 	// Hard-delete the tenant (not soft-delete) since all data is gone
 	if err := h.DB.Unscoped().Delete(&models.Tenant{}, id).Error; err != nil {
+		h.logError("TENANT", "DeleteTenant: failed to delete tenant", h.reqFields(c, map[string]interface{}{"error": err.Error(), "tenant_id": id, "name": tenant.Name}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete tenant"})
 	}
 
 	// Reload FreeSWITCH so removed dialplans/directory entries are cleared
 	h.reloadXML()
 
+	h.logInfo("TENANT", "DeleteTenant: tenant deleted successfully", h.reqFields(c, map[string]interface{}{"tenant_id": id, "name": tenant.Name}))
 	return c.JSON(fiber.Map{"message": "Tenant deleted successfully"})
 }
 
@@ -260,6 +277,7 @@ func (h *Handler) ListUsers(c *fiber.Ctx) error {
 		query = query.Where("tenant_id = ?", tenantID)
 	}
 	if err := query.Find(&users).Error; err != nil {
+		h.logError("USER", "ListUsers: failed to retrieve users", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve users"})
 	}
 	return c.JSON(fiber.Map{"data": users})
@@ -268,31 +286,37 @@ func (h *Handler) ListUsers(c *fiber.Ctx) error {
 func (h *Handler) CreateUser(c *fiber.Ctx) error {
 	var user models.User
 	if err := c.BodyParser(&user); err != nil {
+		h.logWarn("USER", "CreateUser: invalid request payload", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	// Hash password
 	if password := c.FormValue("password"); password != "" {
 		if err := user.SetPassword(password); err != nil {
+			h.logError("USER", "CreateUser: failed to hash password", h.reqFields(c, map[string]interface{}{"error": err.Error(), "username": user.Username}))
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to set password"})
 		}
 	}
 
 	if err := h.DB.Create(&user).Error; err != nil {
+		h.logError("USER", "CreateUser: failed to create user", h.reqFields(c, map[string]interface{}{"error": err.Error(), "username": user.Username, "email": user.Email}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create user"})
 	}
 
+	h.logInfo("USER", "CreateUser: user created successfully", h.reqFields(c, map[string]interface{}{"user_id": user.ID, "username": user.Username, "role": user.Role}))
 	return c.Status(http.StatusCreated).JSON(user)
 }
 
 func (h *Handler) GetUser(c *fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
+		h.logWarn("USER", "GetUser: invalid user ID", h.reqFields(c, map[string]interface{}{"raw_id": c.Params("id")}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
 	var user models.User
 	if err := h.DB.First(&user, id).Error; err != nil {
+		h.logWarn("USER", "GetUser: user not found", h.reqFields(c, map[string]interface{}{"user_id": id}))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
@@ -302,36 +326,44 @@ func (h *Handler) GetUser(c *fiber.Ctx) error {
 func (h *Handler) UpdateUser(c *fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
+		h.logWarn("USER", "UpdateUser: invalid user ID", h.reqFields(c, map[string]interface{}{"raw_id": c.Params("id")}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
 	var user models.User
 	if err := h.DB.First(&user, id).Error; err != nil {
+		h.logWarn("USER", "UpdateUser: user not found", h.reqFields(c, map[string]interface{}{"user_id": id}))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
 	if err := c.BodyParser(&user); err != nil {
+		h.logWarn("USER", "UpdateUser: invalid request payload", h.reqFields(c, map[string]interface{}{"error": err.Error(), "user_id": id}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	user.ID = uint(id)
 	if err := h.DB.Save(&user).Error; err != nil {
+		h.logError("USER", "UpdateUser: failed to update user", h.reqFields(c, map[string]interface{}{"error": err.Error(), "user_id": id}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update user"})
 	}
 
+	h.logInfo("USER", "UpdateUser: user updated successfully", h.reqFields(c, map[string]interface{}{"user_id": id, "username": user.Username}))
 	return c.JSON(user)
 }
 
 func (h *Handler) DeleteUser(c *fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
+		h.logWarn("USER", "DeleteUser: invalid user ID", h.reqFields(c, map[string]interface{}{"raw_id": c.Params("id")}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
 	if err := h.DB.Delete(&models.User{}, id).Error; err != nil {
+		h.logError("USER", "DeleteUser: failed to delete user", h.reqFields(c, map[string]interface{}{"error": err.Error(), "user_id": id}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete user"})
 	}
 
+	h.logInfo("USER", "DeleteUser: user deleted successfully", h.reqFields(c, map[string]interface{}{"user_id": id}))
 	return c.JSON(fiber.Map{"message": "User deleted successfully"})
 }
 
@@ -351,6 +383,7 @@ func (h *Handler) ListGateways(c *fiber.Ctx) error {
 	// System admin sees all gateways
 
 	if err := query.Order("gateway_name").Find(&gateways).Error; err != nil {
+		h.logError("GATEWAY", "ListGateways: failed to retrieve gateways", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve gateways"})
 	}
 	return c.JSON(fiber.Map{"data": gateways})
@@ -359,6 +392,7 @@ func (h *Handler) ListGateways(c *fiber.Ctx) error {
 func (h *Handler) CreateGateway(c *fiber.Ctx) error {
 	var gateway models.Gateway
 	if err := c.BodyParser(&gateway); err != nil {
+		h.logWarn("GATEWAY", "CreateGateway: invalid request payload", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
@@ -377,11 +411,17 @@ func (h *Handler) CreateGateway(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Create(&gateway).Error; err != nil {
+		h.logError("GATEWAY", "CreateGateway: failed to create gateway", h.reqFields(c, map[string]interface{}{"error": err.Error(), "gateway_name": gateway.GatewayName}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create gateway"})
 	}
 
 	// Trigger FreeSWITCH reload so new gateway is picked up
-	h.reloadSofia("internal")
+	profileName := gateway.ProfileName
+	if profileName == "" {
+		profileName = "external"
+	}
+	h.reloadSofia(profileName)
+	h.logInfo("GATEWAY", "CreateGateway: gateway created successfully", h.reqFields(c, map[string]interface{}{"gateway_id": gateway.ID, "gateway_name": gateway.GatewayName, "profile": profileName}))
 	return c.Status(http.StatusCreated).JSON(gateway)
 }
 
@@ -409,6 +449,7 @@ func (h *Handler) GetGateway(c *fiber.Ctx) error {
 func (h *Handler) UpdateGateway(c *fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
+		h.logWarn("GATEWAY", "UpdateGateway: invalid gateway ID", h.reqFields(c, map[string]interface{}{"raw_id": c.Params("id")}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid gateway ID"})
 	}
 
@@ -422,6 +463,7 @@ func (h *Handler) UpdateGateway(c *fiber.Ctx) error {
 	}
 
 	if err := query.First(&gateway, id).Error; err != nil {
+		h.logWarn("GATEWAY", "UpdateGateway: gateway not found", h.reqFields(c, map[string]interface{}{"gateway_id": id}))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Gateway not found"})
 	}
 
@@ -429,6 +471,7 @@ func (h *Handler) UpdateGateway(c *fiber.Ctx) error {
 	existingPassword := gateway.Password
 
 	if err := c.BodyParser(&gateway); err != nil {
+		h.logWarn("GATEWAY", "UpdateGateway: invalid request payload", h.reqFields(c, map[string]interface{}{"error": err.Error(), "gateway_id": id}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
@@ -450,17 +493,24 @@ func (h *Handler) UpdateGateway(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Save(&gateway).Error; err != nil {
+		h.logError("GATEWAY", "UpdateGateway: failed to update gateway", h.reqFields(c, map[string]interface{}{"error": err.Error(), "gateway_id": id, "gateway_name": gateway.GatewayName}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update gateway"})
 	}
 
 	// Trigger FreeSWITCH reload so gateway changes are picked up
-	h.reloadSofia("internal")
+	profileName := gateway.ProfileName
+	if profileName == "" {
+		profileName = "external"
+	}
+	h.reloadSofia(profileName)
+	h.logInfo("GATEWAY", "UpdateGateway: gateway updated successfully", h.reqFields(c, map[string]interface{}{"gateway_id": id, "gateway_name": gateway.GatewayName}))
 	return c.JSON(gateway)
 }
 
 func (h *Handler) DeleteGateway(c *fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
+		h.logWarn("GATEWAY", "DeleteGateway: invalid gateway ID", h.reqFields(c, map[string]interface{}{"raw_id": c.Params("id")}))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid gateway ID"})
 	}
 
@@ -474,15 +524,22 @@ func (h *Handler) DeleteGateway(c *fiber.Ctx) error {
 	}
 
 	if err := query.First(&gateway, id).Error; err != nil {
+		h.logWarn("GATEWAY", "DeleteGateway: gateway not found", h.reqFields(c, map[string]interface{}{"gateway_id": id}))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Gateway not found"})
 	}
 
 	if err := h.DB.Delete(&gateway).Error; err != nil {
+		h.logError("GATEWAY", "DeleteGateway: failed to delete gateway", h.reqFields(c, map[string]interface{}{"error": err.Error(), "gateway_id": id, "gateway_name": gateway.GatewayName}))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete gateway"})
 	}
 
 	// Trigger FreeSWITCH reload so gateway removal is picked up
-	h.reloadSofia("internal")
+	profileName := gateway.ProfileName
+	if profileName == "" {
+		profileName = "external"
+	}
+	h.reloadSofia(profileName)
+	h.logInfo("GATEWAY", "DeleteGateway: gateway deleted successfully", h.reqFields(c, map[string]interface{}{"gateway_id": id, "gateway_name": gateway.GatewayName}))
 	return c.JSON(fiber.Map{"message": "Gateway deleted successfully"})
 }
 

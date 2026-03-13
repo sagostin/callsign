@@ -16,12 +16,14 @@ import (
 func (h *Handler) GetUserDevices(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("USER_PORTAL", "GetUserDevices: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	// Get user's extension
 	var user models.User
 	if err := h.DB.First(&user, claims.UserID).Error; err != nil {
+		h.logWarn("USER_PORTAL", "GetUserDevices: User not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
@@ -49,12 +51,14 @@ func (h *Handler) GetUserDevices(c *fiber.Ctx) error {
 func (h *Handler) GetUserCallHistory(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("USER_PORTAL", "GetUserCallHistory: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	// Get user's extension number
 	var user models.User
 	if err := h.DB.First(&user, claims.UserID).Error; err != nil {
+		h.logWarn("USER_PORTAL", "GetUserCallHistory: User not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
@@ -74,12 +78,14 @@ func (h *Handler) GetUserCallHistory(c *fiber.Ctx) error {
 func (h *Handler) GetUserVoicemail(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("USER_PORTAL", "GetUserVoicemail: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	// Get user's extension
 	var user models.User
 	if err := h.DB.First(&user, claims.UserID).Error; err != nil {
+		h.logWarn("USER_PORTAL", "GetUserVoicemail: User not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
@@ -104,11 +110,13 @@ func (h *Handler) GetUserVoicemail(c *fiber.Ctx) error {
 func (h *Handler) GetUserSettings(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("USER_PORTAL", "GetUserSettings: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var user models.User
 	if err := h.DB.First(&user, claims.UserID).Error; err != nil {
+		h.logWarn("USER_PORTAL", "GetUserSettings: User not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
@@ -145,6 +153,7 @@ func (h *Handler) GetUserSettings(c *fiber.Ctx) error {
 func (h *Handler) UpdateUserSettings(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("USER_PORTAL", "UpdateUserSettings: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -163,11 +172,13 @@ func (h *Handler) UpdateUserSettings(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("USER_PORTAL", "UpdateUserSettings: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	var user models.User
 	if err := h.DB.First(&user, claims.UserID).Error; err != nil {
+		h.logWarn("USER_PORTAL", "UpdateUserSettings: User not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
@@ -186,6 +197,7 @@ func (h *Handler) UpdateUserSettings(c *fiber.Ctx) error {
 	}
 
 	if err := h.DB.Save(&user).Error; err != nil {
+		h.logError("USER_PORTAL", "UpdateUserSettings: Failed to update user", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update user"})
 	}
 
@@ -219,6 +231,7 @@ func (h *Handler) UpdateUserSettings(c *fiber.Ctx) error {
 func (h *Handler) GetUserContacts(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("USER_PORTAL", "GetUserContacts: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
@@ -233,17 +246,20 @@ func (h *Handler) GetUserContacts(c *fiber.Ctx) error {
 func (h *Handler) CreateUserContact(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
+		h.logWarn("USER_PORTAL", "CreateUserContact: Not authenticated", h.reqFields(c, nil))
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	var contact models.Contact
 	if err := c.BodyParser(&contact); err != nil {
+		h.logWarn("USER_PORTAL", "CreateUserContact: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
 	contact.TenantID = middleware.GetTenantID(c)
 
 	if err := h.DB.Create(&contact).Error; err != nil {
+		h.logError("USER_PORTAL", "CreateUserContact: Failed to create contact", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create contact"})
 	}
 
