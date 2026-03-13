@@ -600,6 +600,7 @@ export const systemAPI = {
     createTenant: (data) => api.post('/system/tenants', data),
     updateTenant: (id, data) => api.put(`/system/tenants/${id}`, data),
     deleteTenant: (id) => api.delete(`/system/tenants/${id}`),
+    previewTenantDeletion: (id) => api.get(`/system/tenants/${id}/deletion-preview`),
 
     // System Numbers (centralized pool)
     listSystemNumbers: (params) => api.get('/system/numbers', { params }),

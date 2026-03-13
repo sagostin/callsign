@@ -53,6 +53,14 @@
           <span>Users</span>
         </div>
       </div>
+
+      <div class="nav-group" v-if="!isNew">
+        <span class="nav-group-title">Danger</span>
+        <div class="nav-item nav-item-danger" :class="{ active: activeSection === 'danger' }" @click="activeSection = 'danger'">
+          <Trash2Icon class="nav-icon" />
+          <span>Delete Tenant</span>
+        </div>
+      </div>
     </div>
 
     <!-- Content Panel -->
@@ -403,6 +411,68 @@
           <p>Tenant user management is available when impersonating this tenant. Click "Impersonate Tenant" to access the admin dashboard.</p>
         </div>
       </div>
+
+      <!-- DANGER ZONE -->
+      <div v-if="activeSection === 'danger'" class="settings-panel danger-panel">
+        <div class="panel-header">
+          <h3 class="danger-title">⚠️ Danger Zone</h3>
+        </div>
+        <p class="panel-desc">Irreversible and destructive actions for this tenant.</p>
+
+        <div class="danger-card">
+          <div class="danger-card-content">
+            <div class="danger-info">
+              <h4>Delete this Tenant</h4>
+              <p>Permanently delete <strong>{{ form.name || 'this tenant' }}</strong> and <strong>all associated data</strong> including extensions, users, devices, call recordings, voicemail, CDR records, and all configuration. This action <strong>cannot be undone</strong>.</p>
+            </div>
+            <button class="btn-danger" @click="startDeletion" :disabled="deletionLoading">
+              {{ deletionLoading ? 'Loading...' : 'Delete Tenant' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Deletion Confirmation Modal -->
+      <div v-if="showDeleteModal" class="modal-overlay" @click.self="showDeleteModal = false">
+        <div class="modal-panel danger-modal">
+          <div class="modal-header danger-header">
+            <h3>⚠️ Confirm Tenant Deletion</h3>
+          </div>
+          <div class="modal-body">
+            <p class="modal-warning">You are about to <strong>permanently delete</strong> the tenant <strong>"{{ form.name }}"</strong>. This will destroy:</p>
+
+            <div class="resource-summary" v-if="deletionPreview">
+              <div v-for="item in resourceList" :key="item.key" class="resource-row" v-show="item.count > 0">
+                <span class="resource-label">{{ item.label }}</span>
+                <span class="resource-count">{{ item.count }}</span>
+              </div>
+              <div v-if="totalResources === 0" class="resource-row">
+                <span class="resource-label" style="color: var(--text-muted)">No associated resources found</span>
+              </div>
+            </div>
+
+            <div class="confirm-input-section">
+              <p>To confirm, type <strong>{{ form.name }}</strong> below:</p>
+              <input
+                v-model="deleteConfirmText"
+                class="input-field confirm-input"
+                :placeholder="form.name"
+                autocomplete="off"
+              >
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" @click="showDeleteModal = false">Cancel</button>
+            <button
+              class="btn-danger"
+              @click="confirmDeletion"
+              :disabled="deleteConfirmText !== form.name || deleting"
+            >
+              {{ deleting ? 'Deleting...' : 'Permanently Delete Tenant' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -413,7 +483,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { 
   Building as BuildingIcon, Globe as GlobeIcon, Settings as SettingsIcon,
   Package as PackageIcon, Gauge as GaugeIcon, Palette as PaletteIcon,
-  Users as UsersIcon
+  Users as UsersIcon, Trash2 as Trash2Icon
 } from 'lucide-vue-next'
 import { systemAPI } from '../../services/api'
 import { useAuth } from '../../services/auth'
@@ -429,6 +499,11 @@ const tenantName = computed(() => form.value.name || 'Edit Tenant')
 const loading = ref(false)
 const saving = ref(false)
 const profiles = ref([])
+const showDeleteModal = ref(false)
+const deleteConfirmText = ref('')
+const deletionPreview = ref(null)
+const deletionLoading = ref(false)
+const deleting = ref(false)
 const activeSection = ref('basics')
 
 const form = ref({
@@ -568,6 +643,85 @@ const impersonateTenant = () => {
     router.push('/admin')
   }
 }
+
+// --- Deletion flow ---
+const resourceLabels = {
+  extensions: 'Extensions',
+  users: 'Users',
+  devices: 'Devices',
+  voicemail_boxes: 'Voicemail Boxes',
+  voicemail_messages: 'Voicemail Messages',
+  recordings: 'Audio Recordings',
+  call_recordings: 'Call Recordings',
+  ivr_menus: 'IVR Menus',
+  queues: 'Call Queues',
+  ring_groups: 'Ring Groups',
+  conferences: 'Conferences',
+  call_flows: 'Call Flows',
+  time_conditions: 'Time Conditions',
+  feature_codes: 'Feature Codes',
+  dialplans: 'Dial Plans',
+  page_groups: 'Page Groups',
+  speed_dial_groups: 'Speed Dial Groups',
+  contacts: 'Contacts',
+  conversations: 'SMS Conversations',
+  messages: 'SMS Messages',
+  broadcasts: 'Broadcast Campaigns',
+  fax_boxes: 'Fax Boxes',
+  fax_jobs: 'Fax Jobs',
+  hotel_rooms: 'Hotel Rooms',
+  chat_threads: 'Chat Threads',
+  cdr_records: 'CDR Records',
+  call_blocks: 'Call Blocks',
+  holiday_lists: 'Holiday Lists',
+  locations: 'Locations',
+  media_files: 'Media Files',
+  audit_logs: 'Audit Logs',
+  client_registrations: 'Client Registrations'
+}
+
+const resourceList = computed(() => {
+  if (!deletionPreview.value) return []
+  return Object.entries(deletionPreview.value)
+    .map(([key, count]) => ({ key, label: resourceLabels[key] || key, count }))
+    .filter(item => item.count > 0)
+    .sort((a, b) => b.count - a.count)
+})
+
+const totalResources = computed(() => {
+  if (!deletionPreview.value) return 0
+  return Object.values(deletionPreview.value).reduce((sum, v) => sum + v, 0)
+})
+
+const startDeletion = async () => {
+  deletionLoading.value = true
+  try {
+    const response = await systemAPI.previewTenantDeletion(tenantId.value)
+    deletionPreview.value = response.data?.data || response.data
+    deleteConfirmText.value = ''
+    showDeleteModal.value = true
+  } catch (e) {
+    console.error('Failed to load deletion preview:', e)
+    toast?.error('Failed to load resource summary')
+  } finally {
+    deletionLoading.value = false
+  }
+}
+
+const confirmDeletion = async () => {
+  if (deleteConfirmText.value !== form.value.name) return
+  deleting.value = true
+  try {
+    await systemAPI.deleteTenant(tenantId.value)
+    toast?.success(`Tenant "${form.value.name}" has been permanently deleted`)
+    router.push('/system/tenants')
+  } catch (e) {
+    console.error('Failed to delete tenant:', e)
+    toast?.error(e.response?.data?.error || e.message, 'Failed to delete tenant')
+  } finally {
+    deleting.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -638,4 +792,136 @@ input:checked + .slider:before { transform: translateX(18px); }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-secondary { background: white; border: 1px solid var(--border-color); color: var(--text-main); padding: 8px 16px; border-radius: var(--radius-sm); font-weight: 500; cursor: pointer; }
 .btn-secondary.small { padding: 6px 12px; font-size: 12px; }
+
+/* Danger Zone Nav */
+.nav-item-danger { color: #dc2626 !important; }
+.nav-item-danger:hover { background: #fef2f2 !important; }
+.nav-item-danger.active { background: #fee2e2 !important; color: #dc2626 !important; }
+.nav-item-danger .nav-icon { opacity: 1; color: #dc2626; }
+
+/* Danger Zone Panel */
+.danger-panel { border-color: #fecaca; }
+.danger-title { color: #dc2626; }
+
+.danger-card {
+  border: 2px solid #fecaca;
+  border-radius: var(--radius-md);
+  padding: 20px;
+  background: #fef2f2;
+}
+
+.danger-card-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+}
+
+.danger-info h4 { font-size: 15px; font-weight: 600; margin: 0 0 6px; color: #991b1b; }
+.danger-info p { font-size: 13px; color: #7f1d1d; margin: 0; line-height: 1.5; }
+
+.btn-danger {
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+.btn-danger:hover { background: #b91c1c; }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Deletion Confirmation Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.modal-panel {
+  background: white;
+  border-radius: var(--radius-lg, 12px);
+  width: 520px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.danger-modal { border: 2px solid #fecaca; }
+
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+.modal-header h3 { margin: 0; font-size: 18px; }
+.danger-header { background: #fef2f2; }
+.danger-header h3 { color: #991b1b; }
+
+.modal-body { padding: 20px 24px; }
+
+.modal-warning {
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 16px;
+  color: #374151;
+}
+
+.resource-summary {
+  background: #f9fafb;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.resource-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 13px;
+}
+.resource-row:last-child { border-bottom: none; }
+
+.resource-label { color: #374151; }
+.resource-count { font-weight: 700; color: #dc2626; font-family: var(--font-mono, monospace); }
+
+.confirm-input-section {
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+}
+.confirm-input-section p { font-size: 13px; margin: 0 0 8px; color: #374151; }
+
+.confirm-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid #fecaca;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+.confirm-input:focus { outline: none; border-color: #dc2626; }
+
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  background: #f9fafb;
+  border-radius: 0 0 12px 12px;
+}
 </style>

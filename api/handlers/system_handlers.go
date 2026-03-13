@@ -111,12 +111,19 @@ func (h *Handler) DeleteTenant(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid tenant ID"})
 	}
 
-	// Deprovision FreeSWITCH resources before deleting tenant
+	// Verify the tenant exists before proceeding
+	var tenant models.Tenant
+	if err := h.DB.First(&tenant, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
+	}
+
+	// Deprovision all tenant resources before deleting tenant
 	if err := models.DeprovisionTenant(h.DB, uint(id)); err != nil {
 		log.WithError(err).WithField("tenant_id", id).Warn("Tenant deprovisioning failed")
 	}
 
-	if err := h.DB.Delete(&models.Tenant{}, id).Error; err != nil {
+	// Hard-delete the tenant (not soft-delete) since all data is gone
+	if err := h.DB.Unscoped().Delete(&models.Tenant{}, id).Error; err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete tenant"})
 	}
 
@@ -124,6 +131,28 @@ func (h *Handler) DeleteTenant(c *fiber.Ctx) error {
 	h.reloadXML()
 
 	return c.JSON(fiber.Map{"message": "Tenant deleted successfully"})
+}
+
+// PreviewTenantDeletion returns a summary of all resources belonging to a tenant
+// that would be destroyed if the tenant were deleted.
+func (h *Handler) PreviewTenantDeletion(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid tenant ID"})
+	}
+
+	// Verify the tenant exists
+	var tenant models.Tenant
+	if err := h.DB.First(&tenant, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Tenant not found"})
+	}
+
+	preview := models.PreviewTenantDeletion(h.DB, uint(id))
+	return c.JSON(fiber.Map{
+		"data":        preview,
+		"tenant_name": tenant.Name,
+		"tenant_id":   tenant.ID,
+	})
 }
 
 // =====================

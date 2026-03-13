@@ -78,7 +78,7 @@
         </select>
       </div>
 
-      <DataTable :columns="numberColumns" :data="filteredNumbers" :actions="numberActions">
+      <DataTable :columns="numberColumns" :data="filteredNumbers" actions>
         <template #phone_number="{ value }">
           <span class="font-mono font-semibold">{{ formatPhoneNumber(value) }}</span>
         </template>
@@ -100,6 +100,22 @@
             <span class="cap-badge mms" v-if="row.mms_enabled">MMS</span>
             <span class="cap-badge fax" v-if="row.fax_enabled">Fax</span>
             <span class="cap-badge e911" v-if="row.e911_eligible">E911</span>
+          </div>
+        </template>
+        <template #actions="{ row }">
+          <div class="action-buttons">
+            <button class="btn-icon" @click="editNumber(row)" title="Edit number">
+              <EditIcon class="icon-sm" />
+            </button>
+            <button class="btn-icon" v-if="!row.tenant_id" @click="openAssign(row)" title="Assign to tenant">
+              <UserPlusIcon class="icon-sm" />
+            </button>
+            <button class="btn-icon" v-if="row.tenant_id" @click="unassignNum(row)" title="Unassign from tenant">
+              <UserMinusIcon class="icon-sm" />
+            </button>
+            <button class="btn-icon" @click="deleteNumber(row)" title="Delete number">
+              <TrashIcon class="icon-sm text-bad" />
+            </button>
           </div>
         </template>
       </DataTable>
@@ -808,13 +824,6 @@ const numberColumns = [
   { key: 'capabilities', label: 'Capabilities', width: '180px' },
   { key: 'status', label: 'Status', width: '100px' },
   { key: 'caller_id_name', label: 'Caller ID', width: '140px' },
-]
-
-const numberActions = [
-  { label: 'Edit', icon: EditIcon, handler: (row) => editNumber(row) },
-  { label: 'Assign', icon: UserPlusIcon, handler: (row) => openAssign(row), show: (row) => !row.tenant_id },
-  { label: 'Unassign', icon: UserMinusIcon, handler: (row) => unassignNum(row), show: (row) => !!row.tenant_id },
-  { label: 'Delete', icon: TrashIcon, handler: (row) => deleteNumber(row), className: 'text-bad' },
 ]
 
 const filteredNumbers = computed(() => {

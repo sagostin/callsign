@@ -607,6 +607,7 @@ func (r *Router) Init() {
 	tenants.Get("/:id", r.Handler.GetTenant)
 	tenants.Put("/:id", r.Handler.UpdateTenant)
 	tenants.Delete("/:id", r.Handler.DeleteTenant)
+	tenants.Get("/:id/deletion-preview", r.Handler.PreviewTenantDeletion)
 
 	// System Numbers (centralized pool)
 	sysNumbers := system.Group("/numbers")
