@@ -48,6 +48,13 @@ func NewRouter(db *gorm.DB, cfg *config.Config) *Router {
 	h.SetWSHub(wsHub)
 	h.SetMsgManager(msgManager)
 
+	// Create FreeSWITCH XML handler and share its cache with the main handler.
+	// When handlers modify config (extensions, routes, ACLs, etc.), they call
+	// flushXMLCache() which invalidates this cache. The next mod_xml_curl
+	// request from FreeSWITCH then gets fresh data from the database.
+	fsHandler := freeswitch.NewFSHandler(db, cfg)
+	h.SetXMLCache(fsHandler.Cache)
+
 	return &Router{
 		App:               fiber.New(),
 		DB:                db,
@@ -55,7 +62,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config) *Router {
 		Auth:              middleware.NewAuthMiddleware(cfg, db),
 		Tenant:            middleware.NewTenantMiddleware(db),
 		Handler:           h,
-		FSHandler:         freeswitch.NewFSHandler(db, cfg),
+		FSHandler:         fsHandler,
 		ConferenceHandler: handlers.NewConferenceHandler(db, nil),
 		FaxHandler:        handlers.NewFaxHandler(h, nil),
 		SMSNumberHandler:  handlers.NewSMSNumberHandler(db),

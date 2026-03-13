@@ -9,6 +9,7 @@ import (
 	"callsign/services/logging"
 	"callsign/services/messaging"
 	"callsign/services/websocket"
+	"callsign/services/xmlcache"
 	"fmt"
 	"net/http"
 	"strings"
@@ -32,6 +33,7 @@ type Handler struct {
 	WSHub               *websocket.Hub
 	MsgManager          *messaging.Manager
 	CHClient            *cdr.ClickHouseClient
+	XMLCache            *xmlcache.XMLCache
 }
 
 // NewHandler creates a new Handler instance
@@ -63,41 +65,44 @@ func (h *Handler) SetClickHouse(ch *cdr.ClickHouseClient) {
 	h.CHClient = ch
 }
 
-// reloadXML triggers a FreeSWITCH XML reload in the background.
-// Safe to call even if ESL is not connected — it silently no-ops.
+// SetXMLCache sets the XML cache reference for cache invalidation
+func (h *Handler) SetXMLCache(cache *xmlcache.XMLCache) {
+	h.XMLCache = cache
+}
+
+// flushXMLCache invalidates the xmlcache so the next mod_xml_curl request
+// from FreeSWITCH fetches fresh data from the database. Since all config
+// (directory, dialplan, configuration, ACLs) is served dynamically via
+// mod_xml_curl, no reloadxml command is needed — FreeSWITCH will pick up
+// the changes on the next lookup. For cases where FreeSWITCH has cached
+// stale data internally, use the manual "Reload XML" button in the UI.
+func (h *Handler) flushXMLCache() {
+	if h.XMLCache != nil {
+		h.XMLCache.Flush()
+		log.Debug("XML cache flushed")
+	}
+}
+
+// reloadXML flushes the XML cache so FreeSWITCH picks up changes on next xml_curl request.
+// No reloadxml ESL command is sent — all config is served dynamically via mod_xml_curl.
 func (h *Handler) reloadXML() {
-	if h.ESLManager != nil && h.ESLManager.IsConnected() {
-		go h.ESLManager.ReloadXML()
-	}
+	h.flushXMLCache()
 }
 
-// reloadSofia triggers a Sofia profile rescan + XML reload in the background.
+// reloadSofia flushes the XML cache. Gateway changes are picked up on next xml_curl fetch.
+// For immediate effect, use the manual "Reload XML" or sofia rescan buttons in the UI.
 func (h *Handler) reloadSofia(profileName string) {
-	if h.ESLManager != nil && h.ESLManager.IsConnected() {
-		go func() {
-			h.ESLManager.ReloadXML()
-			if profileName != "" {
-				h.ESLManager.SofiaRescan(profileName)
-			}
-		}()
-	}
+	h.flushXMLCache()
 }
 
-// reloadCallcenter triggers a mod_callcenter reload + XML reload in the background.
+// reloadCallcenter flushes the XML cache. Callcenter config is fetched dynamically.
 func (h *Handler) reloadCallcenter() {
-	if h.ESLManager != nil && h.ESLManager.IsConnected() {
-		go func() {
-			h.ESLManager.ReloadXML()
-			h.ESLManager.CallcenterReload()
-		}()
-	}
+	h.flushXMLCache()
 }
 
-// reloadACL triggers an ACL reload in the background.
+// reloadACL flushes the XML cache. ACL config is fetched dynamically via xml_curl.
 func (h *Handler) reloadACL() {
-	if h.ESLManager != nil && h.ESLManager.IsConnected() {
-		go h.ESLManager.ReloadACL()
-	}
+	h.flushXMLCache()
 }
 
 // SetLogManager sets the LogManager reference
