@@ -9,6 +9,24 @@ import (
 	"gorm.io/gorm"
 )
 
+// auditSnapshot holds all context values captured before the goroutine runs.
+// Fiber recycles *fiber.Ctx after the handler returns, so we must not access
+// the context from a goroutine — doing so causes nil-pointer panics.
+type auditSnapshot struct {
+	Method    string
+	Path      string
+	Status    int
+	IP        string
+	UserAgent string
+	TenantID  uint
+	UserID    uint
+	Username  string
+	Role      string
+	NewValue  interface{}
+	OldValue  interface{}
+	Error     string
+}
+
 // AuditMiddleware creates a middleware that logs audit events
 func AuditMiddleware(db *gorm.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -56,8 +74,30 @@ func AuditMiddleware(db *gorm.DB) fiber.Handler {
 		// Process request
 		err := c.Next()
 
-		// Log audit event after handler completes
-		go logAuditEvent(db, c, tenantID, userID, username, role, newValue)
+		// Capture everything we need from the context BEFORE launching the
+		// goroutine.  Fiber recycles *fiber.Ctx objects after the handler
+		// returns, so accessing c from a goroutine is a use-after-free bug
+		// that causes nil-pointer panics (the 502s we were seeing).
+		snap := auditSnapshot{
+			Method:    method,
+			Path:      path,
+			Status:    c.Response().StatusCode(),
+			IP:        c.IP(),
+			UserAgent: c.Get("User-Agent"),
+			TenantID:  tenantID,
+			UserID:    userID,
+			Username:  username,
+			Role:      role,
+			NewValue:  newValue,
+			OldValue:  c.Locals("audit_old_value"),
+		}
+		if snap.Status >= 400 {
+			if errMsg, ok := c.Locals("error").(string); ok {
+				snap.Error = errMsg
+			}
+		}
+
+		go logAuditEvent(db, snap)
 
 		return err
 	}
@@ -81,14 +121,10 @@ func shouldSkipAudit(path string) bool {
 	return false
 }
 
-func logAuditEvent(db *gorm.DB, c *fiber.Ctx, tenantID, userID uint, username, role string, newValue interface{}) {
-	method := c.Method()
-	path := c.Path()
-	status := c.Response().StatusCode()
-
+func logAuditEvent(db *gorm.DB, s auditSnapshot) {
 	// Determine action
 	var action models.AuditAction
-	switch method {
+	switch s.Method {
 	case "POST":
 		action = models.AuditActionCreate
 	case "PUT", "PATCH":
@@ -100,50 +136,45 @@ func logAuditEvent(db *gorm.DB, c *fiber.Ctx, tenantID, userID uint, username, r
 	}
 
 	// Determine resource from path
-	resource, resourceID := parseResourceFromPath(path)
+	resource, resourceID := parseResourceFromPath(s.Path)
 
 	// Check for auth endpoints
-	if strings.Contains(path, "/auth/login") {
+	if strings.Contains(s.Path, "/auth/login") {
 		action = models.AuditActionLogin
 		resource = "auth"
-	} else if strings.Contains(path, "/auth/logout") {
+	} else if strings.Contains(s.Path, "/auth/logout") {
 		action = models.AuditActionLogout
 		resource = "auth"
 	}
 
-	// Get old value if it was stored by handler
-	oldValue := c.Locals("audit_old_value")
-
 	// Create audit log
 	entry := &models.AuditLog{
-		TenantID:   tenantID,
-		UserID:     userID,
-		Username:   username,
-		UserRole:   role,
-		IPAddress:  c.IP(),
-		UserAgent:  c.Get("User-Agent"),
+		TenantID:   s.TenantID,
+		UserID:     s.UserID,
+		Username:   s.Username,
+		UserRole:   s.Role,
+		IPAddress:  s.IP,
+		UserAgent:  s.UserAgent,
 		Action:     action,
 		Resource:   resource,
 		ResourceID: resourceID,
-		Success:    status >= 200 && status < 400,
+		Success:    s.Status >= 200 && s.Status < 400,
 	}
 
-	if oldValue != nil {
-		if data, err := json.Marshal(oldValue); err == nil {
+	if s.OldValue != nil {
+		if data, err := json.Marshal(s.OldValue); err == nil {
 			entry.OldValue = data
 		}
 	}
-	if newValue != nil {
-		if data, err := json.Marshal(newValue); err == nil {
+	if s.NewValue != nil {
+		if data, err := json.Marshal(s.NewValue); err == nil {
 			entry.NewValue = data
 		}
 	}
 
 	// Check for error message
-	if status >= 400 {
-		if errMsg, ok := c.Locals("error").(string); ok {
-			entry.Error = errMsg
-		}
+	if s.Status >= 400 {
+		entry.Error = s.Error
 	}
 
 	db.Create(entry)

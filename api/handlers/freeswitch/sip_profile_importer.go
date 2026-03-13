@@ -2,348 +2,40 @@ package freeswitch
 
 import (
 	"callsign/models"
-	"encoding/xml"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"path/filepath"
-	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
-// ProfileImporter handles importing SIP profiles from XML files into the database
-type ProfileImporter struct {
+// ProfileSyncer handles syncing SIP profiles from database to disk XML files.
+// Profiles are seeded from built-in defaults (see models.EnsureDefaultProfiles),
+// NOT imported from disk. Disk files are written because Sofia loads them via X-PRE-PROCESS.
+type ProfileSyncer struct {
 	ProfilesPath string
 	DB           *gorm.DB
 }
 
-// NewProfileImporter creates a new profile importer
-func NewProfileImporter(profilesPath string, db *gorm.DB) *ProfileImporter {
-	return &ProfileImporter{
+// NewProfileSyncer creates a new profile syncer
+func NewProfileSyncer(profilesPath string, db *gorm.DB) *ProfileSyncer {
+	return &ProfileSyncer{
 		ProfilesPath: profilesPath,
 		DB:           db,
 	}
 }
 
-// XMLProfile represents a parsed SIP profile from XML
-type XMLProfile struct {
-	XMLName  xml.Name    `xml:"profile"`
-	Name     string      `xml:"name,attr"`
-	Aliases  XMLAliases  `xml:"aliases"`
-	Gateways XMLGateways `xml:"gateways"`
-	Domains  XMLDomains  `xml:"domains"`
-	Settings XMLSettings `xml:"settings"`
-}
-
-type XMLAliases struct {
-	Aliases []XMLAlias `xml:"alias"`
-}
-
-type XMLAlias struct {
-	Name string `xml:"name,attr"`
-}
-
-type XMLGateways struct {
-	Gateways []XMLGateway `xml:"gateway"`
-}
-
-type XMLGateway struct {
-	Name   string     `xml:"name,attr"`
-	Params []XMLParam `xml:"param"`
-}
-
-type XMLDomains struct {
-	Domains []XMLDomain `xml:"domain"`
-}
-
-type XMLDomain struct {
-	Name  string `xml:"name,attr"`
-	Alias string `xml:"alias,attr"`
-	Parse string `xml:"parse,attr"`
-}
-
-type XMLSettings struct {
-	Params []XMLParam `xml:"param"`
-}
-
-type XMLParam struct {
-	Name    string `xml:"name,attr"`
-	Value   string `xml:"value,attr"`
-	Enabled string `xml:"enabled,attr"` // Optional: "true", "false", or empty
-}
-
-// SyncProfiles imports SIP profiles from disk to database.
-// If overwrite is true, it updates existing profiles by replacing their settings and domains.
-func (i *ProfileImporter) SyncProfiles(overwrite bool) error {
-	log.Info("Syncing SIP profiles from disk...")
-
-	// Find all XML files in sip_profiles directory
-	files, err := filepath.Glob(filepath.Join(i.ProfilesPath, "*.xml"))
-	if err != nil {
-		return fmt.Errorf("failed to list profile files: %w", err)
-	}
-
-	if len(files) == 0 {
-		log.Debug("No SIP profile XML files found in " + i.ProfilesPath)
-		return nil
-	}
-
-	// Get existing profiles map for quick lookup
-	var existingProfiles []models.SIPProfile
-	i.DB.Find(&existingProfiles)
-	existingMap := make(map[string]models.SIPProfile)
-	for _, p := range existingProfiles {
-		existingMap[p.ProfileName] = p
-	}
-
-	imported := 0
-	updated := 0
-	for _, file := range files {
-		// Skip certain files that aren't profiles
-		baseName := filepath.Base(file)
-		if strings.HasPrefix(baseName, ".") || strings.Contains(baseName, "example") {
-			continue
-		}
-
-		profile, err := i.parseProfileFile(file)
-		if err != nil {
-			log.WithError(err).WithField("file", file).Warn("Failed to parse profile file")
-			continue
-		}
-
-		if profile == nil {
-			continue
-		}
-
-		existing, exists := existingMap[profile.Name]
-
-		// If profile exists
-		if exists {
-			if !overwrite {
-				log.WithField("profile", profile.Name).Debug("Profile already exists in database, skipping")
-				continue
-			}
-
-			// Update existing profile
-			if err := i.updateProfile(&existing, profile); err != nil {
-				log.WithError(err).WithField("profile", profile.Name).Warn("Failed to update profile")
-				continue
-			}
-			updated++
-			log.WithField("profile", profile.Name).Info("Updated SIP profile from file")
-
-		} else {
-			// Create new profile
-			if err := i.importProfile(profile); err != nil {
-				log.WithError(err).WithField("profile", profile.Name).Warn("Failed to import profile")
-				continue
-			}
-			imported++
-			log.WithField("profile", profile.Name).Info("Imported new SIP profile from file")
-		}
-	}
-
-	if imported > 0 || updated > 0 {
-		log.WithFields(log.Fields{"imported": imported, "updated": updated}).Info("Completed SIP profile sync")
-	} else {
-		log.Debug("No changes made to SIP profiles")
-	}
-	return nil
-}
-
-// parseProfileFile reads and parses an XML profile file
-func (i *ProfileImporter) parseProfileFile(filePath string) (*XMLProfile, error) {
-	data, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
-	}
-
-	// Handle FreeSWITCH variables like $${var} - replace with placeholder or defaults
-	content := string(data)
-	content = i.expandVariables(content)
-
-	var profile XMLProfile
-	if err := xml.Unmarshal([]byte(content), &profile); err != nil {
-		return nil, fmt.Errorf("failed to parse XML: %w", err)
-	}
-
-	if profile.Name == "" {
-		return nil, fmt.Errorf("profile has no name attribute")
-	}
-
-	return &profile, nil
-}
-
-// expandVariables replaces FreeSWITCH $${var} variables with defaults
-func (i *ProfileImporter) expandVariables(content string) string {
-	// Common FreeSWITCH variables and their defaults
-	replacements := map[string]string{
-		"$${local_ip_v4}":          "auto",
-		"$${external_rtp_ip}":      "auto-nat",
-		"$${external_sip_ip}":      "auto-nat",
-		"$${domain}":               "$${domain}",
-		"$${hold_music}":           "local_stream://moh",
-		"$${global_codec_prefs}":   "OPUS,G722,PCMU,PCMA",
-		"$${outbound_codec_prefs}": "OPUS,G722,PCMU,PCMA",
-		"$${internal_ssl_enable}":  "false",
-		"$${external_ssl_enable}":  "false",
-		"$${internal_ssl_dir}":     "",
-		"$${external_ssl_dir}":     "",
-		"$${sip_tls_version}":      "tlsv1.2",
-		"$${sip_tls_ciphers}":      "",
-		"$${presence_privacy}":     "false",
-		"$${dsn}":                  "",
-		"$${recordings_dir}":       "/var/lib/freeswitch/recordings",
-	}
-
-	for variable, defaultVal := range replacements {
-		content = strings.ReplaceAll(content, variable, defaultVal)
-	}
-
-	return content
-}
-
-// updateProfile updates an existing profile records from a parsed XML profile
-func (i *ProfileImporter) updateProfile(existing *models.SIPProfile, xmlProfile *XMLProfile) error {
-	// Start a transaction
-	return i.DB.Transaction(func(tx *gorm.DB) error {
-		// Delete existing settings using struct for correct column name resolution
-		if err := tx.Where(&models.SIPProfileSetting{SIPProfileUUID: existing.UUID}).Delete(&models.SIPProfileSetting{}).Error; err != nil {
-			return fmt.Errorf("failed to clear existing settings: %w", err)
-		}
-
-		// Delete existing domains using struct for correct column name resolution
-		if err := tx.Where(&models.SIPProfileDomain{SIPProfileUUID: existing.UUID}).Delete(&models.SIPProfileDomain{}).Error; err != nil {
-			return fmt.Errorf("failed to clear existing domains: %w", err)
-		}
-
-		// Import settings
-		for _, param := range xmlProfile.Settings.Params {
-			// Check if setting is enabled
-			enabled := true
-			if param.Enabled == "false" {
-				enabled = false
-			}
-
-			setting := &models.SIPProfileSetting{
-				SIPProfileUUID: existing.UUID,
-				SettingName:    param.Name,
-				SettingValue:   param.Value,
-				Enabled:        enabled,
-			}
-
-			if err := tx.Create(setting).Error; err != nil {
-				log.WithError(err).WithField("setting", param.Name).Warn("Failed to import setting")
-			}
-		}
-
-		// Import domains
-		for _, xmlDomain := range xmlProfile.Domains.Domains {
-			domain := &models.SIPProfileDomain{
-				SIPProfileUUID: existing.UUID,
-				DomainName:     xmlDomain.Name,
-				Alias:          xmlDomain.Alias == "true",
-				Parse:          xmlDomain.Parse == "true",
-			}
-
-			if err := tx.Create(domain).Error; err != nil {
-				log.WithError(err).WithField("domain", xmlDomain.Name).Warn("Failed to import domain")
-			}
-		}
-
-		log.WithFields(log.Fields{
-			"profile":  xmlProfile.Name,
-			"settings": len(xmlProfile.Settings.Params),
-			"domains":  len(xmlProfile.Domains.Domains),
-		}).Debug("Profile updated in database")
-
-		return nil
-	})
-}
-
-// importProfile creates database records for a parsed profile
-func (i *ProfileImporter) importProfile(xmlProfile *XMLProfile) error {
-	// Start a transaction
-	return i.DB.Transaction(func(tx *gorm.DB) error {
-		// Create the profile
-		profile := &models.SIPProfile{
-			ProfileName: xmlProfile.Name,
-			Description: fmt.Sprintf("Imported from %s.xml", xmlProfile.Name),
-			Enabled:     true,
-		}
-
-		if err := tx.Create(profile).Error; err != nil {
-			return fmt.Errorf("failed to create profile: %w", err)
-		}
-
-		// Import settings
-		for _, param := range xmlProfile.Settings.Params {
-			// Check if setting is enabled
-			enabled := true
-			if param.Enabled == "false" {
-				enabled = false
-			}
-
-			setting := &models.SIPProfileSetting{
-				SIPProfileUUID: profile.UUID,
-				SettingName:    param.Name,
-				SettingValue:   param.Value,
-				Enabled:        enabled,
-			}
-
-			if err := tx.Create(setting).Error; err != nil {
-				log.WithError(err).WithField("setting", param.Name).Warn("Failed to import setting")
-			}
-		}
-
-		// Import domains
-		for _, xmlDomain := range xmlProfile.Domains.Domains {
-			domain := &models.SIPProfileDomain{
-				SIPProfileUUID: profile.UUID,
-				DomainName:     xmlDomain.Name,
-				Alias:          xmlDomain.Alias == "true",
-				Parse:          xmlDomain.Parse == "true",
-			}
-
-			if err := tx.Create(domain).Error; err != nil {
-				log.WithError(err).WithField("domain", xmlDomain.Name).Warn("Failed to import domain")
-			}
-		}
-
-		// Note: We don't import static gateways from XML
-		// Gateways should be created via the UI/API and served dynamically
-
-		log.WithFields(log.Fields{
-			"profile":  xmlProfile.Name,
-			"settings": len(xmlProfile.Settings.Params),
-			"domains":  len(xmlProfile.Domains.Domains),
-		}).Debug("Profile imported to database")
-
-		return nil
-	})
-}
-
-// SyncProfilesToFiles writes all database profiles to XML files
-// Call this after any profile modification
-func (i *ProfileImporter) SyncProfilesToFiles() error {
+// SyncProfilesToFiles writes all enabled database profiles to XML files on disk.
+// Call this after any profile modification or on startup.
+func (s *ProfileSyncer) SyncProfilesToFiles() error {
 	var profiles []models.SIPProfile
-	if err := i.DB.Preload("Settings").Preload("Domains").Find(&profiles).Error; err != nil {
+	if err := s.DB.Preload("Settings").Preload("Domains").Where("enabled = ?", true).Find(&profiles).Error; err != nil {
 		return fmt.Errorf("failed to load profiles: %w", err)
 	}
 
-	writer := NewProfileWriter(i.ProfilesPath)
+	writer := NewProfileWriter(s.ProfilesPath)
 
 	for _, profile := range profiles {
-		if !profile.Enabled {
-			// Remove disabled profile files
-			if err := writer.DeleteProfile(profile.ProfileName); err != nil {
-				log.WithError(err).WithField("profile", profile.ProfileName).Warn("Failed to delete disabled profile file")
-			}
-			continue
-		}
-
 		if err := writer.WriteProfile(&profile, profile.Settings, profile.Domains); err != nil {
 			log.WithError(err).WithField("profile", profile.ProfileName).Warn("Failed to write profile file")
 			continue
@@ -355,6 +47,6 @@ func (i *ProfileImporter) SyncProfilesToFiles() error {
 }
 
 // EnsureProfilesPath creates the profiles directory if it doesn't exist
-func (i *ProfileImporter) EnsureProfilesPath() error {
-	return os.MkdirAll(i.ProfilesPath, 0755)
+func (s *ProfileSyncer) EnsureProfilesPath() error {
+	return os.MkdirAll(s.ProfilesPath, 0755)
 }

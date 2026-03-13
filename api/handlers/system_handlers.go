@@ -691,22 +691,23 @@ func (h *Handler) ListSIPProfiles(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": profiles})
 }
 
-// SyncSIPProfiles imports SIP profiles from disk XML files that don't exist in DB.
-// DB is the source of truth — existing profiles are NOT overwritten.
-// Only new profiles found on disk (not yet in DB) are imported.
+// SyncSIPProfiles ensures default profiles exist in the DB and syncs all profiles to disk.
+// DB is the source of truth — profiles are seeded from built-in defaults, not imported from disk.
 func (h *Handler) SyncSIPProfiles(c *fiber.Ctx) error {
+	// Ensure default profiles exist
+	if err := models.EnsureDefaultProfiles(h.DB); err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to ensure default profiles: " + err.Error()})
+	}
+
 	profilesPath := h.Config.SIPProfilesPath
 	if profilesPath == "" {
 		profilesPath = "/etc/freeswitch/sip_profiles"
 	}
 
-	importer := freeswitch.NewProfileImporter(profilesPath, h.DB)
-
-	log.WithField("path", profilesPath).Info("Syncing SIP profiles from disk")
-
-	// Do NOT overwrite existing profiles — DB is source of truth
-	if err := importer.SyncProfiles(false); err != nil {
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to sync profiles: " + err.Error()})
+	// Sync DB profiles to disk
+	syncer := freeswitch.NewProfileSyncer(profilesPath, h.DB)
+	if err := syncer.SyncProfilesToFiles(); err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to sync profiles to disk: " + err.Error()})
 	}
 
 	// Return updated list

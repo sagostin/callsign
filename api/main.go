@@ -73,13 +73,18 @@ func main() {
 		log.Fatalf("Failed to run database seeds: %v", err)
 	}
 
-	// Import SIP profiles from disk on first boot (if DB is empty)
-	// After import, profiles are managed via DB and synced back to files
-	profileImporter := freeswitch.NewProfileImporter(cfg.SIPProfilesPath, db)
-	// Pass false to not overwrite existing profiles on boot (safe default)
-	if err := profileImporter.SyncProfiles(false); err != nil {
-		logManager.Warn("STARTUP", "Failed to import SIP profiles: "+err.Error(), nil)
-		log.Warnf("Failed to import SIP profiles: %v", err)
+	// Seed default SIP profiles (internal, external) from built-in FusionPBX-style defaults
+	// if they don't already exist in the database. No disk import — DB is source of truth.
+	if err := models.EnsureDefaultProfiles(db); err != nil {
+		logManager.Warn("STARTUP", "Failed to seed default SIP profiles: "+err.Error(), nil)
+		log.Warnf("Failed to seed default SIP profiles: %v", err)
+	}
+
+	// Sync DB profiles to disk (sofia.conf loads profiles via X-PRE-PROCESS from sip_profiles/*.xml)
+	profileSyncer := freeswitch.NewProfileSyncer(cfg.SIPProfilesPath, db)
+	if err := profileSyncer.SyncProfilesToFiles(); err != nil {
+		logManager.Warn("STARTUP", "Failed to sync SIP profiles to disk: "+err.Error(), nil)
+		log.Warnf("Failed to sync SIP profiles to disk: %v", err)
 	}
 
 	// Initialize ESL Manager
