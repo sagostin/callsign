@@ -7,13 +7,8 @@
     <!-- <param name="capture-server" value="udp:homer.domain.com:5060"/> -->
   </global_settings>
 
-  <!--
-      The rabbit hole goes deep.  This includes all the
-      profiles in the sip_profiles directory that is up
-      one level from this directory.
-  -->
+  <!-- Profiles are loaded dynamically via xml_curl configuration binding -->
   <profiles>
-    <X-PRE-PROCESS cmd="include" data="../sip_profiles/*.xml"/>
   </profiles>
 
 </configuration>
