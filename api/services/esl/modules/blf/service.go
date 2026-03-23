@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/fiorix/go-eventsocket/eventsocket"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -294,9 +295,7 @@ func parseUserDomain(addr string) (user, domain string) {
 }
 
 func generateUUID() string {
-	// Simple UUID generation
-	b := make([]byte, 16)
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+	return uuid.New().String()
 }
 
 // PresenceEvent represents a presence event for JSON serialization

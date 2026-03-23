@@ -5,6 +5,7 @@ import (
 	"callsign/models"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -525,7 +526,10 @@ func (h *Handler) DeleteVoicemailMessage(c *fiber.Ctx) error {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Message not found"})
 	}
 
-	// TODO: Delete the audio file from storage
+	// Delete the audio file from storage
+	if message.FilePath != "" {
+		os.Remove(message.FilePath)
+	}
 
 	// Update box message counts
 	if message.IsNew {
@@ -537,6 +541,15 @@ func (h *Handler) DeleteVoicemailMessage(c *fiber.Ctx) error {
 	if err := h.DB.Delete(&message).Error; err != nil {
 		h.logError("API", "DeleteVoicemailMessage: Failed to delete message", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete message"})
+	}
+
+	// Send MWI event so phone voicemail lamp updates
+	var box models.VoicemailBox
+	if err := h.DB.First(&box, message.BoxID).Error; err == nil {
+		var tenant models.Tenant
+		if err := h.DB.First(&tenant, box.TenantID).Error; err == nil && h.ESLManager != nil {
+			h.ESLManager.SendMWI(box.Extension, tenant.Domain, box.NewMessages, box.SavedMessages)
+		}
 	}
 
 	return c.JSON(fiber.Map{"message": "Voicemail message deleted"})
@@ -570,6 +583,16 @@ func (h *Handler) MarkVoicemailRead(c *fiber.Ctx) error {
 			"new_messages":   models.VoicemailBox{}.NewMessages - 1,
 			"saved_messages": models.VoicemailBox{}.SavedMessages + 1,
 		})
+
+		// Send MWI event so phone voicemail lamp updates
+		var box models.VoicemailBox
+		if err := h.DB.First(&box, message.BoxID).Error; err == nil {
+			var tenant models.Tenant
+			if err := h.DB.First(&tenant, box.TenantID).Error; err == nil && h.ESLManager != nil {
+				newCount := max(0, box.NewMessages-1)
+				h.ESLManager.SendMWI(box.Extension, tenant.Domain, newCount, box.SavedMessages+1)
+			}
+		}
 	}
 
 	return c.JSON(fiber.Map{"data": message, "message": "Marked as read"})

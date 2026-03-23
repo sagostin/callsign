@@ -273,8 +273,9 @@ const showHelp = () => alert('Help & Documentation')
 const showQuickAdd = () => alert('Quick Add Menu')
 const logout = async () => {
   showUserDropdown.value = false
+  const isAdmin = auth.hasRole(['system_admin', 'tenant_admin'])
   await auth.logout()
-  router.push('/login')
+  router.push(isAdmin ? '/admin/login' : '/login')
 }
 </script>
 

@@ -8,6 +8,7 @@ import (
 	"callsign/services/cdr"
 	emailsvc "callsign/services/email"
 	"callsign/services/esl"
+	"callsign/services/esl/modules/blf"
 	"callsign/services/esl/modules/callcontrol"
 	conferencemod "callsign/services/esl/modules/conference"
 	"callsign/services/esl/modules/featurecodes"
@@ -21,6 +22,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/fiorix/go-eventsocket/eventsocket"
 
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
@@ -102,6 +105,10 @@ func main() {
 	eslManager.RegisterModule(confService)
 	eslManager.RegisterModule(featurecodes.New(db))
 
+	// Initialize BLF/Presence service — handles PRESENCE_PROBE events from FreeSWITCH
+	// to update BLF lamp states (DND, forward, voicemail, call flow, agent, extension presence)
+	blfService := blf.New(db)
+
 	// Start ESL manager (connects to FreeSWITCH, inits + starts all modules)
 	go func() {
 		if err := eslManager.Start(); err != nil {
@@ -109,6 +116,33 @@ func main() {
 			log.Errorf("Failed to start ESL manager: %v", err)
 		} else {
 			logManager.Info("ESL", "ESL manager started successfully", nil)
+
+			// Wire BLF service to handle PRESENCE_PROBE events from the ESL event processor
+			eslManager.Processor.On("PRESENCE_PROBE", func(event *eventsocket.Event, session *esl.CallSession) {
+				if eslManager.Client != nil {
+					conn := eslManager.Client.Conn()
+					if conn != nil {
+						blfService.HandlePresenceProbe(conn, event)
+					}
+				}
+			})
+
+			// Update BLF presence when extensions answer/hang up calls
+			eslManager.Processor.On("CHANNEL_ANSWER", func(event *eventsocket.Event, session *esl.CallSession) {
+				ext := event.Get("Caller-Caller-ID-Number")
+				domain := event.Get("variable_domain_name")
+				if ext != "" && domain != "" {
+					eslManager.SendExtensionPresence(ext, domain, true)
+				}
+			})
+
+			eslManager.Processor.On("CHANNEL_HANGUP_COMPLETE", func(event *eventsocket.Event, session *esl.CallSession) {
+				ext := event.Get("Caller-Caller-ID-Number")
+				domain := event.Get("variable_domain_name")
+				if ext != "" && domain != "" {
+					eslManager.SendExtensionPresence(ext, domain, false)
+				}
+			})
 		}
 	}()
 	defer eslManager.Stop()

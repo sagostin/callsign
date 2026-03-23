@@ -7,6 +7,7 @@ import (
 	"callsign/services/websocket"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/fiorix/go-eventsocket/eventsocket"
 	log "github.com/sirupsen/logrus"
@@ -85,6 +86,9 @@ func (m *Manager) Start() error {
 		"PLAYBACK_START",
 		"PLAYBACK_STOP",
 		"CUSTOM",
+		"PRESENCE_PROBE",
+		"PRESENCE_IN",
+		"MESSAGE_WAITING",
 	}
 
 	if err := m.Client.Subscribe(events...); err != nil {
@@ -304,4 +308,98 @@ func (m *Manager) NotifyCallEvent(tenantID uint, event string, data map[string]i
 	if m.WSHub != nil {
 		m.WSHub.NotifyCallEvent(tenantID, event, data)
 	}
+}
+
+// ========== Presence / BLF / MWI Helpers ==========
+// These methods send presence and MWI events to FreeSWITCH via the inbound ESL
+// connection, allowing any module or API handler to update BLF lamp states and
+// voicemail indicators without needing a direct reference to the blf package.
+
+// SendPresenceEvent sends a PRESENCE_IN event to update a BLF lamp on phones.
+// `on` controls whether the lamp is lit (confirmed) or off (terminated).
+// `user` is the full presence identity (e.g., "dnd+1001@example.com").
+// `proto` is the presence protocol (e.g., "sip", "dnd", "forward", "voicemail").
+func (m *Manager) SendPresenceEvent(user, proto string, on bool) {
+	m.mu.RLock()
+	client := m.Client
+	m.mu.RUnlock()
+
+	if client == nil {
+		return
+	}
+
+	answerState := "terminated"
+	eventCount := "0"
+	rpid := ""
+	if on {
+		answerState = "confirmed"
+		eventCount = "1"
+		rpid = "unknown"
+	}
+
+	event := fmt.Sprintf("sendevent PRESENCE_IN\n"+
+		"proto: %s\n"+
+		"event_type: presence\n"+
+		"alt_event_type: dialog\n"+
+		"Presence-Call-Direction: outbound\n"+
+		"from: %s\n"+
+		"login: %s\n"+
+		"unique-id: %s\n"+
+		"status: Active (1 waiting)\n"+
+		"answer-state: %s\n"+
+		"rpid: %s\n"+
+		"event_count: %s\n\n",
+		proto, user, user, fmt.Sprintf("%d", time.Now().UnixNano()),
+		answerState, rpid, eventCount)
+
+	client.Send(event)
+}
+
+// SendDNDPresence updates the BLF lamp for DND status on an extension.
+func (m *Manager) SendDNDPresence(extension, domain string, enabled bool) {
+	user := fmt.Sprintf("dnd+%s@%s", extension, domain)
+	m.SendPresenceEvent(user, "dnd", enabled)
+}
+
+// SendForwardPresence updates the BLF lamp for call forward status.
+func (m *Manager) SendForwardPresence(extension, domain string, enabled bool) {
+	user := fmt.Sprintf("forward+%s@%s", extension, domain)
+	m.SendPresenceEvent(user, "forward", enabled)
+}
+
+// SendExtensionPresence updates the BLF lamp for an extension's call state.
+func (m *Manager) SendExtensionPresence(extension, domain string, busy bool) {
+	user := fmt.Sprintf("%s@%s", extension, domain)
+	m.SendPresenceEvent(user, "sip", busy)
+}
+
+// SendMWI sends a Message Waiting Indicator event to FreeSWITCH.
+// This causes phones to light their voicemail lamp / show envelope icon.
+func (m *Manager) SendMWI(extension, domain string, newMsgs, savedMsgs int) {
+	m.mu.RLock()
+	client := m.Client
+	m.mu.RUnlock()
+
+	if client == nil {
+		return
+	}
+
+	waiting := "no"
+	if newMsgs > 0 {
+		waiting = "yes"
+	}
+
+	event := fmt.Sprintf("sendevent MESSAGE_WAITING\n"+
+		"MWI-Messages-Waiting: %s\n"+
+		"MWI-Message-Account: sip:%s@%s\n"+
+		"MWI-Voice-Message: %d/%d (0/0)\n\n",
+		waiting, extension, domain, newMsgs, savedMsgs)
+
+	client.Send(event)
+
+	log.WithFields(log.Fields{
+		"extension": extension,
+		"new":       newMsgs,
+		"saved":     savedMsgs,
+	}).Debug("MWI sent via ESL Manager")
 }

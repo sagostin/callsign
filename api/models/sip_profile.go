@@ -156,7 +156,7 @@ func DefaultInternalProfileSettings() []SIPProfileSetting {
 		{SettingName: "enable-100rel", SettingValue: "true", Enabled: false},
 		{SettingName: "enable-3pcc", SettingValue: "true", Enabled: false},
 		{SettingName: "enable-rfc-5626", SettingValue: "true", Enabled: false},
-		{SettingName: "force-subscription-domain", SettingValue: "$${domain}", Enabled: false},
+		{SettingName: "force-subscription-domain", SettingValue: "$${domain}", Enabled: true},
 		{SettingName: "inbound-late-negotiation", SettingValue: "true", Enabled: false},
 		{SettingName: "minimum-session-expires", SettingValue: "0", Enabled: false},
 		{SettingName: "odbc-dsn", SettingValue: "$${dsn}", Enabled: false},

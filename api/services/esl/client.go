@@ -270,3 +270,10 @@ func (c *Client) IsConnected() bool {
 	defer c.mu.RUnlock()
 	return c.conn != nil && c.running
 }
+
+// Conn returns the underlying ESL connection (for sending events/commands)
+func (c *Client) Conn() *eventsocket.Connection {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.conn
+}

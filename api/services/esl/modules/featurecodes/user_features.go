@@ -51,6 +51,13 @@ func handleCallForward(ctx *ExecutionContext) {
 				})
 			ctx.Service.clearDirectoryCache(ctx.Domain)
 			models.UpdatePresence(ctx.DB, ctx.TenantID, ctx.CallerID, models.PresenceState("forwarded"))
+
+			// Send BLF forward lamp update to phones
+			manager := ctx.Service.Manager()
+			if manager != nil {
+				manager.SendForwardPresence(ctx.CallerID, ctx.Domain, true)
+			}
+
 			ctx.Conn.Execute("playback", "ivr/ivr-call_forwarding_is_now_enabled.wav", true)
 		}
 	} else {
@@ -59,6 +66,13 @@ func handleCallForward(ctx *ExecutionContext) {
 			Where("extension = ? AND tenant_id = ?", ctx.CallerID, ctx.TenantID).
 			Update("forward_all_enabled", false)
 		ctx.Service.clearDirectoryCache(ctx.Domain)
+
+		// Send BLF forward lamp update to phones
+		manager := ctx.Service.Manager()
+		if manager != nil {
+			manager.SendForwardPresence(ctx.CallerID, ctx.Domain, false)
+		}
+
 		ctx.Conn.Execute("playback", "ivr/ivr-call_forwarding_is_now_disabled.wav", true)
 	}
 }
@@ -82,6 +96,12 @@ func handleDND(ctx *ExecutionContext) {
 	}
 
 	ctx.Service.clearDirectoryCache(ctx.Domain)
+
+	// Send BLF DND lamp update to phones
+	manager := ctx.Service.Manager()
+	if manager != nil {
+		manager.SendDNDPresence(ctx.CallerID, ctx.Domain, enable)
+	}
 
 	if enable {
 		ctx.Conn.Execute("playback", "ivr/ivr-dnd_activated.wav", true)

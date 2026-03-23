@@ -56,6 +56,12 @@ api.interceptors.response.use(
         if (error.response?.status === 401 && !originalRequest._retry) {
             originalRequest._retry = true
 
+            // Read user role before clearing auth to determine correct login page
+            const userStr = localStorage.getItem('user')
+            const user = userStr ? JSON.parse(userStr) : null
+            const isAdmin = user && ['system_admin', 'tenant_admin'].includes(user.role)
+            const loginPath = isAdmin ? '/admin/login' : '/login'
+
             try {
                 const refreshToken = localStorage.getItem('refreshToken')
                 if (refreshToken) {
@@ -73,9 +79,17 @@ api.interceptors.response.use(
                 localStorage.removeItem('token')
                 localStorage.removeItem('refreshToken')
                 localStorage.removeItem('user')
-                window.location.href = '/login'
+                localStorage.removeItem('tenantId')
+                window.location.href = loginPath
                 return Promise.reject(refreshError)
             }
+
+            // No refresh token available — clear auth and redirect
+            localStorage.removeItem('token')
+            localStorage.removeItem('user')
+            localStorage.removeItem('tenantId')
+            window.location.href = loginPath
+            return Promise.reject(error)
         }
 
         // Transform error for UI

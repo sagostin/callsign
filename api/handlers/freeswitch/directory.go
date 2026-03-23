@@ -446,11 +446,13 @@ func (h *FSHandler) buildDirectoryXML(ext *models.Extension, req *XMLCurlRequest
 		b.WriteString("\n")
 	}
 
-	// MWI account
-	if ext.MWIAccount != "" {
-		b.WriteString(fmt.Sprintf(`                <param name="MWI-Account" value="%s"/>`, xmlEscape(ext.MWIAccount)))
-		b.WriteString("\n")
+	// MWI account — default to extension@domain for voicemail lamp support
+	mwiAccount := ext.MWIAccount
+	if mwiAccount == "" {
+		mwiAccount = ext.Extension + "@" + req.Domain
 	}
+	b.WriteString(fmt.Sprintf(`                <param name="MWI-Account" value="%s"/>`, xmlEscape(mwiAccount)))
+	b.WriteString("\n")
 
 	// Auth ACL
 	if ext.AuthACL != "" {
