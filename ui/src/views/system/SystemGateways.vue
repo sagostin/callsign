@@ -194,10 +194,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, inject } from 'vue'
 import { X as XIcon, RefreshCw as RefreshCwIcon, GripVertical as GripVerticalIcon } from 'lucide-vue-next'
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import { systemAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 const gateways = ref([])
 const loading = ref(true)
@@ -206,6 +208,7 @@ const eslConnected = ref(false)
 const showModal = ref(false)
 const isEditing = ref(false)
 const saving = ref(false)
+const restarting = ref(null)
 let statusInterval = null
 
 const defaultForm = () => ({
@@ -363,8 +366,19 @@ const deleteGateway = async (gw) => {
   }
 }
 
-const restartGateway = (gw) => {
-  alert(`Restarting gateway: ${gw.name} - Not implemented yet`)
+const restartGateway = async (gw) => {
+  if (!confirm(`Restart gateway "${gw.name}"? This will temporarily interrupt connections.`)) return
+  restarting.value = gw.id
+  try {
+    await systemAPI.restartGateway(gw.id)
+    toast?.success(`Restarting gateway: ${gw.name}`)
+    await loadGatewayStatus()
+  } catch (e) {
+    console.error('Failed to restart gateway:', e)
+    toast?.error(e.message || 'Failed to restart gateway')
+  } finally {
+    restarting.value = null
+  }
 }
 
 // Drag-to-reorder

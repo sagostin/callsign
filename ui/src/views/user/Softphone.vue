@@ -58,7 +58,7 @@
             <span class="remote-name" v-if="remoteName">{{ remoteName }}</span>
             <span class="remote-number">{{ remoteNumber || number }}</span>
             <span class="call-status">{{ callStatusText }}</span>
-            <span class="call-timer" v-if="callState === 'established'">{{ formattedDuration }}</span>
+            <span class="call-timer" :class="{ recording: isRecording }" v-if="callState === 'established'">{{ formattedDuration }}</span>
           </div>
           <input 
             v-else
@@ -98,6 +98,11 @@
           <button class="control-btn" @click="showKeypad = !showKeypad" title="Keypad">
             <GridIcon class="control-icon" />
             <span>Keypad</span>
+          </button>
+          <button class="control-btn" :class="{ recording: isRecording }" @click="toggleRecording" :disabled="!activeCall" title="Record">
+            <MicOffIcon v-if="isRecording" class="control-icon" />
+            <MicIcon v-else class="control-icon" />
+            <span>{{ isRecording ? 'Stop Rec' : 'Record' }}</span>
           </button>
         </div>
 
@@ -206,7 +211,7 @@ import {
   ChevronDown as ChevronDownIcon, Monitor as MonitorIcon, Smartphone as SmartphoneIcon,
   Headphones as HeadphonesIcon, X as XIcon, Info as InfoIcon
 } from 'lucide-vue-next'
-import { extensionPortalAPI, devicesAPI, extensionsAPI } from '../../services/api'
+import { extensionPortalAPI, devicesAPI, extensionsAPI, liveAPI } from '../../services/api'
 import { useSipService, SipState, CallState, AudioMode } from '../../services/sipService'
 
 const toast = inject('toast')
@@ -303,6 +308,32 @@ const remoteName = computed(() => sip.currentCall.remoteName)
 const isMuted = computed(() => sip.currentCall.muted)
 const isOnHold = computed(() => sip.currentCall.onHold)
 const formattedDuration = computed(() => sip.formattedDuration.value)
+const activeCall = computed(() => sip.currentCall)
+
+// ============================================
+// RECORDING STATE
+// ============================================
+
+const isRecording = ref(false)
+const recordingUuid = ref(null)
+
+const toggleRecording = async () => {
+  try {
+    if (isRecording.value) {
+      await liveAPI.stopRecording(recordingUuid.value)
+      isRecording.value = false
+      recordingUuid.value = null
+    } else {
+      if (activeCall.value?.uuid) {
+        recordingUuid.value = activeCall.value.uuid
+        await liveAPI.startRecording(activeCall.value.uuid)
+        isRecording.value = true
+      }
+    }
+  } catch (err) {
+    console.error('Recording error:', err)
+  }
+}
 
 const callStatusText = computed(() => {
   const statusMap = {
@@ -651,6 +682,8 @@ onUnmounted(() => {
 .remote-number { font-size: 14px; color: var(--text-muted); font-family: monospace; }
 .call-status { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 .call-timer { font-size: 24px; font-weight: 700; color: var(--primary-color); font-family: monospace; margin-top: 8px; }
+.call-timer.recording { color: #ef4444; position: relative; padding-left: 18px; }
+.call-timer.recording::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; background: #ef4444; border-radius: 50%; animation: pulse 1s infinite; }
 
 .number-display {
   width: 100%;

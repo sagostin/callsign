@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"callsign/models"
+	"callsign/services/encryption"
 	"callsign/services/messaging"
 	"net/http"
 	"strconv"
@@ -14,11 +15,12 @@ import (
 type SMSHandler struct {
 	DB         *gorm.DB
 	MsgManager *messaging.Manager
+	EncMgr     *encryption.Manager
 }
 
 // NewSMSHandler creates a new SMS handler
-func NewSMSHandler(db *gorm.DB, msgManager *messaging.Manager) *SMSHandler {
-	return &SMSHandler{DB: db, MsgManager: msgManager}
+func NewSMSHandler(db *gorm.DB, msgManager *messaging.Manager, encMgr *encryption.Manager) *SMSHandler {
+	return &SMSHandler{DB: db, MsgManager: msgManager, EncMgr: encMgr}
 }
 
 // ListConversations returns message conversations for a tenant
@@ -64,8 +66,16 @@ func (h *SMSHandler) SendMessage(c *fiber.Ctx) error {
 		msg.Type = "sms"
 	}
 
-	// TODO: Encrypt body before saving
-	// msg.BodyEncrypted = encMgr.Encrypt(msg.Body)
+	// Encrypt body before saving (fail loud if encryption fails)
+	if msg.Body != "" && h.EncMgr != nil {
+		encrypted, err := h.EncMgr.Encrypt(msg.Body)
+		if err != nil {
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to encrypt message"})
+		}
+		msg.BodyEncrypted = encrypted
+		msg.BodyHash = h.EncMgr.HashForLookup(msg.Body)
+		msg.Body = "" // Clear plaintext after encryption
+	}
 
 	if err := h.DB.Create(&msg).Error; err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})

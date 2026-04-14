@@ -204,7 +204,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import {
   Plus as PlusIcon, PlusCircle as PlusCircleIcon, Music as MusicIcon,
   Mic as MicIcon, Volume2 as VolumeIcon, Radio as RadioIcon,
@@ -212,25 +212,43 @@ import {
   Trash2 as TrashIcon, Upload as UploadIcon, Download as DownloadIcon,
   X as XIcon
 } from 'lucide-vue-next'
+import { mohAPI, recordingsAPI, systemAPI, api } from '../../services/api.js'
+
+const toast = inject('toast')
 
 const activeTab = ref('moh')
 const showAddModal = ref(false)
 const showUploadModal = ref(false)
+const showEditModal = ref(false)
+const editingStream = ref(null)
 
 const streamForm = ref({ name: '', type: 'playlist', url: '' })
 
-const mohStreams = ref([
-  { id: 1, name: 'Default Hold Music', type: 'playlist', tracks: 12, tenantCount: 15, isDefault: true },
-  { id: 2, name: 'Jazz Collection', type: 'playlist', tracks: 8, tenantCount: 3, isDefault: false },
-  { id: 3, name: 'Classical Radio', type: 'shoutcast', url: 'http://stream.example.com:8000/classical', tenantCount: 2, isDefault: false },
-])
+const mohStreams = ref([])
+const recordings = ref([])
 
-const recordings = ref([
-  { id: 1, name: 'default-ivr-greeting', category: 'IVR', duration: '0:15', format: 'WAV', usedBy: 8 },
-  { id: 2, name: 'voicemail-unavailable', category: 'Voicemail', duration: '0:08', format: 'WAV', usedBy: 12 },
-  { id: 3, name: 'transfer-connecting', category: 'System', duration: '0:04', format: 'WAV', usedBy: 15 },
-  { id: 4, name: 'queue-position-announcement', category: 'Queue', duration: '0:10', format: 'WAV', usedBy: 5 },
-])
+const loadMohStreams = async () => {
+  try {
+    const response = await mohAPI.list()
+    mohStreams.value = response.data || []
+  } catch (err) {
+    console.error('Failed to load MOH streams:', err)
+  }
+}
+
+const loadRecordings = async () => {
+  try {
+    const response = await recordingsAPI.list()
+    recordings.value = response.data || []
+  } catch (err) {
+    console.error('Failed to load recordings:', err)
+  }
+}
+
+onMounted(() => {
+  loadMohStreams()
+  loadRecordings()
+})
 
 const ttsConfig = ref({
   provider: 'google',
@@ -239,16 +257,113 @@ const ttsConfig = ref({
 })
 const ttsTestText = ref('')
 
-const previewStream = (stream) => alert(`Playing: ${stream.name}`)
-const editStream = (stream) => alert(`Edit: ${stream.name}`)
-const deleteStream = (stream) => { mohStreams.value = mohStreams.value.filter(s => s.id !== stream.id) }
-const saveStream = () => { showAddModal.value = false }
+const previewStream = async (stream) => {
+  try {
+    const url = mohAPI.streamUrl ? mohAPI.streamUrl(stream.id) : `/api/music-on-hold/${stream.id}/stream`
+    const audio = new Audio(url)
+    audio.play()
+    toast?.info(`Playing: ${stream.name}`)
+  } catch (e) {
+    console.error('Failed to preview stream:', e)
+    toast?.error('Failed to play stream')
+  }
+}
 
-const playRecording = (rec) => alert(`Playing: ${rec.name}`)
-const downloadRecording = (rec) => alert(`Downloading: ${rec.name}`)
-const deleteRecording = (rec) => { recordings.value = recordings.value.filter(r => r.id !== rec.id) }
+const editStream = (stream) => {
+  editingStream.value = { ...stream }
+  streamForm.value = { ...stream }
+  showEditModal.value = true
+  showAddModal.value = false
+}
 
-const testTts = () => alert(`TTS Preview: "${ttsTestText.value}"`)
+const deleteStream = async (stream) => {
+  if (!confirm(`Delete stream "${stream.name}"?`)) return
+  try {
+    await mohAPI.delete(stream.id)
+    mohStreams.value = mohStreams.value.filter(s => s.id !== stream.id)
+    toast?.success(`Stream "${stream.name}" deleted`)
+  } catch (e) {
+    console.error('Failed to delete stream:', e)
+    toast?.error(e.message || 'Failed to delete stream')
+  }
+}
+
+const saveStream = async () => {
+  if (!streamForm.value.name) {
+    toast?.warning('Please enter a stream name')
+    return
+  }
+  try {
+    if (editingStream.value?.id) {
+      await mohAPI.update(editingStream.value.id, streamForm.value)
+      toast?.success('Stream updated')
+    } else {
+      await mohAPI.create(streamForm.value)
+      toast?.success('Stream created')
+    }
+    showAddModal.value = false
+    showEditModal.value = false
+    editingStream.value = null
+    streamForm.value = { name: '', type: 'playlist', url: '' }
+    await loadMohStreams()
+  } catch (e) {
+    console.error('Failed to save stream:', e)
+    toast?.error(e.message || 'Failed to save stream')
+  }
+}
+
+const playRecording = (rec) => {
+  const url = recordingsAPI.streamUrl(rec.id)
+  const audio = new Audio(url)
+  audio.play()
+  toast?.info(`Playing: ${rec.name}`)
+}
+
+const downloadRecording = (rec) => {
+  const url = recordingsAPI.downloadUrl(rec.id)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${rec.name}.${rec.format?.toLowerCase() || 'wav'}`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  toast?.info(`Downloading: ${rec.name}`)
+}
+
+const deleteRecording = async (rec) => {
+  if (!confirm(`Delete recording "${rec.name}"?`)) return
+  try {
+    await recordingsAPI.delete(rec.id)
+    recordings.value = recordings.value.filter(r => r.id !== rec.id)
+    toast?.success(`Recording "${rec.name}" deleted`)
+  } catch (e) {
+    console.error('Failed to delete recording:', e)
+    toast?.error(e.message || 'Failed to delete recording')
+  }
+}
+
+const testTts = async () => {
+  if (!ttsTestText.value.trim()) {
+    toast?.warning('Please enter text to test')
+    return
+  }
+  try {
+    const response = await systemAPI.testTts ? 
+      systemAPI.testTts({ text: ttsTestText.value, voice: ttsConfig.value.voice }) :
+      api.post('/system/tts/test', { text: ttsTestText.value, voice: ttsConfig.value.voice })
+    const audioUrl = response.data?.audio_url || response.data?.url
+    if (audioUrl) {
+      const audio = new Audio(audioUrl)
+      audio.play()
+      toast?.success('TTS preview playing')
+    } else {
+      toast?.info('TTS preview: ' + ttsTestText.value)
+    }
+  } catch (e) {
+    console.error('TTS test failed:', e)
+    toast?.error(e.message || 'TTS test failed')
+  }
+}
 </script>
 
 <style scoped>

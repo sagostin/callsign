@@ -385,10 +385,9 @@
           <label>Gateway / Trunk</label>
           <select v-model="outboundForm.gateway" class="input-field">
             <option value="">Select Gateway...</option>
-            <option value="flowroute">Flowroute Primary</option>
-            <option value="twilio">Twilio Elastic SIP</option>
-            <option value="telnyx">Telnyx Backup</option>
-            <option value="local_pri">Local PRI Gateway</option>
+            <option v-for="gw in gateways" :key="gw.id" :value="gw.gateway_name">
+              {{ gw.gateway_name }}<span v-if="gw.description"> - {{ gw.description }}</span>
+            </option>
           </select>
         </div>
 
@@ -474,7 +473,7 @@ import {
 } from 'lucide-vue-next'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
-import { routingAPI, numbersAPI, dialPlansAPI } from '../../services/api'
+import { routingAPI, numbersAPI, dialPlansAPI, tenantSettingsAPI, systemAPI } from '../../services/api'
 import { formatPhoneNumber } from '../../utils/formatters'
 
 const activeTab = ref('numbers')
@@ -626,8 +625,8 @@ const filteredNumbers = computed(() => {
   })
 })
 
-const editNumber = (row) => alert(`Editing not fully implemented yet for ${row.destination_number}`)
-const viewNumberStats = (row) => alert(`Stats for ${row.destination_number}`)
+const editNumber = (row) => console.warn(`Edit not yet implemented for ${row.destination_number}`)
+const viewNumberStats = (row) => console.warn(`Stats view not yet implemented for ${row.destination_number}`)
 
 const saveNewNumber = async () => {
   try {
@@ -650,6 +649,20 @@ const saveNewNumber = async () => {
 }
 
 const outboundRoutes = ref([])
+const gateways = ref([])
+const gatewaysLoading = ref(false)
+
+const loadGateways = async () => {
+  gatewaysLoading.value = true
+  try {
+    const response = await systemAPI.listGateways()
+    gateways.value = response.data.data || []
+  } catch (e) {
+    console.error('Failed to load gateways', e)
+  } finally {
+    gatewaysLoading.value = false
+  }
+}
 
 const loadOutboundRoutes = async () => {
     try {
@@ -749,6 +762,8 @@ onMounted(() => {
     loadNumbers()
     loadInboundRoutes()
     loadOutboundRoutes()
+    loadGateways()
+    loadSettings()
 })
 
 const addInboundCondition = () => inboundForm.value.conditions.push({ variable: 'destination_number', operator: '=~', value: '' })
@@ -800,7 +815,43 @@ const settings = ref({
   support011: true,
   blockIntlByDefault: true
 })
-const saveSettings = () => alert('Settings saved!')
+
+const loadSettings = async () => {
+  try {
+    const response = await tenantSettingsAPI.get()
+    const data = response.data
+    // Merge fetched data with defaults (Early Exit if no data)
+    if (!data) return
+    settings.value = {
+      region: data.region || 'nanp',
+      format: data.format || 'e164',
+      inboundContext: data.inbound_context || 'public',
+      outboundContext: data.outbound_context || 'default',
+      support011: data.support_011 ?? true,
+      blockIntlByDefault: data.block_intl_by_default ?? true,
+    }
+  } catch (e) {
+    console.error('Failed to load settings', e)
+  }
+}
+
+const saveSettings = async () => {
+  try {
+    const payload = {
+      region: settings.value.region,
+      format: settings.value.format,
+      inbound_context: settings.value.inboundContext,
+      outbound_context: settings.value.outboundContext,
+      support_011: settings.value.support011,
+      block_intl_by_default: settings.value.blockIntlByDefault,
+    }
+    await tenantSettingsAPI.update(payload)
+    // Visual feedback could be enhanced with a toast here
+  } catch (e) {
+    console.error('Failed to save settings', e)
+    throw e // Fail Loud - propagate to caller
+  }
+}
 </script>
 
 <style scoped>

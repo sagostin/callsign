@@ -55,10 +55,11 @@
         <p class="text-sm text-muted">Select a holiday list to apply to this schedule.</p>
         <div class="holiday-selector">
           <CalendarDays class="icon-sm" />
-          <select class="input-field full-width">
+          <select v-model="selectedHolidayList" class="input-field full-width">
             <option value="">No Holidays</option>
-            <option value="us-federal" selected>US Federal 2024 (External)</option>
-            <option value="office-closures">Office Closures (Manual)</option>
+            <option v-for="list in holidayLists" :key="list.id" :value="list.id">
+              {{ list.name }} {{ list.external ? '(External)' : '(Manual)' }}
+            </option>
           </select>
         </div>
         <button class="btn-link">View/Edit List</button>
@@ -68,15 +69,31 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Edit2, CalendarDays } from 'lucide-vue-next'
+import { holidaysAPI } from '../../services/api'
 
 const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const holidayLists = ref([])
+const selectedHolidayList = ref('')
 
 const schedule = ref([
   { closed: false }, { closed: false }, { closed: false }, { closed: false }, { closed: false },
   { closed: true }, { closed: true }
 ])
+
+const loadHolidayLists = async () => {
+  try {
+    const response = await holidaysAPI.list()
+    holidayLists.value = response.data?.data || response.data || []
+  } catch (err) {
+    console.error('Failed to load holiday lists:', err)
+  }
+}
+
+onMounted(() => {
+  loadHolidayLists()
+})
 </script>
 
 <style scoped>

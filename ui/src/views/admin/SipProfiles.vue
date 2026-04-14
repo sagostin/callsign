@@ -15,8 +15,8 @@
     </template>
     <template #actions="{ row }">
       <button class="btn-link" @click="openEdit(row)">Edit</button>
-      <button class="btn-link">Restart</button>
-      <button class="btn-link text-bad">Stop</button>
+      <button class="btn-link" @click="restartProfile(row)">Restart</button>
+      <button class="btn-link text-bad" @click="stopProfile(row)">Stop</button>
     </template>
   </DataTable>
 
@@ -27,7 +27,7 @@
       <div class="space-y-4">
         <div>
           <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Profile Name</label>
-          <input v-model="activeProfile.name" class="w-full border p-2 rounded text-sm" placeholder="e.g. internal-tls" />
+          <input v-model="activeProfile.profile_name" class="w-full border p-2 rounded text-sm" placeholder="e.g. internal-tls" />
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -62,31 +62,43 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
+import { systemAPI } from '../../services/api.js'
 
 const columns = [
-  { key: 'name', label: 'Profile Name' },
+  { key: 'profile_name', label: 'Profile Name' },
   { key: 'ip', label: 'IP Address' },
   { key: 'port', label: 'Port' },
   { key: 'context', label: 'Context' },
   { key: 'status', label: 'Status' }
 ]
 
-const profiles = ref([
-  { id: 1, name: 'internal', ip: '10.0.0.5', port: '5060', context: 'public', status: 'Running', tls: false },
-  { id: 2, name: 'external', ip: '10.0.0.5', port: '5080', context: 'public', status: 'Running', tls: false },
-  { id: 3, name: 'internal-ipv6', ip: '::1', port: '5060', context: 'public', status: 'Stopped', tls: false },
-  { id: 4, name: 'internal-tls', ip: '10.0.0.5', port: '5061', context: 'public', status: 'Running', tls: true, cert: '/etc/ssl/certs/sip_cert.pem' },
-])
-
+const profiles = ref([])
 const showModal = ref(false)
 const isEditing = ref(false)
-const activeProfile = ref({ name: '', ip: '', port: '5060', context: 'public', tls: false, cert: '' })
+const activeProfile = ref({ profile_name: '', ip: '', port: '5060', context: 'public', tls: false, cert: '' })
+
+// Guard clause: toast may not be defined in some contexts
+const toast = typeof window !== 'undefined' ? window.__toast : null
+
+onMounted(async () => {
+  await loadProfiles()
+})
+
+async function loadProfiles() {
+  try {
+    const response = await systemAPI.listSIPProfiles()
+    profiles.value = response.data || []
+  } catch (error) {
+    toast?.error('Failed to load SIP profiles', error.message)
+    profiles.value = []
+  }
+}
 
 const openCreate = () => {
-  activeProfile.value = { name: '', ip: '', port: '5060', context: 'public', tls: false, cert: '' }
+  activeProfile.value = { profile_name: '', ip: '', port: '5060', context: 'public', tls: false, cert: '' }
   isEditing.value = false
   showModal.value = true
 }
@@ -97,14 +109,41 @@ const openEdit = (row) => {
   showModal.value = true
 }
 
-const saveProfile = () => {
-  if (isEditing.value) {
-    const idx = profiles.value.findIndex(p => p.id === activeProfile.value.id)
-    if (idx !== -1) profiles.value[idx] = { ...activeProfile.value }
-  } else {
-    profiles.value.push({ ...activeProfile.value, id: Date.now(), status: 'Stopped' })
+const restartProfile = async (row) => {
+  try {
+    await systemAPI.restartSofiaProfile(row.profile_name)
+    toast?.success(`Profile ${row.profile_name} restart command sent`)
+    await loadProfiles()
+  } catch (error) {
+    toast?.error('Failed to restart profile', error.message)
   }
-  showModal.value = false
+}
+
+const stopProfile = async (row) => {
+  if (!confirm(`Stop profile ${row.profile_name}? Active calls may be dropped.`)) return
+  try {
+    await systemAPI.stopSofiaProfile(row.profile_name)
+    toast?.success(`Profile ${row.profile_name} stop command sent`)
+    await loadProfiles()
+  } catch (error) {
+    toast?.error('Failed to stop profile', error.message)
+  }
+}
+
+const saveProfile = async () => {
+  try {
+    if (isEditing.value) {
+      await systemAPI.updateSIPProfile(activeProfile.value.id, activeProfile.value)
+      toast?.success(`Profile "${activeProfile.value.profile_name}" updated`)
+    } else {
+      await systemAPI.createSIPProfile(activeProfile.value)
+      toast?.success(`Profile "${activeProfile.value.profile_name}" created`)
+    }
+    showModal.value = false
+    await loadProfiles()
+  } catch (error) {
+    toast?.error('Failed to save profile', error.message)
+  }
 }
 </script>
 

@@ -43,19 +43,21 @@
       </div>
 
       <div class="form-actions">
-        <button class="btn-primary" @click="save">Save Stream</button>
+        <button class="btn-primary" @click="saveStream">Save Stream</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { mohAPI } from '../../services/api'
 
+const toast = inject('toast')
 const route = useRoute()
 const router = useRouter()
-const isNew = computed(() => !route.params.id)
+const isNew = computed(() => !route.params.id || route.params.id === 'new')
 
 const form = ref({
   name: '',
@@ -66,10 +68,59 @@ const form = ref({
   interval: 20
 })
 
-const save = () => {
-  console.log('Saving stream:', form.value)
-  router.back()
+const loadStream = async () => {
+  if (isNew.value) return
+  try {
+    const res = await mohAPI.get(route.params.id)
+    const d = res.data
+    form.value = {
+      name: d.name || '',
+      path: d.path || '',
+      rate: String(d.rate || '48000'),
+      channels: String(d.channels || '1'),
+      shuffle: Boolean(d.shuffle),
+      interval: d.interval ?? 20,
+    }
+  } catch (err) {
+    toast?.error(err.message, 'Failed to load stream')
+    router.push('/admin/music-on-hold')
+  }
 }
+
+const saveStream = async () => {
+  if (!form.value.name?.trim()) {
+    toast?.warning('Please enter a stream name')
+    return
+  }
+  if (!form.value.path?.trim()) {
+    toast?.warning('Please enter a stream path')
+    return
+  }
+
+  const payload = {
+    name: form.value.name.trim(),
+    path: form.value.path.trim(),
+    rate: parseInt(form.value.rate, 10),
+    channels: parseInt(form.value.channels, 10),
+    shuffle: form.value.shuffle,
+    interval: form.value.interval,
+  }
+
+  try {
+    if (isNew.value) {
+      await mohAPI.create(payload)
+      toast?.success(`Stream "${form.value.name}" created`)
+    } else {
+      await mohAPI.update(route.params.id, payload)
+      toast?.success(`Stream "${form.value.name}" updated`)
+    }
+    router.push('/admin/music-on-hold')
+  } catch (err) {
+    toast?.error(err.message, 'Failed to save stream')
+  }
+}
+
+onMounted(loadStream)
 </script>
 
 <style scoped>

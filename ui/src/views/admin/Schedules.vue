@@ -23,9 +23,9 @@
          <span class="tag-active" v-if="value === 'Active'">Active</span>
          <span class="tag-inactive" v-else>Inactive</span>
       </template>
-      <template #actions>
-        <button class="btn-link" @click="$router.push('/admin/schedules/1')">Edit</button>
-        <button class="btn-link text-bad">Delete</button>
+      <template #actions="{ row }">
+        <button class="btn-link" @click="$router.push(`/admin/schedules/${row.id}`)">Edit</button>
+        <button class="btn-link text-bad" @click="deleteSchedule(row)">Delete</button>
       </template>
     </DataTable>
   </div>
@@ -41,9 +41,9 @@
         <template #source="{ value }">
            <span class="badge-source">{{ value }}</span>
         </template>
-        <template #actions>
+        <template #actions="{ row }">
           <button class="btn-link" @click="editingHoliday = true">Edit</button>
-          <button class="btn-link text-bad">Delete</button>
+          <button class="btn-link text-bad" @click="deleteHolidayList(row)">Delete</button>
         </template>
       </DataTable>
     </div>
@@ -57,12 +57,15 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import HolidayEditor from '../../components/ivr/HolidayEditor.vue'
+import { timeConditionsAPI, holidaysAPI } from '../../services/api'
 
+const toast = inject('toast')
 const activeTab = ref('schedules')
 const editingHoliday = ref(false)
+const isLoading = ref(false)
 
 const scheduleColumns = [
   { key: 'name', label: 'Name' },
@@ -71,10 +74,7 @@ const scheduleColumns = [
   { key: 'desc', label: 'Description' }
 ]
 
-const schedules = ref([
-  { name: 'Business Hours', extension: '5001', status: 'Active', desc: 'M-F 9am-5pm' },
-  { name: 'Lunch Break', extension: '*901', status: 'Active', desc: 'Daily 12pm-1pm' },
-])
+const schedules = ref([])
 
 const holidayColumns = [
   { key: 'name', label: 'List Name' },
@@ -82,10 +82,74 @@ const holidayColumns = [
   { key: 'source', label: 'Source' }
 ]
 
-const holidayLists = ref([
-  { name: 'US Federal 2024', count: '11 Dates', source: 'External URL' },
-  { name: 'Office Closures', count: '3 Dates', source: 'Manual' },
-])
+const holidayLists = ref([])
+
+async function fetchSchedules() {
+  isLoading.value = true
+  try {
+    const response = await timeConditionsAPI.list()
+    schedules.value = (response.data || []).map(tc => ({
+      id: tc.id,
+      name: tc.name,
+      extension: tc.extension || '',
+      status: tc.enabled !== false ? 'Active' : 'Inactive',
+      desc: buildDescription(tc)
+    }))
+  } catch (error) {
+    console.error('Failed to load schedules', error)
+    toast?.error(error.message, 'Failed to load schedules')
+  } finally {
+    isLoading.value = false
+  }
+}
+
+function buildDescription(tc) {
+  if (!tc.start_time || !tc.end_time) return 'No time set'
+  const days = (tc.weekdays || []).map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')
+  return days ? `${days} ${tc.start_time}-${tc.end_time}` : 'No schedule set'
+}
+
+async function deleteSchedule(schedule) {
+  if (!confirm(`Delete "${schedule.name}"?`)) return
+  try {
+    await timeConditionsAPI.delete(schedule.id)
+    schedules.value = schedules.value.filter(s => s.id !== schedule.id)
+    toast?.success('Schedule deleted')
+  } catch (error) {
+    toast?.error(error.message, 'Failed to delete schedule')
+  }
+}
+
+async function fetchHolidayLists() {
+  try {
+    const response = await holidaysAPI.list()
+    holidayLists.value = (response.data || []).map(list => ({
+      id: list.id,
+      name: list.name,
+      count: list.dates?.length || list.count || 0,
+      source: list.external_url ? 'External URL' : 'Manual'
+    }))
+  } catch (error) {
+    console.error('Failed to load holiday lists', error)
+    toast?.error(error.message, 'Failed to load holiday lists')
+  }
+}
+
+async function deleteHolidayList(list) {
+  if (!confirm(`Delete "${list.name}"?`)) return
+  try {
+    await holidaysAPI.delete(list.id)
+    holidayLists.value = holidayLists.value.filter(l => l.id !== list.id)
+    toast?.success('Holiday list deleted')
+  } catch (error) {
+    toast?.error(error.message, 'Failed to delete holiday list')
+  }
+}
+
+onMounted(() => {
+  fetchSchedules()
+  fetchHolidayLists()
+})
 </script>
 
 <style scoped>

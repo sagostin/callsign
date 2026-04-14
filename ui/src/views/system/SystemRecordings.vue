@@ -208,12 +208,15 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import { 
   Upload as UploadIcon, Mic as MicIcon, Search as SearchIcon,
   FileAudio as FileAudioIcon, Play as PlayIcon, Pause as PauseIcon,
   Download as DownloadIcon, Edit as EditIcon, Trash2 as TrashIcon
 } from 'lucide-vue-next'
+import { recordingsAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 const searchQuery = ref('')
 const filterCategory = ref('')
@@ -252,7 +255,16 @@ const playRecording = (rec) => {
   currentlyPlaying.value = currentlyPlaying.value === rec.id ? null : rec.id
 }
 
-const downloadRecording = (rec) => console.log('Download', rec.name)
+const downloadRecording = (rec) => {
+  const url = recordingsAPI.downloadUrl(rec.id)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${rec.name}.${rec.format.toLowerCase()}`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  toast?.info(`Downloading: ${rec.name}`)
+}
 
 const editRecording = (rec) => {
   editForm.value = { ...rec }

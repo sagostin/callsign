@@ -190,6 +190,7 @@ export const devicesAPI = {
 
     // Device actions
     reprovision: (id) => api.post(`/devices/${id}/reprovision`),
+    reboot: (id) => api.post(`/devices/${id}/reboot`),
     assignUser: (id, userId) => api.post(`/devices/${id}/assign-user`, { user_id: userId }),
     assignProfile: (id, profileId) => api.post(`/devices/${id}/assign-profile`, { profile_id: profileId }),
 
@@ -226,6 +227,10 @@ export const deviceTemplatesAPI = {
     create: (data) => api.post('/device-templates', data),
     update: (id, data) => api.put(`/device-templates/${id}`, data),
     delete: (id) => api.delete(`/device-templates/${id}`),
+    export: (id, format = 'json') => api.get(`/device-templates/${id}/export`, {
+        params: { format },
+        responseType: 'blob',
+    }),
 }
 
 // =====================
@@ -276,6 +281,19 @@ export const conferencesAPI = {
 }
 
 // =====================
+// Conference Profiles API
+// =====================
+export const conferenceProfilesAPI = {
+    list: () => api.get('/conference-profiles'),
+    get: (id) => api.get(`/conference-profiles/${id}`),
+    create: (data) => api.post('/conference-profiles', data),
+    update: (id, data) => api.put(`/conference-profiles/${id}`, data),
+    delete: (id) => api.delete(`/conference-profiles/${id}`),
+    // View XML configuration for a profile
+    getXmlConfig: (id) => api.get(`/conference-profiles/${id}/xml`),
+}
+
+// =====================
 // IVR API
 // =====================
 export const ivrAPI = {
@@ -284,6 +302,8 @@ export const ivrAPI = {
     createMenu: (data) => api.post('/ivr/menus', data),
     updateMenu: (id, data) => api.put(`/ivr/menus/${id}`, data),
     deleteMenu: (id) => api.delete(`/ivr/menus/${id}`),
+    testMenu: (id) => api.post(`/ivr/menus/${id}/test`),
+    callMenu: (data) => api.post('/ivr/test-call', data),
 }
 
 // =====================
@@ -369,6 +389,11 @@ export const voicemailAPI = {
     deleteMessage: (id) => api.delete(`/voicemail/messages/${id}`),
     markRead: (id) => api.post(`/voicemail/messages/${id}/read`),
     streamUrl: (id) => `/api/voicemail/messages/${id}/stream`,
+    // Greetings
+    uploadGreeting: (ext, formData) => api.post(`/voicemail/boxes/${ext}/greetings`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    resetGreeting: (ext, type) => api.delete(`/voicemail/boxes/${ext}/greetings/${type}`),
 }
 
 // =====================
@@ -385,6 +410,7 @@ export const cdrAPI = {
 // =====================
 export const auditLogAPI = {
     list: (params) => api.get('/audit-logs', { params }),
+    export: (params) => api.get('/audit-logs/export', { params, responseType: 'blob' }),
 }
 
 // =====================
@@ -653,6 +679,7 @@ export const systemAPI = {
     deleteGateway: (id) => api.delete(`/system/gateways/${id}`),
     getGatewayStatus: () => api.get('/system/gateways/status'),
     reorderGateways: (data) => api.post('/system/gateways/reorder', data),
+    restartGateway: (id) => api.post(`/system/gateways/${id}/restart`),
 
     // Bridges
     listBridges: () => api.get('/system/bridges'),
@@ -712,6 +739,8 @@ export const systemAPI = {
     // Settings
     getSettings: () => api.get('/system/settings'),
     updateSettings: (data) => api.put('/system/settings', data),
+    testSmtp: (data) => api.post('/tenant/smtp/test', data),
+    testTts: (data) => api.post('/system/tts/test', data),
 
     // Status
     getStatus: () => api.get('/system/status'),
@@ -875,6 +904,18 @@ export const liveAPI = {
     getActiveCalls: () => api.get('/live/calls'),
     getQueueStats: () => api.get('/live/queue-stats'),
     scheduleWakeup: (data) => api.post('/live/wakeup/schedule', data),
+}
+
+// =====================
+// Wake Up Calls API
+// =====================
+export const wakeupCallsAPI = {
+    list: (params) => api.get('/wakeup-calls', { params }),
+    get: (id) => api.get(`/wakeup-calls/${id}`),
+    create: (data) => api.post('/wakeup-calls', data),
+    update: (id, data) => api.put(`/wakeup-calls/${id}`, data),
+    delete: (id) => api.delete(`/wakeup-calls/${id}`),
+    cancel: (id) => api.post(`/wakeup-calls/${id}/cancel`),
 }
 
 // =====================

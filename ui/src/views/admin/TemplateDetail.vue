@@ -5,7 +5,7 @@
       <h2>{{ isNew ? 'New Master Template' : 'Edit Template: Yealink T54W' }}</h2>
     </div>
     <div class="header-actions">
-      <button class="btn-primary">Save Changes</button>
+      <button class="btn-primary" @click="saveTemplate" :disabled="saving">Save Changes</button>
     </div>
   </div>
 
@@ -15,24 +15,24 @@
       
       <div class="form-group">
         <label>Template Name</label>
-        <input type="text" class="input-field" value="Standard Yealink T54W">
+        <input type="text" class="input-field" v-model="form.name">
       </div>
 
       <div class="form-group">
          <label>Scope</label>
-         <div class="radio-group">
-           <label class="radio-label">
-             <input type="radio" name="scope" checked> Global (Master)
-           </label>
-           <label class="radio-label">
-             <input type="radio" name="scope"> Tenant Specific
-           </label>
-         </div>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="scope" value="global" v-model="form.scope"> Global (Master)
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="scope" value="tenant" v-model="form.scope"> Tenant Specific
+            </label>
+          </div>
       </div>
 
        <div class="form-group">
         <label>Firmware Version</label>
-        <input type="text" class="input-field" value="96.85.0.5">
+         <input type="text" class="input-field" v-model="form.firmwareVersion">
       </div>
       
       <div class="divider"></div>
@@ -50,26 +50,7 @@
     <div class="editor-main">
       <div class="code-editor" v-if="rawMode">
         <div class="editor-header">yealink_common.cfg</div>
-        <textarea class="code-area" spellcheck="false">
-#!version:1.0.0.1
-#Enable or disable the phone to save the local call log; 0-Disabled, 1-Enabled (default);
-features.save_call_log = 1
-
-# [INHERITED] Keypad lock settings inherited from Master
-# details: features.keypad_lock = 0
-
-#Configure the return code when the refuse a call; 404, 480, 486 (default);
-features.call_refuse_code = 486
-
-auto_provision.pnp_enable = 1
-auto_provision.custom.protect = 1
-
-account.1.enable = 1
-account.1.label = %NULL%
-account.1.display_name = %NULL%
-account.1.auth_name = %NULL%
-account.1.password = %NULL%
-        </textarea>
+        <textarea class="code-area" spellcheck="false" v-model="form.configContent"></textarea>
       </div>
 
       <div class="visual-editor" v-else>
@@ -138,18 +119,18 @@ account.1.password = %NULL%
             <div class="form-grid">
                <div class="form-group">
                  <label>Screen Saver Wait Time (min)</label>
-                 <input type="number" class="input-field" value="5">
+                  <input type="number" class="input-field" v-model.number="form.screenSaverWait">
                </div>
                <div class="form-group">
                  <label>Backlight Active Level</label>
-                 <input type="range" class="range-input" min="1" max="10" value="8">
+                  <input type="range" class="range-input" min="1" max="10" v-model.number="form.backlightLevel">
                </div>
                <div class="form-group">
                  <label>Time Format</label>
-                 <select class="input-field">
-                    <option>12 Hour</option>
-                    <option>24 Hour</option>
-                 </select>
+                  <select class="input-field" v-model="form.timeFormat">
+                     <option value="12">12 Hour</option>
+                     <option value="24">24 Hour</option>
+                  </select>
                </div>
             </div>
          </div>
@@ -182,14 +163,40 @@ account.1.password = %NULL%
 <script setup>
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { deviceTemplatesAPI } from '@/services/api'
 
 const route = useRoute()
 const isNew = computed(() => route.params.id === 'new')
 
+const saving = ref(false)
+
 const rawMode = ref(false) // Default to Visual
-const scope = ref('global')
 
 const selectedKey = ref(null)
+
+const form = ref({
+    name: 'Standard Yealink T54W',
+    scope: 'global',
+    firmwareVersion: '96.85.0.5',
+    configContent: `#!version:1.0.0.1
+#Enable or disable the phone to save the local call log; 0-Disabled, 1-Enabled (default);
+features.save_call_log = 1
+
+#Configure the return code when the refuse a call; 404, 480, 486 (default);
+features.call_refuse_code = 486
+
+auto_provision.pnp_enable = 1
+auto_provision.custom.protect = 1
+
+account.1.enable = 1
+account.1.label = %NULL%
+account.1.display_name = %NULL%
+account.1.auth_name = %NULL%
+account.1.password = %NULL%`,
+    timeFormat: '12',
+    screenSaverWait: 5,
+    backlightLevel: 8,
+})
 const keys = ref({
    'l1': { type: 'line', label: 'Line 1', value: '1' },
    'l2': { type: 'line', label: 'Line 2', value: '2' },
@@ -223,6 +230,32 @@ const addParam = () => {
 }
 const removeParam = (key) => delete customParams.value[key]
 const updateParam = (key, val) => customParams.value[key] = val
+
+const saveTemplate = async () => {
+    saving.value = true
+    try {
+        const payload = {
+            name: form.value.name,
+            scope: form.value.scope,
+            firmware_version: form.value.firmwareVersion,
+            config_content: form.value.configContent,
+            time_format: form.value.timeFormat,
+            screen_saver_wait: form.value.screenSaverWait,
+            backlight_level: form.value.backlightLevel,
+            keys: keys.value,
+            custom_params: customParams.value,
+        }
+        if (isNew.value) {
+            await deviceTemplatesAPI.create(payload)
+        } else {
+            await deviceTemplatesAPI.update(route.params.id, payload)
+        }
+    } catch (err) {
+        console.error('Failed to save template:', err)
+    } finally {
+        saving.value = false
+    }
+}
 </script>
 
 <style scoped>

@@ -5,6 +5,7 @@ import (
 	"callsign/handlers/freeswitch"
 	"callsign/models"
 	"callsign/router"
+	"callsign/services/broadcast"
 	"callsign/services/cdr"
 	emailsvc "callsign/services/email"
 	"callsign/services/esl"
@@ -210,6 +211,10 @@ func main() {
 	r.Handler.SetESLManager(eslManager)
 	r.Handler.SetLogManager(logManager)
 	r.Handler.SetClickHouse(chClient)
+
+	// Initialize broadcast campaign worker
+	broadcastWorker := broadcast.NewBroadcastWorker(db, eslManager)
+	r.Handler.SetBroadcastWorker(broadcastWorker)
 
 	// Wire fax manager and conference service into their handlers
 	r.SetFaxManager(faxManager)

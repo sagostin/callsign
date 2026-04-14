@@ -285,21 +285,42 @@ const database = ref({
 const loadSettings = async () => {
   loading.value = true
   try {
-    const response = await systemAPI.getSettings()
-    const data = response.data || {}
-    // FreeSWITCH settings from API
-    if (data.freeswitch_host) {
-      freeswitch.value.host = data.freeswitch_host
-    }
-  } catch (e) {
-    console.error('Failed to load settings:', e)
-  } finally {
-    loading.value = false
-  }
-  // Load live database info
-  try {
-    const statusResp = await systemAPI.getStatus()
+    const [settingsResp, statusResp] = await Promise.all([
+      systemAPI.getSettings(),
+      systemAPI.getStatus()
+    ])
+    const settings = settingsResp.data || {}
     const status = statusResp.data || {}
+
+    // FreeSWITCH settings
+    if (settings.freeswitch) {
+      freeswitch.value.maxSessions = settings.freeswitch.max_sessions ?? freeswitch.value.maxSessions
+      freeswitch.value.sessionsPerSec = settings.freeswitch.sessions_per_second ?? freeswitch.value.sessionsPerSec
+      freeswitch.value.rtpPortMin = settings.freeswitch.rtp_port_min ?? freeswitch.value.rtpPortMin
+      freeswitch.value.rtpPortMax = settings.freeswitch.rtp_port_max ?? freeswitch.value.rtpPortMax
+      freeswitch.value.logLevel = settings.freeswitch.log_level ?? freeswitch.value.logLevel
+      freeswitch.value.cdrPath = settings.freeswitch.cdr_path ?? freeswitch.value.cdrPath
+      if (settings.freeswitch.codecs?.length) {
+        freeswitch.value.codecs = freeswitch.value.codecs.map((c, i) => ({
+          ...c,
+          enabled: settings.freeswitch.codecs[i]?.enabled ?? c.enabled
+        }))
+      }
+    }
+
+    // SMTP settings
+    if (settings.smtp) {
+      smtp.value.enabled = settings.smtp.enabled ?? smtp.value.enabled
+      smtp.value.host = settings.smtp.host || smtp.value.host
+      smtp.value.port = settings.smtp.port || smtp.value.port
+      smtp.value.username = settings.smtp.username || smtp.value.username
+      smtp.value.fromEmail = settings.smtp.from_email || smtp.value.fromEmail
+      smtp.value.fromName = settings.smtp.from_name || smtp.value.fromName
+      smtp.value.encryption = settings.smtp.encryption || smtp.value.encryption
+      smtp.value.timeout = settings.smtp.timeout ?? smtp.value.timeout
+    }
+
+    // Database status
     if (status.database) {
       database.value.host = status.database.host || ''
       database.value.dbName = status.database.name || ''
@@ -312,9 +333,10 @@ const loadSettings = async () => {
     } else {
       database.value.connected = true
     }
-    database.value.loaded = true
   } catch (e) {
-    console.log('Could not load live database status:', e)
+    console.error('Failed to load settings:', e)
+  } finally {
+    loading.value = false
     database.value.loaded = true
   }
 }
@@ -330,13 +352,26 @@ const save = async () => {
     })
     alert('Settings saved successfully!')
   } catch (e) {
-    alert('Failed to save settings: ' + (e.message || 'Not implemented yet'))
+    console.error('Failed to save settings:', e)
+    alert('Failed to save settings: ' + (e.response?.data?.error || e.message || 'Unknown error'))
   } finally {
     saving.value = false
   }
 }
 
-const testSmtp = () => alert('Test email sent to admin@callsign.io')
+const testSmtp = async () => {
+  try {
+    const result = await systemAPI.testSmtp(smtp.value)
+    if (result.data?.success) {
+      alert('Test email sent successfully!')
+    } else {
+      alert('Failed to send test email: ' + (result.data?.error || 'Unknown error'))
+    }
+  } catch (e) {
+    console.error('SMTP test failed:', e)
+    alert('Failed to send test email: ' + (e.response?.data?.error || e.message || 'Unknown error'))
+  }
+}
 </script>
 
 <style scoped>

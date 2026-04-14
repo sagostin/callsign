@@ -5,8 +5,12 @@
       <p class="text-muted text-sm">Call volume, agent performance, and system usage.</p>
     </div>
     <div class="date-filter">
-      <button class="btn-secondary">Last 7 Days</button>
-      <button class="btn-primary">Export CSV</button>
+      <button 
+        class="btn-secondary"
+        :class="{ active: activeFilter === 'last7days' }"
+        @click="filterLast7Days"
+      >Last 7 Days</button>
+      <button class="btn-primary" @click="exportCsv">Export CSV</button>
     </div>
   </div>
 
@@ -64,7 +68,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { cdrAPI } from '../../services/api'
+import { cdrAPI, reportsAPI } from '../../services/api'
 
 const kpis = reactive({
   totalCalls: '—',
@@ -77,8 +81,14 @@ const kpis = reactive({
   slaBreachPct: ''
 })
 
-const hourlyData = ref([40, 60, 30, 80, 50, 90, 70, 45, 65, 35])
-const dispositions = reactive({ answered: 85, voicemail: 10, abandoned: 5 })
+const hourlyData = ref([])
+const dispositions = reactive({ answered: 0, voicemail: 0, abandoned: 0 })
+const activeFilter = ref('last7days')
+
+const filterLast7Days = () => {
+  activeFilter.value = 'last7days'
+  fetchReportData({ days: 7 })
+}
 
 const donutStyle = computed(() => {
   const a = dispositions.answered
@@ -88,44 +98,33 @@ const donutStyle = computed(() => {
   }
 })
 
-const fetchReportData = async () => {
+const fetchReportData = async (params = {}) => {
   try {
-    const res = await cdrAPI.getSummary ? await cdrAPI.getSummary() : await cdrAPI.list({ limit: 1000 })
+    const res = await reportsAPI.callVolume(params)
     const data = res.data
-
+    
     if (data?.summary) {
       const s = data.summary
       kpis.totalCalls = s.total_calls?.toLocaleString() || '0'
       kpis.totalCallsTrend = s.trend ? `${s.trend > 0 ? '+' : ''}${s.trend}% vs last week` : ''
       const avgSec = s.avg_duration || 0
       kpis.avgHandle = avgSec > 60 ? `${Math.floor(avgSec / 60)}m ${avgSec % 60}s` : `${avgSec}s`
-      kpis.avgHandleTrend = s.avg_trend ? `${s.avg_trend}%` : ''
       kpis.missed = String(s.missed_calls || 0)
       const total = s.total_calls || 1
       kpis.missedPct = s.missed_calls ? `${Math.round(s.missed_calls / total * 100)}% of total` : ''
       kpis.slaBreach = String(s.sla_breached || 0)
       kpis.slaBreachPct = s.sla_breached ? `${(s.sla_breached / total * 100).toFixed(1)}%` : ''
-
+      
+      if (s.hourly && Array.isArray(s.hourly) && s.hourly.length > 0) {
+        const max = Math.max(...s.hourly, 1)
+        hourlyData.value = s.hourly.map(v => Math.round(v / max * 100))
+      }
+      
       if (s.dispositions) {
         dispositions.answered = s.dispositions.answered || 85
         dispositions.voicemail = s.dispositions.voicemail || 10
         dispositions.abandoned = s.dispositions.abandoned || 5
       }
-      if (s.hourly) {
-        const max = Math.max(...s.hourly, 1)
-        hourlyData.value = s.hourly.map(v => Math.round(v / max * 100))
-      }
-    } else {
-      const records = data?.data || data || []
-      kpis.totalCalls = records.length.toLocaleString()
-      const missed = records.filter(r => r.status === 'Missed' || r.status === 'No Answer').length
-      kpis.missed = String(missed)
-      kpis.missedPct = records.length > 0 ? `${Math.round(missed / records.length * 100)}% of total` : ''
-      if (records.length > 0) {
-        const avgDur = Math.round(records.reduce((s, r) => s + (r.duration || 0), 0) / records.length)
-        kpis.avgHandle = avgDur > 60 ? `${Math.floor(avgDur / 60)}m ${avgDur % 60}s` : `${avgDur}s`
-      }
-      kpis.slaBreach = '0'
     }
   } catch (err) {
     console.error('Failed to load report data:', err)
@@ -133,6 +132,47 @@ const fetchReportData = async () => {
 }
 
 onMounted(fetchReportData)
+
+const exportCsv = async () => {
+  try {
+    const res = await reportsAPI.callVolume()
+    const data = res.data?.summary
+
+    // Early exit if no data available
+    if (!data) {
+      console.error('No report data to export')
+      return
+    }
+
+    const headers = ['Metric', 'Value']
+    const rows = [
+      ['Total Calls', data.total_calls ?? 0],
+      ['Avg Handle Time (seconds)', data.avg_duration ?? 0],
+      ['Missed Calls', data.missed_calls ?? 0],
+      ['SLA Breached', data.sla_breached ?? 0],
+      ['Trend (%)', data.trend ?? 0],
+      ['Hourly Data', (data.hourly ?? []).join('; ')],
+      ['Disposition Answered (%)', data.dispositions?.answered ?? 0],
+      ['Disposition Voicemail (%)', data.dispositions?.voicemail ?? 0],
+      ['Disposition Abandoned (%)', data.dispositions?.abandoned ?? 0],
+    ]
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => String(cell)).join(','))
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `report-${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error('Failed to export report:', err)
+  }
+}
 </script>
 
 <style scoped>

@@ -94,7 +94,7 @@ api/
 │   │   ├── directory.go       # SIP registration directory
 │   │   ├── cdr.go             # CDR ingestion from mod_xml_cdr
 │   │   └── ...
-│   └── ...               # 29 handler files total
+│   └── ...               # 31 handler files total
 ├── middleware/
 │   ├── auth.go           # JWT auth, role checks, permissions
 │   ├── tenant.go         # X-Tenant-ID scoping for system admins
@@ -224,9 +224,9 @@ ui/src/
 │   └── UserLayout.vue         # User portal layout (softphone-centric)
 └── views/
     ├── auth/         # Login.vue, AdminLogin.vue
-    ├── admin/        # 64 views — tenant admin portal
+    ├── admin/        # 65 views — tenant admin portal
     ├── system/       # 26 views — system admin portal
-    └── user/         # 8 views — end-user portal
+    └── user/         # 9 views — end-user portal
 ```
 
 ### Three Portals
@@ -479,3 +479,179 @@ All configuration is via environment variables. See `.env.example` for the compl
 | Storage | `MEDIA_PATH`, `FIRMWARE_PATH`, `PROVISIONING_PATH`, `SIP_PROFILES_PATH` | FreeSWITCH shared paths |
 | Encryption | `ENCRYPTION_KEY`, `ENCRYPTION_SALT` | Required for data-at-rest encryption |
 | Messaging | `TELNYX_API_KEY`, `TELNYX_MESSAGING_PROFILE`, `TELNYX_WEBHOOK_SECRET` | SMS/MMS gateway |
+
+---
+
+## IVR Visual Flow Editor
+
+### Overview
+
+CallSign includes a visual drag-and-drop IVR flow editor in `ui/src/components/flow/` that allows building complex IVR call flows without writing code.
+
+### Node Types Supported (17 Total)
+
+**15 have ESL handlers implemented; 2 are stubs** (speech and database are now implemented).
+
+| Category | Node Type | ESL Handler | Description |
+|---|---|---|---|
+| Input | `gather` | ✅ | DTMF tone collection with timeout/no-match branching |
+| Input | `speech` | ✅ | Speech recognition (ASR) with confidence-based routing |
+| Audio | `play_audio` | ✅ | Play recorded audio file |
+| Audio | `play_tts` | ✅ | Text-to-speech playback |
+| Audio | `say_digits` | ✅ | Speak digit sequences |
+| Logic/API | `web_request` | ✅ | HTTP request for external API integration |
+| Logic/API | `send_sms` | ✅ | Send SMS via messaging provider |
+| Logic/API | `database` | ✅ | Database query for CRM/external data lookup |
+| Logic/API | `condition` | ✅ | Conditional branching based on variable values |
+| Logic/API | `set_variable` | ✅ | Set call variables |
+| Destinations | `extension` | ✅ | Ring extension(s) |
+| Destinations | `queue` | ✅ | Transfer to call queue |
+| Destinations | `ring_group` | ✅ | Transfer to ring group (hunt group) |
+| Destinations | `ivr_menu` | ✅ | Transfer to another IVR menu |
+| Destinations | `external` | ✅ | Dial external number |
+| Destinations | `voicemail` | ✅ | Leave voicemail message |
+| Destinations | `hangup` | ✅ | End call with configurable cause |
+
+### Components
+
+| Component | File | Purpose |
+|---|---|---|
+| Node Palette | `flow/NodePalette.vue` | Draggable node library organized by category |
+| Flow Canvas | `flow/FlowCanvas.vue` | SVG-based connection editor with zoom/pan |
+| Flow Node | `flow/FlowNode.vue` | Configurable node with modal editor |
+| IVR Form | `views/admin/IVRMenuForm.vue` | Full editor page integrating palette + canvas + properties |
+
+### Flow Data Model
+
+Flows are stored in `IVRMenu.FlowData` as JSONB:
+
+```go
+type IVRFlowData struct {
+    Nodes       []IVRFlowNode       // Visual nodes with position
+    Connections []IVRFlowConnection // Directed edges with output ports
+}
+
+type IVRFlowNode struct {
+    ID     string                 // Unique node ID
+    Type   string                 // Node type (see above)
+    Label  string                 // Display name
+    X, Y   float64                // Canvas position
+    Config map[string]interface{} // Node-specific settings
+}
+
+type IVRFlowConnection struct {
+    ID           string // Unique connection ID
+    SourceID     string // Source node ID
+    TargetID     string // Target node ID
+    SourceOutput string // Output port name (match, timeout, next, etc.)
+    Label        string // Optional display label
+}
+```
+
+### Backend Execution
+
+The IVR service (`api/services/esl/modules/ivr/service.go`) executes flows by:
+1. Loading `IVRFlowData` from the menu record
+2. Building a node map and adjacency list from connections
+3. Walking the graph, executing each node via ESL commands
+4. Branching based on output ports (match/timeout/invalid for gather, true/false for conditions)
+
+### Remaining Gaps
+
+| Gap | Priority | Status | Notes |
+|---|---|---|---|
+| Voicemail dropdown uses hardcoded values | Low | Pending | Needs voicemail API integration |
+| Ring Group dropdown needs ringGroupsList loading | Medium | Done | Fixed in this session |
+| Queue/Extension dropdowns now use real data | Medium | Done | Fixed in this session |
+| SMS provider integration | Medium | Done | Telnyx integration completed |
+| Historical queue statistics | Low | Partial | Real-time only, no analytics |
+
+---
+
+## Extension Management
+
+### Features
+- Full CRUD operations for extensions
+- Extension profiles with permission sets
+- Call forwarding (always, busy, no-answer, unregistered)
+- Do Not Disturb (DND)
+- FindMe/FollowMe simultaneous ringing
+- Voicemail with auto-setup on extension creation
+- DID assignment via Phone Numbers tab
+- Ring strategy configuration
+
+### API Endpoints
+- `GET/POST /api/extensions` - List/Create
+- `GET/PUT/DELETE /api/extensions/:id` - Get/Update/Delete
+- `GET /api/extensions/:id/status` - Registration status
+- `PUT /api/extensions/:id/call-rules` - Call handling rules
+
+### Frontend Components
+- `Extensions.vue` - List view with search/filter
+- `ExtensionDetail.vue` - Full editing with tabs:
+  - General, Call Handling, Voicemail, Devices, Forwarding, Phone Numbers
+
+---
+
+## Ring Groups (Hunt Groups)
+
+### Ring Strategies
+- **Simultaneous** - Ring all members at once
+- **Sequential** - Ring in order, timeout to next
+- **Random** - Random member selection
+- **Enterprise** - Ring all with delays
+- **Rollover** - Sequential with wrap-around
+- **Round-Robin** - Even distribution across calls
+
+### Features
+- Timeout destination configuration
+- Skip busy members option
+- Member type support (extension, external, device)
+- Call screening
+- Distinctive ring/caller ID prefix
+
+### API Endpoints
+- `GET/POST /api/ring-groups` - List/Create
+- `GET/PUT/DELETE /api/ring-groups/:id` - CRUD
+- `POST /api/ring-groups/:id/members` - Add members
+
+---
+
+## Broadcast Campaigns
+
+### Features
+- Async call origination via ESL
+- Real-time progress tracking
+- Per-recipient status (pending, in_progress, answered, failed, busy, no_answer)
+- Configurable concurrency limits
+- Campaign start/stop control
+
+### Worker Architecture
+- `services/broadcast/worker.go` - BroadcastWorker handles origination
+- Uses bgapi originate with campaign/recipient metadata
+- Updates stats in real-time via database
+- Graceful shutdown via context cancellation
+
+---
+
+## IVR Flow Nodes Table (Current State)
+
+| Node Type | Status | Notes |
+|---|---|---|
+| `gather` | ✅ Implemented | DTMF collection |
+| `speech` | ✅ Implemented | ASR with confidence routing |
+| `play_audio` | ✅ Implemented | Audio file playback |
+| `play_tts` | ✅ Implemented | TTS playback |
+| `say_digits` | ✅ Implemented | Digit announcement |
+| `web_request` | ✅ Implemented | HTTP API calls |
+| `send_sms` | ✅ Implemented | SMS sending |
+| `database` | ✅ Implemented | CRM/database queries |
+| `condition` | ✅ Implemented | Conditional logic |
+| `set_variable` | ✅ Implemented | Variable setting |
+| `extension` | ✅ Implemented | Extension routing |
+| `queue` | ✅ Implemented | Queue transfer |
+| `ring_group` | ✅ Implemented | Hunt group transfer |
+| `ivr_menu` | ✅ Implemented | IVR nesting |
+| `external` | ✅ Implemented | External number dialing |
+| `voicemail` | ✅ Implemented | Voicemail deposit |
+| `hangup` | ✅ Implemented | Call termination |

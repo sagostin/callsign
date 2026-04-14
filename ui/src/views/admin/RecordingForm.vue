@@ -24,7 +24,7 @@
               <strong>Click to upload</strong> or drag and drop<br>
               <span class="sub-text">WAV, MP3, or OGG (Max 10MB)</span>
            </div>
-           <input type="file" class="file-input" accept="audio/*">
+           <input type="file" class="file-input" accept="audio/*" @change="onFileSelect">
         </div>
       </div>
 

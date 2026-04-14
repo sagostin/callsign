@@ -152,21 +152,9 @@
             <label>Device Model</label>
             <select v-model="newDevice.model" class="input-field">
               <option value="">Select Model...</option>
-              <optgroup label="Generic">
-                <option value="Generic SIP">Generic SIP Device</option>
-              </optgroup>
-              <optgroup label="Yealink">
-                <option value="Yealink T54W">Yealink T54W</option>
-                <option value="Yealink T57W">Yealink T57W</option>
-                <option value="Yealink W60B">Yealink W60B (DECT)</option>
-              </optgroup>
-              <optgroup label="Polycom">
-                <option value="Poly VVX 450">Poly VVX 450</option>
-                <option value="Poly CCX 500">Poly CCX 500</option>
-              </optgroup>
-              <optgroup label="Grandstream">
-                <option value="Grandstream GXP2170">Grandstream GXP2170</option>
-              </optgroup>
+              <option v-for="model in deviceModels" :key="model.id || model.name" :value="model.name">
+                {{ model.name }} {{ model.vendor ? `(${model.vendor})` : '' }}
+              </option>
             </select>
           </div>
 
@@ -294,7 +282,7 @@ import {
 } from 'lucide-vue-next'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
-import { devicesAPI, deviceProfilesAPI, deviceTemplatesAPI, extensionsAPI } from '@/services/api'
+import { devicesAPI, deviceProfilesAPI, deviceTemplatesAPI, extensionsAPI, systemAPI } from '@/services/api'
 
 const toast = inject('toast')
 const isLoading = ref(false)
@@ -312,6 +300,7 @@ const columns = [
 
 const devices = ref([])
 const deviceProfiles = ref([])
+const deviceModels = ref([])
 const searchQuery = ref('')
 const filterStatus = ref('')
 const filterLocation = ref('')
@@ -320,7 +309,7 @@ const filterProfile = ref('')
 const activeDropdown = ref(null)
 
 onMounted(async () => {
-  await Promise.all([fetchDevices(), fetchDeviceProfiles(), fetchAddModalData()])
+  await Promise.all([fetchDevices(), fetchDeviceProfiles(), fetchAddModalData(), loadDeviceModels()])
   document.addEventListener('click', closeDropdown)
 })
 
@@ -397,6 +386,32 @@ async function fetchAddModalData() {
   }
 }
 
+async function loadDeviceModels() {
+  try {
+    // Try device manufacturers endpoint which provides model listings
+    const response = await systemAPI.listDeviceManufacturers()
+    // Flatten manufacturers into model options
+    const manufacturers = response.data || []
+    const models = []
+    for (const mfr of manufacturers) {
+      if (mfr.models && Array.isArray(mfr.models)) {
+        for (const model of mfr.models) {
+          models.push({
+            id: model.id || model.name,
+            name: model.name,
+            vendor: mfr.name
+          })
+        }
+      }
+    }
+    deviceModels.value = models
+  } catch (err) {
+    // API for device models not available - this is an architectural gap
+    console.error('Failed to load device models (no API available):', err)
+    deviceModels.value = []
+  }
+}
+
 const getProfileName = (id) => deviceProfiles.value.find(p => p.id === id)?.name || 'Unknown'
 const getProfileColor = (id) => deviceProfiles.value.find(p => p.id === id)?.color || '#94a3b8'
 
@@ -451,9 +466,12 @@ const toggleDropdown = (id) => {
 
 const rebootDevice = async (row) => {
   activeDropdown.value = null
+  if (!confirm(`Reboot device ${row.mac}?`)) return
+
   try {
-    // TODO: Call API to reboot device
-    toast?.info(`Rebooting device ${row.mac}...`)
+    const macClean = row.mac.replace(/:/g, '')
+    await devicesAPI.reboot(macClean)
+    toast?.success(`Reboot command sent to ${row.mac}`)
   } catch (error) {
     toast?.error(error.message, 'Failed to reboot device')
   }

@@ -142,6 +142,11 @@ func (h *FSHandler) xmlToCallRecord(xmlCDR *XMLCDRData) *models.CallRecord {
 	// Parse tenant ID
 	tenantID := parseUint(vars.TenantID)
 	if tenantID == 0 {
+		domain := vars.DomainName
+		log.WithFields(log.Fields{
+			"uuid":   vars.UUID,
+			"domain": domain,
+		}).Warn("CDR missing tenant_id, defaulting to 1 - investigate")
 		tenantID = 1 // Default tenant
 	}
 

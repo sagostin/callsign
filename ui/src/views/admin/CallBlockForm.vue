@@ -43,11 +43,13 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { routingAPI } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
+const toast = inject('toast')
 const isNew = computed(() => !route.params.id)
 
 const form = ref({
@@ -57,9 +59,28 @@ const form = ref({
   enabled: true
 })
 
-const save = () => {
-  console.log('Saving block rule:', form.value)
-  router.back()
+const save = async () => {
+  if (!form.value.name.trim()) {
+    toast.error('Name is required')
+    return
+  }
+  if (!form.value.number.trim()) {
+    toast.error('Number is required')
+    return
+  }
+
+  try {
+    if (isNew.value) {
+      await routingAPI.createBlock(form.value)
+      toast.success('Block rule created')
+    } else {
+      await routingAPI.updateBlock(route.params.id, form.value)
+      toast.success('Block rule updated')
+    }
+    router.push('/admin/call-block')
+  } catch (e) {
+    toast.error(e.response?.data?.error || e.message || 'Failed to save block rule')
+  }
 }
 </script>
 

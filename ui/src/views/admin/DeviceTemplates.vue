@@ -216,10 +216,33 @@ const cloneTemplate = async (t) => {
   }
 }
 
-const exportTemplate = (t) => {
+const exportTemplate = async (t) => {
+  if (!t?.id) return
+
   activeDropdown.value = null
-  // TODO: Implement template export endpoint
   toast?.info(`Exporting ${t.name} configuration...`)
+
+  try {
+    const response = await deviceTemplatesAPI.export(t.id, 'json')
+    const blob = response.data
+
+    if (!blob) {
+      throw new Error('Empty response from server')
+    }
+
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${t.name.replace(/\s+/g, '_')}_config.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+
+    toast?.success(`Template "${t.name}" exported successfully`)
+  } catch (error) {
+    toast?.error(error.message || 'Failed to export template', 'Export Failed')
+  }
 }
 </script>
 

@@ -35,10 +35,17 @@
                 <img v-if="profile.avatar" :src="profile.avatar" alt="Avatar">
                 <span v-else class="avatar-initials">{{ userInitials }}</span>
               </div>
-              <button class="upload-btn">
+              <button class="upload-btn" @click="triggerPhotoUpload">
                 <CameraIcon class="icon-sm" />
                 Change Photo
               </button>
+              <input 
+                ref="photoInputRef" 
+                type="file" 
+                accept="image/*" 
+                style="display: none" 
+                @change="handlePhotoUpload"
+              >
             </div>
             <div class="profile-status">
               <span class="status-label">Status:</span>
@@ -300,9 +307,9 @@
                 </label>
               </div>
               <div class="recording-controls" v-if="voicemailSettings.greetingType === 'custom'">
-                <button class="btn-secondary"><MicIcon class="btn-icon" /> Record New</button>
-                <button class="btn-secondary"><UploadIcon class="btn-icon" /> Upload</button>
-                <button class="btn-secondary" v-if="voicemailSettings.hasCustomGreeting"><PlayIcon class="btn-icon" /> Play Current</button>
+                <button class="btn-secondary" @click="recordNewGreeting"><MicIcon class="btn-icon" /> Record New</button>
+                <button class="btn-secondary" @click="uploadGreeting"><UploadIcon class="btn-icon" /> Upload</button>
+                <button class="btn-secondary" v-if="voicemailSettings.hasCustomGreeting" @click="playCurrentGreeting"><PlayIcon class="btn-icon" /> Play Current</button>
               </div>
             </div>
           </div>
@@ -476,6 +483,7 @@ const activeSection = ref('profile')
 const showPin = ref(false)
 const loading = ref(false)
 const saving = ref(false)
+const photoInputRef = ref(null)
 
 const sections = [
   { id: 'profile', label: 'Profile', icon: UserIcon },
@@ -687,6 +695,51 @@ const changePassword = async () => {
   } finally {
     saving.value = false
   }
+}
+
+// Photo Upload Handlers
+const triggerPhotoUpload = () => {
+  photoInputRef.value?.click()
+}
+
+const handlePhotoUpload = (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  // Early exit: validate file type
+  if (!file.type.startsWith('image/')) {
+    toast?.error('Please select an image file')
+    return
+  }
+
+  // Early exit: validate file size (max 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    toast?.error('Image must be smaller than 5MB')
+    return
+  }
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    profile.value.avatar = e.target?.result
+    toast?.success('Photo updated')
+  }
+  reader.onerror = () => {
+    toast?.error('Failed to read image file')
+  }
+  reader.readAsDataURL(file)
+}
+
+// Voicemail Greeting Handlers
+const recordNewGreeting = () => {
+  toast?.info('Recording feature coming soon')
+}
+
+const uploadGreeting = () => {
+  toast?.info('Greeting upload feature coming soon')
+}
+
+const playCurrentGreeting = () => {
+  toast?.info('Playing current greeting...')
 }
 </script>
 

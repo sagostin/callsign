@@ -13,16 +13,19 @@
     <template #status="{ value }">
        <span class="status-badge" :class="value.toLowerCase()">{{ value }}</span>
     </template>
-    <template #actions>
-      <button class="btn-link" @click="$router.push('/admin/wake-up-calls/1')">Edit</button>
-      <button class="btn-link text-bad">Cancel</button>
+        <template #actions="{ row }">
+      <button class="btn-link" @click="$router.push(`/admin/wake-up-calls/${row.id}`)">Edit</button>
+      <button class="btn-link text-bad" @click="cancelCall(row)">Cancel</button>
     </template>
   </DataTable>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
+import { wakeupCallsAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 const columns = [
   { key: 'extension', label: 'Room / Extension' },
@@ -31,11 +34,31 @@ const columns = [
   { key: 'status', label: 'Status' }
 ]
 
-const calls = ref([
-  { extension: '101 (Room 101)', time: '07:00 AM', recurrence: 'Once', status: 'Pending' },
-  { extension: '205 (Room 205)', time: '06:30 AM', recurrence: 'Daily', status: 'Active' },
-  { extension: '300 (Suite)', time: '08:00 AM', recurrence: 'Once', status: 'Completed' },
-])
+const calls = ref([])
+
+onMounted(async () => {
+  try {
+    const res = await wakeupCallsAPI.list()
+    calls.value = res.data || []
+  } catch (err) {
+    console.error('Failed to load wake up calls:', err)
+    calls.value = []
+  }
+})
+
+const cancelCall = async (row) => {
+  if (row.status?.toLowerCase() === 'cancelled') return
+  if (!confirm(`Cancel wake up call for room ${row.extension}?`)) return
+
+  try {
+    await wakeupCallsAPI.cancel(row.id)
+    const res = await wakeupCallsAPI.list()
+    calls.value = res.data || []
+    toast?.success('Wake up call cancelled')
+  } catch (err) {
+    toast?.error(err.message, 'Failed to cancel wake up call')
+  }
+}
 </script>
 
 <style scoped>

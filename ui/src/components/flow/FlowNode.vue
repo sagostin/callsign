@@ -50,17 +50,14 @@
             <div class="field-group">
               <label>Prompt Type</label>
               <select v-model="data.config.promptType">
-                <option value="audio">Audio File</option>
-                <option value="tts">Text-to-Speech</option>
+                <option v-for="opt in NODE_ENUMS.audioPromptTypes" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
             </div>
             <div class="field-group" v-if="data.config.promptType === 'audio'">
               <label>Audio File</label>
               <select v-model="data.config.audioFile">
                 <option value="">Select audio...</option>
-                <option value="greeting.wav">greeting.wav</option>
-                <option value="menu_prompt.wav">menu_prompt.wav</option>
-                <option value="enter_digits.wav">enter_digits.wav</option>
+                <option v-for="r in flowRecordings" :key="r.id || r" :value="r.file || r">{{ r.name || r }}</option>
               </select>
             </div>
             <div class="field-group" v-else>
@@ -94,9 +91,7 @@
               <div class="field-group">
                 <label>Terminator</label>
                 <select v-model="data.config.terminator">
-                  <option value="#"># key</option>
-                  <option value="*">* key</option>
-                  <option value="">None (timeout only)</option>
+                  <option v-for="opt in NODE_ENUMS.terminators" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
               </div>
               <div class="field-group">
@@ -121,16 +116,14 @@
               <label>Invalid Sound</label>
               <select v-model="data.config.invalidSound">
                 <option value="">Default</option>
-                <option value="invalid_option.wav">invalid_option.wav</option>
-                <option value="try_again.wav">try_again.wav</option>
+                <option v-for="r in flowRecordings" :key="r.id || r" :value="r.file || r">{{ r.name || r }}</option>
               </select>
             </div>
             <div class="field-group">
               <label>Timeout Sound</label>
               <select v-model="data.config.timeoutSound">
                 <option value="">Default</option>
-                <option value="no_input.wav">no_input.wav</option>
-                <option value="please_try.wav">please_try.wav</option>
+                <option v-for="r in flowRecordings" :key="r.id || r" :value="r.file || r">{{ r.name || r }}</option>
               </select>
             </div>
             
@@ -147,9 +140,7 @@
             <div class="field-group">
               <label>Speech Provider</label>
               <select v-model="data.config.provider">
-                <option value="google">Google Cloud Speech</option>
-                <option value="aws">AWS Transcribe</option>
-                <option value="azure">Azure Speech</option>
+                <option v-for="opt in NODE_ENUMS.speechProviders" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
             </div>
             <div class="field-group">
@@ -174,9 +165,7 @@
               <label>Audio File</label>
               <select v-model="data.config.audioFile">
                 <option value="">Select audio...</option>
-                <option value="greeting.wav">greeting.wav</option>
-                <option value="hold_music.wav">hold_music.wav</option>
-                <option value="thank_you.wav">thank_you.wav</option>
+                <option v-for="r in flowRecordings" :key="r.id || r" :value="r.file || r">{{ r.name || r }}</option>
               </select>
             </div>
             <div class="field-group">
@@ -197,18 +186,13 @@
               <div class="field-group">
                 <label>Engine</label>
                 <select v-model="data.config.engine">
-                  <option value="flite">Flite (Built-in)</option>
-                  <option value="google">Google Cloud TTS</option>
-                  <option value="aws">Amazon Polly</option>
-                  <option value="azure">Azure TTS</option>
+                  <option v-for="opt in NODE_ENUMS.ttsEngines" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
               </div>
               <div class="field-group">
                 <label>Voice</label>
                 <select v-model="data.config.voice">
-                  <option value="default">Default</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
+                  <option v-for="opt in NODE_ENUMS.ttsVoices" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
               </div>
             </div>
@@ -223,9 +207,7 @@
             <div class="field-group">
               <label>Format</label>
               <select v-model="data.config.format">
-                <option value="digits">Individual Digits (1-2-3-4)</option>
-                <option value="number">As Number (twelve thirty-four)</option>
-                <option value="currency">As Currency ($12.34)</option>
+                <option v-for="opt in NODE_ENUMS.sayDigitFormats" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
             </div>
           </template>
@@ -236,10 +218,7 @@
               <div class="field-group" style="width: 100px;">
                 <label>Method</label>
                 <select v-model="data.config.method">
-                  <option value="GET">GET</option>
-                  <option value="POST">POST</option>
-                  <option value="PUT">PUT</option>
-                  <option value="DELETE">DELETE</option>
+                  <option v-for="opt in NODE_ENUMS.httpMethods" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
               </div>
               <div class="field-group" style="flex: 1;">
@@ -273,9 +252,7 @@
             <div class="field-group">
               <label>Provider</label>
               <select v-model="data.config.provider">
-                <option value="signalwire">SignalWire</option>
-                <option value="twilio">Twilio</option>
-                <option value="nexmo">Nexmo/Vonage</option>
+                <option v-for="opt in NODE_ENUMS.smsProviders" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
             </div>
             <div class="field-row">
@@ -299,9 +276,7 @@
             <div class="field-group">
               <label>Connection</label>
               <select v-model="data.config.connection">
-                <option value="default">Default PostgreSQL</option>
-                <option value="mysql">MySQL CRM</option>
-                <option value="rest">REST API</option>
+                <option v-for="opt in NODE_ENUMS.databaseConnections" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
             </div>
             <div class="field-group">
@@ -330,12 +305,7 @@
               <div class="field-group">
                 <label>Operator</label>
                 <select v-model="data.config.operator">
-                  <option value="==">Equals (==)</option>
-                  <option value="!=">Not Equals (!=)</option>
-                  <option value=">">Greater Than (>)</option>
-                  <option value="<">Less Than (<)</option>
-                  <option value="contains">Contains</option>
-                  <option value="regex">Matches Regex</option>
+                  <option v-for="opt in NODE_ENUMS.conditionOperators" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
               </div>
               <div class="field-group">
@@ -365,9 +335,7 @@
               <label>IVR Menu</label>
               <select v-model="data.config.menuId">
                 <option value="">Select menu...</option>
-                <option value="main">Main Menu</option>
-                <option value="support">Support Menu</option>
-                <option value="sales">Sales Menu</option>
+                <option v-for="m in flowIVRMenus" :key="m.id" :value="String(m.id)">{{ m.name }} ({{ m.extension }})</option>
               </select>
             </div>
             <div class="help-note">Call will be transferred to this IVR menu.</div>
@@ -377,7 +345,7 @@
           <template v-else-if="data.type === 'extension'">
             <div class="field-group">
               <label>Extension Number</label>
-              <input type="text" v-model="data.config.extension" placeholder="101">
+              <input type="text" v-model="data.config.extension" placeholder="101" class="input-field">
             </div>
           </template>
 
@@ -387,8 +355,7 @@
               <label>Queue</label>
               <select v-model="data.config.queueId">
                 <option value="">Select queue...</option>
-                <option value="sales">Sales Queue</option>
-                <option value="support">Support Queue</option>
+                <option v-for="q in flowQueues" :key="q.id" :value="String(q.id)">{{ q.name }} ({{ q.extension }})</option>
               </select>
             </div>
           </template>
@@ -399,8 +366,7 @@
               <label>Ring Group</label>
               <select v-model="data.config.groupId">
                 <option value="">Select group...</option>
-                <option value="sales_team">Sales Team</option>
-                <option value="on_call">On-Call</option>
+                <option v-for="rg in flowRingGroups" :key="rg.id" :value="String(rg.id)">{{ rg.name }} ({{ rg.extension }})</option>
               </select>
             </div>
           </template>
@@ -419,8 +385,9 @@
               <label>Mailbox</label>
               <select v-model="data.config.mailboxId">
                 <option value="">Select mailbox...</option>
-                <option value="general">General Mailbox</option>
-                <option value="sales">Sales Mailbox</option>
+                <option v-for="vm in flowVoicemailBoxes" :key="vm.id || vm.extension" :value="vm.extension || vm.id">
+                  {{ vm.name || vm.extension }} ({{ vm.extension || vm.id }})
+                </option>
               </select>
             </div>
           </template>
@@ -441,12 +408,75 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { 
   Keyboard, Mic, Volume2, MessageSquare, Globe, Database,
   Phone, Users, PhoneCall, PhoneForwarded, Voicemail, PhoneOff, User,
   GitBranch, Variable, Layers, Hash, AlertCircle
 } from 'lucide-vue-next'
+
+// Flow node configuration enums
+const NODE_ENUMS = {
+  audioPromptTypes: [
+    { value: 'audio', label: 'Audio File' },
+    { value: 'tts', label: 'Text-to-Speech' },
+  ],
+  terminators: [
+    { value: '#', label: '# key' },
+    { value: '*', label: '* key' },
+    { value: '', label: 'None (timeout only)' },
+  ],
+  speechProviders: [
+    { value: 'google', label: 'Google Cloud Speech' },
+    { value: 'aws', label: 'AWS Transcribe' },
+    { value: 'azure', label: 'Azure Speech' },
+  ],
+  ttsEngines: [
+    { value: 'flite', label: 'Flite (Local)' },
+    { value: 'google', label: 'Google TTS' },
+    { value: 'aws', label: 'AWS Polly' },
+    { value: 'azure', label: 'Azure Speech' },
+  ],
+  ttsVoices: [
+    { value: 'default', label: 'Default' },
+    { value: 'male', label: 'Male' },
+    { value: 'female', label: 'Female' },
+  ],
+  sayDigitFormats: [
+    { value: 'digits', label: 'Digits' },
+    { value: 'number', label: 'Number' },
+    { value: 'currency', label: 'Currency' },
+    { value: 'time', label: 'Time' },
+    { value: 'date', label: 'Date' },
+  ],
+  httpMethods: [
+    { value: 'GET', label: 'GET' },
+    { value: 'POST', label: 'POST' },
+    { value: 'PUT', label: 'PUT' },
+    { value: 'DELETE', label: 'DELETE' },
+  ],
+  smsProviders: [
+    { value: 'signalwire', label: 'SignalWire' },
+    { value: 'twilio', label: 'Twilio' },
+    { value: 'nexmo', label: 'Nexmo' },
+  ],
+  databaseConnections: [
+    { value: 'default', label: 'Default' },
+    { value: 'mysql', label: 'MySQL' },
+    { value: 'rest', label: 'REST API' },
+  ],
+  conditionOperators: [
+    { value: '==', label: 'equals' },
+    { value: '!=', label: 'not equals' },
+    { value: '>', label: 'greater than' },
+    { value: '<', label: 'less than' },
+    { value: '>=', label: 'greater or equal' },
+    { value: '<=', label: 'less or equal' },
+    { value: 'contains', label: 'contains' },
+    { value: 'starts_with', label: 'starts with' },
+    { value: 'regex', label: 'matches regex' },
+  ],
+}
 
 const props = defineProps({
   data: Object,
@@ -456,6 +486,13 @@ const props = defineProps({
 })
 
 defineEmits(['drag-start', 'select', 'delete', 'connector-drag'])
+
+const flowExtensions = inject('flowExtensions', ref([]))
+const flowQueues = inject('flowQueues', ref([]))
+const flowIVRMenus = inject('flowIVRMenus', ref([]))
+const flowRingGroups = inject('flowRingGroups', ref([]))
+const flowRecordings = inject('flowRecordings', ref([]))
+const flowVoicemailBoxes = inject('flowVoicemailBoxes', ref([]))
 
 const showEditor = ref(false)
 

@@ -80,12 +80,16 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { voicemailAPI } from '../../services/api'
 
+const toast = inject('toast')
 const route = useRoute()
 const router = useRouter()
 const isNew = computed(() => !route.params.id)
+
+const saving = ref(false)
 
 const form = ref({
   id: '',
@@ -98,9 +102,41 @@ const form = ref({
   transcription: false
 })
 
-const save = () => {
-  console.log('Saving voicemail box:', form.value)
-  router.back()
+const save = async () => {
+  // Guard: require extension
+  if (!form.value.id) {
+    toast?.warning('Voicemail ID / Extension is required.')
+    return
+  }
+
+  saving.value = true
+  try {
+    const payload = {
+      extension: form.value.id,
+      type: form.value.type,
+      pin: form.value.password,
+      owner_name: form.value.guestName || '',
+      notification_email: form.value.email,
+      attach_file: form.value.attach_file,
+      transcription: form.value.transcription,
+      webhook_url: form.value.webhook_url || '',
+    }
+
+    if (isNew.value) {
+      await voicemailAPI.createBox(payload)
+      toast?.success('Voicemail box created')
+    } else {
+      await voicemailAPI.updateBox(form.value.id, payload)
+      toast?.success('Voicemail box updated')
+    }
+
+    router.push('/admin/voicemail-boxes')
+  } catch (err) {
+    console.error('Failed to save voicemail box:', err)
+    toast?.error(err.message || 'Failed to save voicemail box')
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 

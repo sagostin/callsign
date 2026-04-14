@@ -12,26 +12,66 @@
         <input v-model="form.name" class="input-field" placeholder="Sales Team">
      </div>
      
-     <div class="form-row">
-        <div class="form-group">
-           <label>Extension</label>
-           <input v-model="form.extension" class="input-field" placeholder="500">
-        </div>
-        <div class="form-group">
-           <label>Ring Strategy</label>
-           <select v-model="form.strategy" class="input-field">
-              <option value="ring-all">Ring All</option>
-              <option value="sequential">Sequential</option>
-              <option value="enterprise">Enterprise</option>
-              <option value="random">Random</option>
-           </select>
-        </div>
-     </div>
+      <div class="form-row">
+         <div class="form-group">
+            <label>Extension</label>
+            <input v-model="form.extension" class="input-field" placeholder="500">
+         </div>
+         <div class="form-group">
+            <label>Ring Strategy</label>
+            <select v-model="form.strategy" class="input-field">
+               <option value="simultaneous">Ring All</option>
+               <option value="sequence">Sequential</option>
+               <option value="enterprise">Enterprise</option>
+               <option value="rollover">Rollover</option>
+               <option value="random">Random</option>
+            </select>
+         </div>
+      </div>
 
-     <div class="form-group">
-        <label>Ring Timeout (Seconds)</label>
-        <input v-model="form.timeout" type="number" class="input-field" value="30">
-     </div>
+      <div class="form-row">
+         <div class="form-group">
+            <label>Ring Timeout (seconds per member)</label>
+            <input type="number" v-model="form.timeout" class="input-field" min="5" max="120" />
+            <p class="hint">How long to ring each member before trying next</p>
+         </div>
+         <div class="form-group">
+            <label>Ringback Tone</label>
+            <select v-model="ringGroupSettings.ringback" class="input-field">
+               <option value="default">Default</option>
+               <option value="music">Music</option>
+               <option value="silent">Silent</option>
+            </select>
+         </div>
+      </div>
+
+      <div class="form-group">
+         <label class="checkbox-label">
+            <input type="checkbox" v-model="ringGroupSettings.skipBusyMembers" />
+            Skip members who are busy
+         </label>
+         <p class="hint">When enabled, busy members are skipped in the ring order</p>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="form-group">
+         <label>On No Answer - Destination Type</label>
+         <select v-model="ringGroupSettings.timeoutDestType" class="input-field">
+            <option value="">Select action...</option>
+            <option value="voicemail">Voicemail</option>
+            <option value="extension">Extension</option>
+            <option value="queue">Queue</option>
+            <option value="ring_group">Ring Group</option>
+            <option value="ivr">IVR Menu</option>
+            <option value="hangup">Hang Up</option>
+         </select>
+      </div>
+
+      <div class="form-group" v-if="ringGroupSettings.timeoutDestType && ringGroupSettings.timeoutDestType !== 'hangup'">
+         <label>Destination</label>
+         <input type="text" v-model="ringGroupSettings.timeoutDestValue" class="input-field" placeholder="Extension or number" />
+      </div>
      
      <div class="divider"></div>
      
@@ -77,9 +117,16 @@ const isNew = computed(() => !route.params.id)
 const form = ref({
    name: '',
    extension: '',
-   strategy: 'ring-all',
+   strategy: 'simultaneous',
    timeout: 30,
    members: []
+})
+
+const ringGroupSettings = ref({
+   skipBusyMembers: true,
+   timeoutDestType: '',
+   timeoutDestValue: '',
+   ringback: 'default',
 })
 
 onMounted(async () => {
@@ -90,12 +137,18 @@ onMounted(async () => {
       form.value = {
         name: d.name || '',
         extension: d.extension || '',
-        strategy: d.strategy || 'ring-all',
+        strategy: d.strategy || 'simultaneous',
         timeout: d.timeout || 30,
         members: (d.members || []).map(m => ({
           type: m.type || 'user',
           target: m.extension || m.target || ''
         }))
+      }
+      ringGroupSettings.value = {
+        skipBusyMembers: d.skipBusyMembers ?? true,
+        timeoutDestType: d.timeoutDestType || '',
+        timeoutDestValue: d.timeoutDestValue || '',
+        ringback: d.ringback || 'default',
       }
     } catch (err) {
       toast?.error(err.message, 'Failed to load ring group')
@@ -113,7 +166,11 @@ const save = async () => {
       extension: form.value.extension,
       strategy: form.value.strategy,
       timeout: form.value.timeout,
-      members: form.value.members.filter(m => m.target)
+      members: form.value.members.filter(m => m.target),
+      skip_busy_members: ringGroupSettings.value.skipBusyMembers,
+      timeout_dest_type: ringGroupSettings.value.timeoutDestType,
+      timeout_dest_value: ringGroupSettings.value.timeoutDestValue,
+      ringback: ringGroupSettings.value.ringback,
     }
     if (isNew.value) {
       await ringGroupsAPI.create(payload)
@@ -152,4 +209,7 @@ label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var
 .members-list { display: flex; flex-direction: column; gap: 8px; }
 .member-row { display: flex; gap: 8px; align-items: center; }
 .flex-1 { flex: 1; }
+.hint { font-size: 11px; color: var(--text-muted); margin: 0; }
+.checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.checkbox-label input { width: 16px; height: 16px; }
 </style>

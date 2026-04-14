@@ -27,7 +27,7 @@
       <div class="form-group">
         <label>Strategy</label>
         <select v-model="form.strategy" class="input-field">
-          <option value="ring-all">Ring All</option>
+          <option value="simultaneous">Ring All</option>
           <option value="round-robin">Round Robin</option>
           <option value="longest-idle">Longest Idle Agent</option>
         </select>
@@ -42,9 +42,9 @@
           <div class="input-group">
             <select v-model="selectedAgent" class="input-field">
               <option value="" disabled selected>Select Agent...</option>
-              <option value="101">101 - Alice Smith</option>
-              <option value="102">102 - Bob Jones</option>
-              <option value="105">105 - David Lee</option>
+              <option v-for="agent in availableAgents" :key="agent.id" :value="agent.extension">
+                {{ agent.extension }} - {{ agent.name || 'Extension' }}
+              </option>
             </select>
             <button class="btn-secondary" @click="addAgent">Add</button>
           </div>
@@ -93,9 +93,32 @@
       </div>
     </div>
 
+    <div class="form-section">
+      <h3>4. Announcements</h3>
+      
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="announcementSettings.announcePosition" />
+          Announce caller's position in queue
+        </label>
+      </div>
+      
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="announcementSettings.announceWaitTime" />
+          Announce estimated wait time
+        </label>
+      </div>
+      
+      <div class="form-group" v-if="announcementSettings.announcePosition || announcementSettings.announceWaitTime">
+        <label>Announcement Frequency (seconds)</label>
+        <input type="number" v-model="announcementSettings.announceFrequency" class="input-field" min="15" max="120" />
+      </div>
+    </div>
+
     <!-- ESCALATION & FAILOVER -->
     <div class="form-section">
-      <h3>4. Escalation & Failover</h3>
+      <h3>5. Escalation & Failover</h3>
       
       <div class="escalation-rules">
         <div class="rule-row">
@@ -122,8 +145,9 @@
               <option value="ivr">IVR</option>
            </select>
            <select v-model="form.failoverTarget" class="input-field">
-              <option value="vm_gen">General Mailbox</option>
-              <option value="vm_sales">Sales Mailbox</option>
+              <option v-for="agent in availableAgents" :key="agent.id" :value="agent.extension">
+                {{ agent.extension }} - {{ agent.name || 'Extension' }}
+              </option>
            </select>
         </div>
       </div>
@@ -140,7 +164,7 @@
 <script setup>
 import { ref, computed, onMounted, inject } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { queuesAPI } from '../../services/api'
+import { queuesAPI, extensionsAPI } from '../../services/api'
 
 const toast = inject('toast')
 const router = useRouter()
@@ -150,7 +174,7 @@ const isNew = computed(() => route.params.id === 'new' || !route.params.id)
 const form = ref({
   name: '',
   extension: '',
-  strategy: 'ring-all',
+  strategy: 'simultaneous',
   agents: [],
   maxWait: 60,
   maxSize: 0,
@@ -162,6 +186,14 @@ const form = ref({
 })
 
 const selectedAgent = ref('')
+const availableAgents = ref([])
+
+const announcementSettings = ref({
+  announcePosition: true,
+  announceWaitTime: true,
+  announceFrequency: 30,
+  ringbackWhenEmpty: 'default',
+})
 
 const isValid = computed(() => {
   return form.value.name && form.value.extension
@@ -187,6 +219,15 @@ const removeAgent = (index) => {
   form.value.agents.splice(index, 1)
 }
 
+const loadAgents = async () => {
+  try {
+    const response = await extensionsAPI.list()
+    availableAgents.value = response.data?.data || response.data || []
+  } catch (err) {
+    console.error('Failed to load agents:', err)
+  }
+}
+
 const saveQueue = async () => {
   try {
     const payload = {
@@ -201,6 +242,10 @@ const saveQueue = async () => {
       escalation_time: form.value.escalationTime || null,
       failover_type: form.value.failoverType,
       failover_target: form.value.failoverTarget,
+      announce_position: announcementSettings.value.announcePosition,
+      announce_wait_time: announcementSettings.value.announceWaitTime,
+      announce_frequency: announcementSettings.value.announceFrequency,
+      ringback_when_empty: announcementSettings.value.ringbackWhenEmpty,
     }
     if (isNew.value) {
       await queuesAPI.create(payload)
@@ -216,6 +261,7 @@ const saveQueue = async () => {
 }
 
 onMounted(async () => {
+  loadAgents()
   if (!isNew.value && route.params.id) {
     try {
       const res = await queuesAPI.get(route.params.id)
@@ -223,7 +269,7 @@ onMounted(async () => {
       form.value = {
         name: d.name || '',
         extension: d.extension || '',
-        strategy: d.strategy || 'ring-all',
+        strategy: d.strategy || 'simultaneous',
         agents: d.agents?.map(a => a.extension || a) || [],
         maxWait: d.max_wait || 60,
         maxSize: d.max_size || 0,
@@ -232,6 +278,12 @@ onMounted(async () => {
         escalationTime: d.escalation_time || '',
         failoverType: d.failover_type || 'voicemail',
         failoverTarget: d.failover_target || 'vm_gen'
+      }
+      announcementSettings.value = {
+        announcePosition: d.announce_position ?? true,
+        announceWaitTime: d.announce_wait_time ?? true,
+        announceFrequency: d.announce_frequency ?? 30,
+        ringbackWhenEmpty: d.ringback_when_empty || 'default',
       }
     } catch (err) {
       toast?.error(err.message, 'Failed to load queue')
@@ -266,6 +318,10 @@ onMounted(async () => {
   gap: var(--spacing-xl);
 }
 
+.form-section {
+  margin-bottom: var(--spacing-xl);
+}
+
 .form-section h3 {
   font-size: var(--text-md);
   color: var(--text-primary);
@@ -273,6 +329,24 @@ onMounted(async () => {
   margin-bottom: var(--spacing-md);
   border-bottom: 1px solid var(--border-color);
   padding-bottom: 8px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
 }
 
 .form-grid {

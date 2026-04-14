@@ -21,8 +21,18 @@
       </div>
     </div>
 
+    <!-- Loading/Error States -->
+    <div v-if="isLoading" class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading system administrators...</p>
+    </div>
+    <div v-else-if="errorMessage" class="error-state">
+      <p>{{ errorMessage }}</p>
+      <button class="btn-secondary" @click="fetchUsers">Retry</button>
+    </div>
+
     <!-- Stats Row -->
-    <div class="stats-row">
+    <div v-if="!isLoading && !errorMessage" class="stats-row">
       <div class="stat-card">
         <div class="stat-icon total"><UsersIcon class="icon" /></div>
         <div class="stat-info">
@@ -54,7 +64,7 @@
     </div>
 
     <!-- Users Table -->
-    <div class="users-table-container">
+    <div v-if="!isLoading && !errorMessage" class="users-table-container">
       <div class="table-header">
         <div class="search-box">
           <SearchIcon class="search-icon" />
@@ -213,13 +223,15 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   Users as UsersIcon, CheckCircle as CheckCircleIcon, Shield as ShieldIcon,
   Activity as ActivityIcon, Search as SearchIcon, Plus as PlusIcon,
   Edit as EditIcon, Trash2 as TrashIcon, Key as KeyIcon, Eye as EyeIcon,
   X as XIcon, Info as InfoIcon
 } from 'lucide-vue-next'
+import { usersAPI } from '@/services/api'
+import api from '@/services/api'
 
 const searchQuery = ref('')
 const roleFilter = ref('')
@@ -236,20 +248,38 @@ const userForm = ref({
   sendWelcomeEmail: true
 })
 
-const users = ref([
-  { id: 1, name: 'System Root', email: 'root@callsign.io', role: 'superadmin', status: 'active', twoFactor: true, lastLogin: 'Just now', online: true },
-  { id: 2, name: 'Alice Thompson', email: 'alice.t@callsign.io', role: 'superadmin', status: 'active', twoFactor: true, lastLogin: '2 hours ago', online: true },
-  { id: 3, name: 'Bob Martinez', email: 'bob.m@callsign.io', role: 'admin', status: 'active', twoFactor: true, lastLogin: 'Yesterday', online: false, tenantAccess: ['acme', 'globex'] },
-  { id: 4, name: 'Carol Wilson', email: 'carol.w@callsign.io', role: 'admin', status: 'active', twoFactor: false, lastLogin: '3 days ago', online: false, tenantAccess: ['acme'] },
-  { id: 5, name: 'David Chen', email: 'david.c@callsign.io', role: 'readonly', status: 'inactive', twoFactor: false, lastLogin: '2 weeks ago', online: false, tenantAccess: [] },
-])
+const users = ref([])
+const availableTenants = ref([])
+const isLoading = ref(false)
+const errorMessage = ref('')
 
-const availableTenants = ref([
-  { id: 'acme', name: 'ACME Corporation' },
-  { id: 'globex', name: 'Globex Industries' },
-  { id: 'initech', name: 'Initech Solutions' },
-  { id: 'umbrella', name: 'Umbrella Corp' },
-])
+onMounted(async () => {
+  isLoading.value = true
+  errorMessage.value = ''
+  try {
+    const response = await usersAPI.list({ scope: 'system' })
+    users.value = response.data || []
+  } catch (err) {
+    errorMessage.value = err.message || 'Failed to load system administrators'
+    console.error('Failed to fetch system users:', err)
+  } finally {
+    isLoading.value = false
+  }
+})
+
+const fetchUsers = async () => {
+  isLoading.value = true
+  errorMessage.value = ''
+  try {
+    const response = await usersAPI.list({ scope: 'system' })
+    users.value = response.data || []
+  } catch (err) {
+    errorMessage.value = err.message || 'Failed to load system administrators'
+    console.error('Failed to fetch system users:', err)
+  } finally {
+    isLoading.value = false
+  }
+}
 
 const filteredUsers = computed(() => {
   return users.value.filter(user => {
@@ -274,28 +304,68 @@ const editUser = (user) => {
   showAddModal.value = true
 }
 
-const resetPassword = (user) => alert(`Password reset email sent to ${user.email}`)
-const viewActivity = (user) => alert(`Viewing activity log for ${user.name}`)
-const deleteUser = (user) => {
-  if (confirm(`Delete system admin ${user.name}?`)) {
-    users.value = users.value.filter(u => u.id !== user.id)
+const resetPassword = async (user) => {
+  if (!confirm(`Send password reset email to ${user.email}?`)) return
+  try {
+    await api.post(`/users/${user.id}/reset-password`)
+    alert(`Password reset email sent to ${user.email}`)
+  } catch (err) {
+    alert(`Failed to send reset email: ${err.message}`)
   }
 }
 
-const saveUser = () => {
-  if (editingUser.value) {
-    Object.assign(editingUser.value, userForm.value)
-  } else {
-    users.value.push({
-      id: Date.now(),
-      ...userForm.value,
-      status: 'active',
-      twoFactor: userForm.value.requireTwoFactor,
-      lastLogin: 'Never',
-      online: false
-    })
+const viewActivity = async (user) => {
+  try {
+    const response = await api.get(`/users/${user.id}/activity`)
+    const activity = response.data || []
+    if (activity.length === 0) {
+      alert(`No recent activity for ${user.name}`)
+      return
+    }
+    const summary = activity.slice(0, 5).map(a => `${a.action} - ${a.timestamp}`).join('\n')
+    alert(`Recent activity for ${user.name}:\n\n${summary}`)
+  } catch (err) {
+    alert(`Failed to load activity: ${err.message}`)
   }
-  closeModal()
+}
+
+const deleteUser = async (user) => {
+  if (!confirm(`Delete system admin ${user.name}?`)) return
+  try {
+    await usersAPI.delete(user.id)
+    users.value = users.value.filter(u => u.id !== user.id)
+  } catch (err) {
+    alert(`Failed to delete user: ${err.message}`)
+  }
+}
+
+const saveUser = async () => {
+  const formData = {
+    name: userForm.value.name,
+    email: userForm.value.email,
+    role: userForm.value.role,
+    tenant_access: userForm.value.tenantAccess,
+    require_two_factor: userForm.value.requireTwoFactor,
+    send_welcome_email: userForm.value.sendWelcomeEmail,
+  }
+
+  if (!editingUser.value) {
+    formData.password = userForm.value.password
+  }
+
+  try {
+    if (editingUser.value) {
+      const response = await usersAPI.update(editingUser.value.id, formData)
+      const index = users.value.findIndex(u => u.id === editingUser.value.id)
+      if (index !== -1) users.value[index] = { ...users.value[index], ...response.data }
+    } else {
+      const response = await usersAPI.create(formData)
+      users.value.push(response.data)
+    }
+    closeModal()
+  } catch (err) {
+    alert(`Failed to save user: ${err.message}`)
+  }
 }
 
 const closeModal = () => {
@@ -420,4 +490,31 @@ const closeModal = () => {
   .stats-row { grid-template-columns: repeat(2, 1fr); }
   .tenant-checkboxes { grid-template-columns: 1fr; }
 }
+
+/* Loading & Error States */
+.loading-state, .error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  gap: 16px;
+  color: var(--text-muted);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error-state { color: #dc2626; }
+.error-state .btn-secondary { margin-top: 8px; }
 </style>

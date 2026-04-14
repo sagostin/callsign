@@ -183,7 +183,7 @@ import {
   PhoneIncoming as PhoneIncomingIcon, PhoneOutgoing as PhoneOutgoingIcon,
   Edit as EditIcon, Trash2 as TrashIcon, Ban, Phone, Voicemail
 } from 'lucide-vue-next'
-import { routingAPI } from '../../services/api'
+import { routingAPI, cdrAPI } from '../../services/api'
 
 const filter = ref('all')
 const showCreateModal = ref(false)
@@ -197,11 +197,16 @@ const importType = ref('exact')
 const importAction = ref('reject')
 
 const blockedNumbers = ref([])
+const statsTotalHits = ref(0)
 
 // Computed stats
-const inboundCount = computed(() => blockedNumbers.value.length) // All are inbound for now
-const outboundCount = computed(() => 0) // Future feature
-const totalHits = computed(() => 0) // CDR integration TODO
+const inboundCount = computed(() =>
+  blockedNumbers.value.filter(r => r.type === 'Inbound' || r.type === 'Both').length
+)
+const outboundCount = computed(() =>
+  blockedNumbers.value.filter(r => r.type === 'Outbound' || r.type === 'Both').length
+)
+const totalHits = computed(() => statsTotalHits.value)
 
 const filteredRules = computed(() => {
   return blockedNumbers.value // Filter by type when we add outbound support
@@ -222,6 +227,25 @@ const loadBlocks = async () => {
     console.error('Failed to load call blocks', e)
   } finally {
     isLoading.value = false
+  }
+}
+
+const loadBlockStats = async () => {
+  const now = new Date()
+  const startDate = now.toISOString().split('T')[0]
+  const endDate = startDate
+
+  try {
+    const response = await cdrAPI.list({
+      start_date: startDate,
+      end_date: endDate,
+      disposition: 'BUSY',
+    })
+    const records = response.data.data || []
+    statsTotalHits.value = records.length
+  } catch (e) {
+    console.error('Failed to load block stats from CDR', e)
+    statsTotalHits.value = 0
   }
 }
 
@@ -288,8 +312,9 @@ const processImport = async () => {
   }
 }
 
-onMounted(() => {
-  loadBlocks()
+onMounted(async () => {
+  await loadBlocks()
+  await loadBlockStats()
 })
 </script>
 

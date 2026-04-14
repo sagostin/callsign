@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -35,9 +36,22 @@ func SeedDefaultAdmin(db *gorm.DB) error {
 	}
 
 	password := os.Getenv("DEFAULT_ADMIN_PASSWORD")
-	if password == "" {
-		password = "changeme123" // Should be changed immediately after first login
-		log.Warn("Using default admin password - PLEASE CHANGE THIS IMMEDIATELY!")
+	runEnv := os.Getenv("RUN_ENV")
+
+	// In production (RUN_ENV=production), require the env var
+	if runEnv == "production" || runEnv == "prod" {
+		if password == "" {
+			return fmt.Errorf("FATAL: DEFAULT_ADMIN_PASSWORD environment variable must be set in production. Refusing to start with default credentials.")
+		}
+	} else {
+		// Development mode - use fallback with warning
+		if password == "" {
+			password = "changeme123"
+			log.Warn("========================================")
+			log.Warn("WARNING: Using default admin password in DEVELOPMENT mode!")
+			log.Warn("Set DEFAULT_ADMIN_PASSWORD environment variable to secure the admin account.")
+			log.Warn("========================================")
+		}
 	}
 
 	// Create the admin user

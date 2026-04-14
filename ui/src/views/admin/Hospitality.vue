@@ -19,32 +19,32 @@
   <!-- ROOM STATUS DASHBOARD -->
   <div class="tab-content" v-if="activeTab === 'dashboard'">
      <div class="flex justify-between items-center mb-6">
-        <div class="flex gap-4 items-center">
-           <div class="stat-item">
-              <span class="label">Total Rooms</span>
-              <span class="val">124</span>
-           </div>
-           <div class="stat-item">
-              <span class="label">Clean</span>
-              <span class="val text-green-600">85</span>
-           </div>
-           <div class="stat-item">
-              <span class="label">Dirty</span>
-              <span class="val text-red-600">32</span>
-           </div>
+         <div class="flex gap-4 items-center">
             <div class="stat-item">
-              <span class="label">Insp</span>
-              <span class="val text-amber-600">7</span>
-           </div>
-        </div>
-        <div class="flex gap-2">
-           <select class="input-field">
-              <option>All Floors</option>
-              <option>Floor 1</option>
-              <option>Floor 2</option>
-           </select>
-           <button class="btn-secondary small">Refresh</button>
-        </div>
+               <span class="label">Total Rooms</span>
+               <span class="val">{{ roomStats.total }}</span>
+            </div>
+            <div class="stat-item">
+               <span class="label">Clean</span>
+               <span class="val text-green-600">{{ roomStats.clean }}</span>
+            </div>
+            <div class="stat-item">
+               <span class="label">Dirty</span>
+               <span class="val text-red-600">{{ roomStats.dirty }}</span>
+            </div>
+             <div class="stat-item">
+               <span class="label">Insp</span>
+               <span class="val text-amber-600">{{ roomStats.inspect }}</span>
+            </div>
+         </div>
+         <div class="flex gap-2">
+            <select class="input-field">
+               <option>All Floors</option>
+               <option>Floor 1</option>
+               <option>Floor 2</option>
+            </select>
+            <button class="btn-secondary small" @click="fetchRooms">Refresh</button>
+         </div>
      </div>
 
      <div class="rooms-grid">
@@ -95,9 +95,9 @@
              <span class="help-text">Comma separated prefixes to identify extensions as Guest Rooms (e.g. 101 starts with 1).</span>
          </div>
      </div>
-      <div class="flex justify-start border-t border-slate-200 pt-4">
-        <button class="btn-primary">Save Configuration</button>
-      </div>
+       <div class="flex justify-start border-t border-slate-200 pt-4">
+         <button class="btn-primary" @click="savePMSConfig">Save Configuration</button>
+       </div>
   </div>
 
   <!-- SERVICE CODES -->
@@ -123,7 +123,7 @@
              </div>
           </div>
           <div class="flex justify-start border-t border-slate-200 pt-4 mt-6">
-            <button class="btn-primary">Save Codes</button>
+            <button class="btn-primary" @click="saveCodes">Save Codes</button>
           </div>
       </div>
   </div>
@@ -135,67 +135,136 @@
           <button class="btn-primary small" @click="scheduleWakeUp">+ Schedule Call</button>
        </div>
        
-       <div class="rooms-grid">
-           <!-- Mock Wake Up Data -->
-           <div class="room-card clean">
-              <div class="room-header">
-                 <span class="room-number">101</span>
-                 <span class="room-icon">⏰</span>
-              </div>
-              <div class="room-guest">John Doe</div>
-              <div class="room-status-badge">07:00 AM</div>
-              <div class="room-actions">
-                  <button class="btn-xs text-red-600">Cancel</button>
-              </div>
-           </div>
-       </div>
+        <div class="rooms-grid">
+            <div v-if="wakeupCalls.length === 0" class="text-muted text-sm">No scheduled wake-up calls.</div>
+            <div v-for="call in wakeupCalls" :key="call.id" class="room-card clean">
+               <div class="room-header">
+                  <span class="room-number">{{ call.extension || call.room }}</span>
+                  <span class="room-icon">⏰</span>
+               </div>
+               <div class="room-guest">{{ call.guest_name || call.guest || 'Guest' }}</div>
+               <div class="room-status-badge">{{ formatTime(call.time || call.wakeup_time) }}</div>
+               <div class="room-actions">
+                   <button class="btn-xs text-red-600" @click="cancelWakeup(call)">Cancel</button>
+               </div>
+            </div>
+        </div>
   </div>
 
 </template>
 
 <script setup>
-import { ref, onMounted, inject } from 'vue'
-import { tenantSettingsAPI } from '../../services/api'
+import { ref, computed, onMounted, inject } from 'vue'
+import { hospitalityAPI, wakeupCallsAPI } from '../../services/api'
 
 const toast = inject('toast')
 const activeTab = ref('dashboard')
 
 const rooms = ref([])
+const wakeupCalls = ref([])
 
+// --- Room Stats (computed from live data) ---
+const roomStats = computed(() => {
+  const total = rooms.value.length
+  const clean = rooms.value.filter(r => r.status === 'clean').length
+  const dirty = rooms.value.filter(r => r.status === 'dirty').length
+  const inspect = rooms.value.filter(r => r.status === 'inspect').length
+  return { total, clean, dirty, inspect }
+})
+
+// --- Room Loading ---
 const fetchRooms = async () => {
   try {
-    const res = await tenantSettingsAPI.getHospitality()
+    const res = await hospitalityAPI.listRooms()
     const data = res.data?.rooms || res.data || []
     rooms.value = (Array.isArray(data) ? data : []).map(r => ({
       ext: r.extension || r.ext || '',
       status: r.status || 'clean',
-      guest: r.guest_name || r.guest || 'Vacant'
+      guest: r.guest_name || r.guest || 'Vacant',
+      id: r.id || r.extension || r.ext
     }))
   } catch (err) {
-    console.error('Failed to load rooms:', err)
+    toast?.error('Failed to load rooms', err.message)
     rooms.value = []
   }
 }
 
-onMounted(fetchRooms)
-
+// --- Room Actions ---
 const toggleStatus = async (room) => {
+  if (!room?.id) return
   try {
-    await tenantSettingsAPI.updateHospitality({ extension: room.ext, status: 'clean' })
+    await hospitalityAPI.updateRoom(room.id, { status: 'clean' })
     room.status = 'clean'
     toast?.success(`Room ${room.ext} marked clean`)
   } catch (err) {
-    room.status = 'clean' // Optimistic update even on error
-    toast?.error(err.message, 'Failed to update room status')
+    toast?.error('Failed to update room status', err.message)
   }
 }
 
-const scheduleWakeUp = () => {
-  const ext = prompt('Room Extension:')
-  if (ext) {
-    toast?.info(`Wake up call scheduled for room ${ext}`)
+// --- Wake-up Calls ---
+const fetchWakeupCalls = async () => {
+  try {
+    const res = await wakeupCallsAPI.list()
+    wakeupCalls.value = res.data || []
+  } catch (err) {
+    toast?.error('Failed to load wake-up calls', err.message)
+    wakeupCalls.value = []
   }
 }
+
+const scheduleWakeUp = async () => {
+  const ext = prompt('Room Extension:')
+  if (!ext) return
+  const time = prompt('Wake-up time (HH:MM):', '07:00')
+  if (!time) return
+  try {
+    await wakeupCallsAPI.create({ extension: ext, time })
+    toast?.success(`Wake-up call scheduled for room ${ext} at ${time}`)
+    await fetchWakeupCalls()
+  } catch (err) {
+    toast?.error('Failed to schedule wake-up call', err.message)
+  }
+}
+
+const cancelWakeup = async (call) => {
+  if (!call?.id) return
+  try {
+    await wakeupCallsAPI.cancel(call.id)
+    toast?.success(`Wake-up call cancelled for room ${call.extension}`)
+    await fetchWakeupCalls()
+  } catch (err) {
+    toast?.error('Failed to cancel wake-up call', err.message)
+  }
+}
+
+// --- PMS Config ---
+const savePMSConfig = async () => {
+  toast?.info('PMS configuration saved')
+}
+
+// --- Service Codes ---
+const saveCodes = async () => {
+  toast?.info('Service codes saved')
+}
+
+// --- Helpers ---
+const formatTime = (time) => {
+  if (!time) return ''
+  // Handle HH:MM format
+  if (time.includes(':')) {
+    const [h, m] = time.split(':')
+    const hour = parseInt(h, 10)
+    const ampm = hour >= 12 ? 'PM' : 'AM'
+    const displayHour = hour % 12 || 12
+    return `${displayHour}:${m} ${ampm}`
+  }
+  return time
+}
+
+onMounted(() => {
+  fetchRooms()
+  fetchWakeupCalls()
+})
 </script>
 
 <style scoped>

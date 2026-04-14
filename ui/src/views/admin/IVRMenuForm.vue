@@ -74,10 +74,7 @@
         <div class="prop-section">
           <label>Language</label>
           <select v-model="form.language" class="prop-select">
-            <option value="en-US">English (US)</option>
-            <option value="en-GB">English (UK)</option>
-            <option value="es-ES">Spanish</option>
-            <option value="fr-FR">French</option>
+            <option v-for="lang in FLOW_ENUMS.languages" :key="lang.value" :value="lang.value">{{ lang.label }}</option>
           </select>
         </div>
 
@@ -98,10 +95,7 @@
         <div class="prop-section">
           <label>Ring Back Tone</label>
           <select v-model="form.ringBack" class="prop-select">
-            <option value="default">Default Ring</option>
-            <option value="us-ring">US Ring</option>
-            <option value="uk-ring">UK Ring</option>
-            <option value="music">Music on Hold</option>
+            <option v-for="tone in FLOW_ENUMS.ringbackTones" :key="tone.value" :value="tone.value">{{ tone.label }}</option>
           </select>
         </div>
 
@@ -127,19 +121,13 @@
             <div class="form-group">
               <label>Language</label>
               <select v-model="form.language" class="input-field">
-                <option value="en-US">English (US)</option>
-                <option value="en-GB">English (UK)</option>
-                <option value="es-ES">Spanish</option>
-                <option value="fr-FR">French</option>
+                <option v-for="lang in FLOW_ENUMS.languages" :key="lang.value" :value="lang.value">{{ lang.label }}</option>
               </select>
             </div>
             <div class="form-group">
               <label>Ring Back</label>
               <select v-model="form.ringBack" class="input-field">
-                <option value="default">Default Ring</option>
-                <option value="us-ring">US Ring</option>
-                <option value="uk-ring">UK Ring</option>
-                <option value="music">Music on Hold</option>
+                <option v-for="tone in FLOW_ENUMS.ringbackTones" :key="tone.value" :value="tone.value">{{ tone.label }}</option>
               </select>
             </div>
           </div>
@@ -157,8 +145,7 @@
             <div class="form-group">
               <label>Confirm Key</label>
               <select v-model="form.confirmKey" class="input-field">
-                <option value="#"># key</option>
-                <option value="*">* key</option>
+                <option v-for="term in FLOW_ENUMS.terminators" :key="term.value" :value="term.value">{{ term.label }}</option>
               </select>
             </div>
           </div>
@@ -168,18 +155,13 @@
             <div class="form-group">
               <label>TTS Engine</label>
               <select v-model="form.ttsEngine" class="input-field">
-                <option value="flite">Flite (Built-in)</option>
-                <option value="google">Google Cloud TTS</option>
-                <option value="aws">Amazon Polly</option>
-                <option value="azure">Azure Cognitive</option>
+                <option v-for="engine in FLOW_ENUMS.ttsEngines" :key="engine.value" :value="engine.value">{{ engine.label }}</option>
               </select>
             </div>
             <div class="form-group">
               <label>TTS Voice</label>
               <select v-model="form.ttsVoice" class="input-field">
-                <option value="default">Default</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
+                <option v-for="voice in FLOW_ENUMS.ttsVoices" :key="voice.value" :value="voice.value">{{ voice.label }}</option>
               </select>
             </div>
           </div>
@@ -211,15 +193,51 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, provide, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Play as PlayIcon, Settings as SettingsIcon } from 'lucide-vue-next'
-import { ivrAPI, recordingsAPI, queuesAPI, extensionsAPI } from '../../services/api.js'
+import { ivrAPI, recordingsAPI, queuesAPI, extensionsAPI, ringGroupsAPI, voicemailAPI } from '../../services/api.js'
 import NodePalette from '../../components/flow/NodePalette.vue'
 import FlowCanvas from '../../components/flow/FlowCanvas.vue'
 
+const toast = inject('toast')
+
+// Flow node enums - ideally from API config
+const FLOW_ENUMS = {
+  languages: [
+    { value: 'en-US', label: 'English (US)' },
+    { value: 'en-GB', label: 'English (UK)' },
+    { value: 'es-ES', label: 'Spanish (Spain)' },
+    { value: 'fr-FR', label: 'French (France)' },
+    { value: 'de-DE', label: 'German (Germany)' },
+  ],
+  ringbackTones: [
+    { value: 'default', label: 'System Default' },
+    { value: 'us-ring', label: 'US Ring' },
+    { value: 'uk-ring', label: 'UK Ring' },
+    { value: 'music', label: 'Music' },
+  ],
+  ttsEngines: [
+    { value: 'flite', label: 'Flite (Local)' },
+    { value: 'google', label: 'Google Cloud TTS' },
+    { value: 'aws', label: 'AWS Polly' },
+    { value: 'azure', label: 'Azure Speech' },
+  ],
+  ttsVoices: [
+    { value: 'default', label: 'Default' },
+    { value: 'male', label: 'Male' },
+    { value: 'female', label: 'Female' },
+  ],
+  terminators: [
+    { value: '#', label: '# key' },
+    { value: '*', label: '* key' },
+    { value: '', label: 'None (timeout only)' },
+  ]
+}
+
 const route = useRoute()
 const router = useRouter()
+
 const isNew = computed(() => route.params.id === 'new')
 const loading = ref(false)
 const saving = ref(false)
@@ -266,6 +284,16 @@ const recordings = ref([])
 const queuesList = ref([])
 const extensionsList = ref([])
 const ivrMenusList = ref([])
+const ringGroupsList = ref([])
+const voicemailBoxesList = ref([])
+
+// Provide dynamic data to child flow components
+provide('flowExtensions', extensionsList)
+provide('flowQueues', queuesList)
+provide('flowIVRMenus', ivrMenusList)
+provide('flowRingGroups', ringGroupsList)
+provide('flowRecordings', recordings)
+provide('flowVoicemailBoxes', voicemailBoxesList)
 
 const zoomIn = () => { zoom.value = Math.min(2, zoom.value + 0.1) }
 const zoomOut = () => { zoom.value = Math.max(0.5, zoom.value - 0.1) }
@@ -276,8 +304,22 @@ const clearCanvas = () => {
   }
 }
 
-const testIVR = () => {
-  alert('Testing IVR: ' + (form.value.name || 'Untitled') + '\nFlow has ' + flowData.value.nodes.length + ' nodes and ' + flowData.value.connections.length + ' connections.')
+const testIVR = async () => {
+  if (!form.value.extension) {
+    toast?.warning('Please set an extension number before testing')
+    return
+  }
+  try {
+    const response = await ivrAPI.testMenu ? 
+      ivrAPI.testMenu(route.params.id) :
+      ivrAPI.callMenu ? 
+        ivrAPI.callMenu({ extension: form.value.extension }) :
+        Promise.reject(new Error('Test not available'))
+    toast?.success(`Testing IVR: ${form.value.name || 'Untitled'} - calling extension ${form.value.extension}`)
+  } catch (e) {
+    console.error('Failed to test IVR:', e)
+    toast?.error(e.message || 'Failed to test IVR')
+  }
 }
 
 // Build the API payload from form + flow data
@@ -304,7 +346,7 @@ const buildPayload = () => ({
 // Save menu to backend
 const saveMenu = async () => {
   if (!form.value.name) {
-    alert('Please enter a menu name.')
+    toast?.warning('Please enter a menu name.')
     return
   }
   saving.value = true
@@ -318,7 +360,7 @@ const saveMenu = async () => {
     router.push('/admin/ivr')
   } catch (err) {
     console.error('Failed to save IVR menu:', err)
-    alert('Failed to save IVR menu: ' + (err.response?.data?.error || err.message))
+    toast?.error(err.message || 'Failed to save IVR menu')
   } finally {
     saving.value = false
   }
@@ -361,11 +403,13 @@ const loadMenu = async () => {
 // Load dynamic data for dropdowns
 const loadDropdownData = async () => {
   try {
-    const [recRes, queueRes, extRes, ivrRes] = await Promise.allSettled([
+    const [recRes, queueRes, extRes, ivrRes, rgRes, vmRes] = await Promise.allSettled([
       recordingsAPI.list(),
       queuesAPI.list(),
       extensionsAPI.list(),
-      ivrAPI.listMenus()
+      ivrAPI.listMenus(),
+      ringGroupsAPI.list(),
+      voicemailAPI.listBoxes()
     ])
     if (recRes.status === 'fulfilled') {
       recordings.value = (recRes.value.data.data || []).map(r => ({
@@ -380,6 +424,12 @@ const loadDropdownData = async () => {
     }
     if (ivrRes.status === 'fulfilled') {
       ivrMenusList.value = (ivrRes.value.data.data || []).filter(m => String(m.id) !== route.params.id)
+    }
+    if (rgRes.status === 'fulfilled') {
+      ringGroupsList.value = rgRes.value.data.data || []
+    }
+    if (vmRes.status === 'fulfilled') {
+      voicemailBoxesList.value = vmRes.value.data.data || []
     }
   } catch (err) {
     console.error('Failed to load dropdown data:', err)

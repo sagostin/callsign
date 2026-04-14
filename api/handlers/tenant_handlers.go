@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 // =====================
@@ -123,6 +125,27 @@ func (h *Handler) CreateExtension(c *fiber.Ctx) error {
 
 	if err := h.DB.Create(&ext).Error; err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create extension: " + err.Error()})
+	}
+
+	// Auto-create voicemail box if voicemail is enabled
+	if ext.VoicemailEnabled {
+		vmBox := models.VoicemailBox{
+			TenantID:       tenantID,
+			ExtensionID:    ext.ID,
+			Extension:      ext.Extension,
+			Password:       ext.VoicemailPassword,
+			Email:          ext.VoicemailMailTo,
+			Enabled:        true,
+			MaxMessages:    50,
+			MaxMessageSecs: 300, // 5 minutes
+			NewMessages:    0,
+			SavedMessages:  0,
+		}
+
+		if err := h.DB.Create(&vmBox).Error; err != nil {
+			h.logWarn("EXTENSION", "CreateExtension: Failed to create voicemail box", h.reqFields(c, nil))
+			// Don't fail the whole operation - just log the warning
+		}
 	}
 
 	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": ext, "message": "Extension created"})
@@ -947,6 +970,64 @@ func (h *Handler) DeleteIVRMenu(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "IVR menu deleted"})
 }
 
+// TestIVRMenu initiates a test call to an IVR menu for validation
+func (h *Handler) TestIVRMenu(c *fiber.Ctx) error {
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		h.logWarn("API", "TestIVRMenu: Not authenticated", h.reqFields(c, nil))
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
+	tenantID := middleware.GetTenantID(c)
+	menuID, err := strconv.Atoi(c.Params("id"))
+	if err != nil || menuID <= 0 {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid menu ID"})
+	}
+
+	// Verify menu exists and belongs to tenant
+	var menu models.IVRMenu
+	if err := h.DB.Where("id = ? AND tenant_id = ?", menuID, tenantID).First(&menu).Error; err != nil {
+		h.logWarn("API", "TestIVRMenu: IVR menu not found", h.reqFields(c, nil))
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "IVR menu not found"})
+	}
+
+	// Check ESL is connected before attempting test call
+	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		h.logError("API", "TestIVRMenu: ESL not connected", h.reqFields(c, nil))
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "Call system not available"})
+	}
+
+	// Get tenant for domain info
+	var tenant models.Tenant
+	if err := h.DB.First(&tenant, tenantID).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve tenant"})
+	}
+
+	// Originate a test call to the IVR menu
+	// Use *999 as test caller ID to identify test calls
+	testCallerID := "*999"
+	menuName := menu.Name
+
+	// Build originate command: call a local extension then transfer to IVR
+	// Using loopback to create a test channel that transfers to the IVR
+	cmd := fmt.Sprintf("originate {ignore_early_media=true,caller_id_name='IVR Test',caller_id_number='%s',originator=ivr_test_%d}loopback/999/XML/%s &transfer(%s XML %s)",
+		testCallerID, menuID, tenant.Domain, menuName, tenant.Domain)
+
+	uuid, err := h.ESLManager.BgAPI(cmd)
+	if err != nil {
+		h.logError("API", "TestIVRMenu: Failed to originate test call", h.reqFields(c, nil))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to initiate test call"})
+	}
+
+	h.logInfo("API", fmt.Sprintf("TestIVRMenu: Test call initiated for menu %s (uuid: %s)", menuName, uuid), h.reqFields(c, nil))
+	return c.JSON(fiber.Map{
+		"message": "Test call initiated",
+		"menu_id": menuID,
+		"menu":    menuName,
+		"uuid":    uuid,
+	})
+}
+
 // =====================
 // Queues
 // =====================
@@ -1231,6 +1312,24 @@ func (h *Handler) ListRingGroups(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": groups})
 }
 
+// RingGroupInput matches the frontend payload format
+type RingGroupInput struct {
+	Name         string                 `json:"name"`
+	Extension    string                 `json:"extension"`
+	Strategy     string                 `json:"strategy"`
+	Enabled      bool                   `json:"enabled"`
+	Timeout      int                    `json:"timeout,omitempty"`
+	CallerIDName string                 `json:"caller_id_name,omitempty"`
+	Members      []RingGroupMemberInput `json:"members"`
+}
+
+// RingGroupMemberInput matches frontend's {type, target} format
+type RingGroupMemberInput struct {
+	Type   string `json:"type"`   // extension, external, device
+	Target string `json:"target"` // extension number, phone number, or device id
+	Delay  int    `json:"delay,omitempty"`
+}
+
 func (h *Handler) CreateRingGroup(c *fiber.Ctx) error {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
@@ -1238,21 +1337,47 @@ func (h *Handler) CreateRingGroup(c *fiber.Ctx) error {
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
-	var group models.RingGroup
-	if err := c.BodyParser(&group); err != nil {
+	tenantID := middleware.GetTenantID(c)
+
+	var input RingGroupInput
+	if err := c.BodyParser(&input); err != nil {
 		h.logWarn("API", "CreateRingGroup: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
-	group.TenantID = middleware.GetTenantID(c)
+	rg := models.RingGroup{
+		TenantID:    tenantID,
+		Name:        input.Name,
+		Extension:   input.Extension,
+		Strategy:    models.RingGroupStrategy(input.Strategy),
+		Enabled:     input.Enabled,
+		RingTimeout: input.Timeout,
+	}
 
-	if err := h.DB.Create(&group).Error; err != nil {
+	if err := h.DB.Create(&rg).Error; err != nil {
 		h.logError("API", "CreateRingGroup: Failed to create ring group", h.reqFields(c, nil))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create ring group"})
 	}
 
+	// Save destinations if members provided
+	if len(input.Members) > 0 {
+		destinations := make([]models.RingGroupDestination, 0, len(input.Members))
+		for _, m := range input.Members {
+			destinations = append(destinations, models.RingGroupDestination{
+				RingGroupID:     rg.ID,
+				TenantID:        tenantID,
+				DestinationType: m.Type,
+				Destination:     m.Target,
+				Delay:           m.Delay,
+			})
+		}
+		if err := h.DB.Create(&destinations).Error; err != nil {
+			h.logError("API", "CreateRingGroup: Failed to save destinations", h.reqFields(c, nil))
+		}
+	}
+
 	h.reloadXML()
-	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": group, "message": "Ring group created"})
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": rg, "message": "Ring group created"})
 }
 
 func (h *Handler) GetRingGroup(c *fiber.Ctx) error {
@@ -1280,26 +1405,44 @@ func (h *Handler) UpdateRingGroup(c *fiber.Ctx) error {
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
+	tenantID := middleware.GetTenantID(c)
 	id, _ := strconv.Atoi(c.Params("id"))
-	var group models.RingGroup
+	var rg models.RingGroup
 
-	if err := h.DB.Where("id = ? AND tenant_id = ?", id, middleware.GetTenantID(c)).First(&group).Error; err != nil {
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&rg).Error; err != nil {
 		h.logWarn("API", "UpdateRingGroup: Ring group not found", h.reqFields(c, nil))
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Ring group not found"})
 	}
 
-	if err := c.BodyParser(&group); err != nil {
+	var input RingGroupInput
+	if err := c.BodyParser(&input); err != nil {
 		h.logWarn("API", "UpdateRingGroup: Invalid request payload", h.reqFields(c, nil))
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
-	if err := h.DB.Save(&group).Error; err != nil {
-		h.logError("API", "UpdateRingGroup: Failed to update ring group", h.reqFields(c, nil))
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update ring group"})
+	// Update ring group fields
+	h.DB.Model(&rg).Updates(map[string]interface{}{
+		"name":      input.Name,
+		"extension": input.Extension,
+		"strategy":  input.Strategy,
+		"enabled":   input.Enabled,
+	})
+
+	// Replace destinations
+	var destinations []models.RingGroupDestination
+	for _, m := range input.Members {
+		destinations = append(destinations, models.RingGroupDestination{
+			RingGroupID:     rg.ID,
+			TenantID:        tenantID,
+			DestinationType: m.Type,
+			Destination:     m.Target,
+			Delay:           m.Delay,
+		})
 	}
+	h.DB.Model(&rg).Association("Destinations").Replace(&destinations)
 
 	h.reloadXML()
-	return c.JSON(fiber.Map{"data": group, "message": "Ring group updated"})
+	return c.JSON(fiber.Map{"data": rg, "message": "Ring group updated"})
 }
 
 func (h *Handler) DeleteRingGroup(c *fiber.Ctx) error {
@@ -1456,8 +1599,79 @@ func (h *Handler) ListAudioFiles(c *fiber.Ctx) error {
 }
 
 func (h *Handler) UploadAudioFile(c *fiber.Ctx) error {
-	// TODO: Implement file upload handling
-	return c.Status(http.StatusCreated).JSON(fiber.Map{"message": "Audio file uploaded"})
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		h.logWarn("API", "UploadAudioFile: Not authenticated", h.reqFields(c, nil))
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
+	tenantID := middleware.GetTenantID(c)
+
+	// Parse multipart form
+	file, err := c.FormFile("file")
+	if err != nil {
+		h.logWarn("API", "UploadAudioFile: No file provided", h.reqFields(c, nil))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "No file provided"})
+	}
+
+	// Validate file type (audio only)
+	allowedTypes := map[string]bool{
+		"audio/wav":   true,
+		"audio/mp3":   true,
+		"audio/mpeg":  true,
+		"audio/ogg":   true,
+		"audio/x-wav": true,
+		"audio/x-ogg": true,
+	}
+	if !allowedTypes[file.Header["Content-Type"][0]] {
+		h.logWarn("API", "UploadAudioFile: Invalid file type", h.reqFields(c, nil))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file type. Allowed: wav, mp3, ogg"})
+	}
+
+	// Create uploads directory if not exists
+	uploadDir := "./uploads/audio"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		h.logError("API", "UploadAudioFile: Failed to create upload directory", h.reqFields(c, nil))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create upload directory"})
+	}
+
+	// Generate unique filename
+	ext := ".audio"
+	if strings.Contains(file.Header["Content-Type"][0], "wav") {
+		ext = ".wav"
+	} else if strings.Contains(file.Header["Content-Type"][0], "mp3") || strings.Contains(file.Header["Content-Type"][0], "mpeg") {
+		ext = ".mp3"
+	} else if strings.Contains(file.Header["Content-Type"][0], "ogg") {
+		ext = ".ogg"
+	}
+	filename := fmt.Sprintf("%d_%s%s", tenantID, uuid.New().String()[:8], ext)
+	filePath := filepath.Join(uploadDir, filename)
+
+	// Save file
+	if err := c.SaveFile(file, filePath); err != nil {
+		h.logError("API", "UploadAudioFile: Failed to save file", h.reqFields(c, nil))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
+	}
+
+	// Create recording entry
+	recording := models.Recording{
+		TenantID: tenantID,
+		Name:     file.Filename,
+		FilePath: filePath,
+		FileName: filename,
+		FileSize: file.Size,
+		MimeType: file.Header["Content-Type"][0],
+		Category: "audio",
+		Enabled:  true,
+	}
+
+	if err := h.DB.Create(&recording).Error; err != nil {
+		h.logError("API", "UploadAudioFile: Failed to save recording metadata", h.reqFields(c, nil))
+		os.Remove(filePath) // Clean up file on DB failure
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save recording metadata"})
+	}
+
+	return c.Status(http.StatusCreated).JSON(fiber.Map{"data": recording, "message": "Audio file uploaded"})
 }
 
 func (h *Handler) GetAudioFile(c *fiber.Ctx) error {
@@ -1481,8 +1695,13 @@ func (h *Handler) ListMOHStreams(c *fiber.Ctx) error {
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
-	// TODO: Add MOH model or use Recording with type filter
-	return c.JSON(fiber.Map{"data": []interface{}{}, "message": "MOH streams"})
+	var streams []models.Recording
+	if err := h.DB.Where("tenant_id = ? AND category = ?", middleware.GetTenantID(c), "moh").Find(&streams).Error; err != nil {
+		h.logError("API", "ListMOHStreams: Failed to fetch MOH streams", h.reqFields(c, nil))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch MOH streams"})
+	}
+
+	return c.JSON(fiber.Map{"data": streams})
 }
 
 func (h *Handler) CreateMOHStream(c *fiber.Ctx) error {

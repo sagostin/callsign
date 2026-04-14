@@ -207,6 +207,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../services/auth'
+import { queuesAPI } from '../services/api'
 import { 
   Phone, MessageSquare, Users, UsersRound, Clock, Search, Headphones, 
   ChevronDown, Voicemail, User, Settings as SettingsIcon, LogOut, Printer, 
@@ -288,28 +289,48 @@ const logout = async () => {
 // --- QUEUE LOGIN LOGIC ---
 const showQueueMenu = ref(false)
 const agentStatus = ref('available') // available, on-break, wrap-up
-const loggedInQueues = ref([])
+const loggedInQueueIds = ref([]) // array of queue IDs this agent is logged into
 
-const availableQueues = ref([
-  { id: 1, name: 'Sales Queue', waiting: 3, agents: 5 },
-  { id: 2, name: 'Support Queue', waiting: 0, agents: 8 },
-  { id: 3, name: 'Billing Queue', waiting: 1, agents: 3 },
-  { id: 4, name: 'General Inquiries', waiting: 0, agents: 2 },
-])
+const availableQueues = ref([])
+
+const loadQueues = async () => {
+    try {
+        const response = await queuesAPI.list()
+        availableQueues.value = response.data.data || []
+    } catch (err) {
+        console.error('Failed to load queues:', err)
+    }
+}
 
 const toggleQueueMenu = () => {
     showQueueMenu.value = !showQueueMenu.value
     showStatusMenu.value = false
     showProfileMenu.value = false
+    if (showQueueMenu.value) {
+        loadQueues()
+    }
 }
 
-const isLoggedInto = (queueId) => loggedInQueues.value.includes(queueId)
+const isLoggedInto = (queueId) => loggedInQueueIds.value.includes(queueId)
 
-const toggleQueueLogin = (queue) => {
-    if (isLoggedInto(queue.id)) {
-        loggedInQueues.value = loggedInQueues.value.filter(id => id !== queue.id)
-    } else {
-        loggedInQueues.value.push(queue.id)
+const toggleQueueLogin = async (queue) => {
+    const isLoggedIn = loggedInQueueIds.value.includes(queue.id)
+    try {
+        if (isLoggedIn) {
+            // Need to find the agent ID first, then remove
+            const agentsResponse = await queuesAPI.listAgents(queue.id)
+            const myAgent = agentsResponse.data.data?.find(a => a.extension === auth.state.user?.extension)
+            if (myAgent) {
+                await queuesAPI.removeAgent(queue.id, myAgent.id)
+            }
+            loggedInQueueIds.value = loggedInQueueIds.value.filter(id => id !== queue.id)
+        } else {
+            // Add agent to queue
+            await queuesAPI.addAgent(queue.id, { extension_id: auth.state.user?.id })
+            loggedInQueueIds.value.push(queue.id)
+        }
+    } catch (err) {
+        console.error('Failed to toggle queue login:', err)
     }
 }
 
@@ -317,13 +338,40 @@ const setAgentStatus = (status) => {
     agentStatus.value = status
 }
 
-const loginAllQueues = () => {
-    loggedInQueues.value = availableQueues.value.map(q => q.id)
+const loginAllQueues = async () => {
+    for (const queue of availableQueues.value) {
+        if (!loggedInQueueIds.value.includes(queue.id)) {
+            try {
+                await queuesAPI.addAgent(queue.id, { extension_id: auth.state.user?.id })
+                loggedInQueueIds.value.push(queue.id)
+            } catch (err) {
+                console.error(`Failed to login to queue ${queue.id}:`, err)
+            }
+        }
+    }
 }
 
-const logoutAllQueues = () => {
-    loggedInQueues.value = []
+const logoutAllQueues = async () => {
+    for (const queueId of loggedInQueueIds.value) {
+        try {
+            const agentsResponse = await queuesAPI.listAgents(queueId)
+            const myAgent = agentsResponse.data.data?.find(a => a.extension === auth.state.user?.extension)
+            if (myAgent) {
+                await queuesAPI.removeAgent(queueId, myAgent.id)
+            }
+        } catch (err) {
+            console.error(`Failed to logout from queue ${queueId}:`, err)
+        }
+    }
+    loggedInQueueIds.value = []
 }
+
+// Keep loggedInQueues as a computed alias for template compatibility
+const loggedInQueues = computed(() => loggedInQueueIds.value)
+
+onMounted(() => {
+    loadQueues()
+})
 
 const closeDropdowns = () => {
     showStatusMenu.value = false

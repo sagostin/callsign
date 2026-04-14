@@ -3,7 +3,9 @@ package handlers
 import (
 	"callsign/middleware"
 	"callsign/models"
+	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -30,7 +32,7 @@ func (h *Handler) GetOperatorPanelData(c *fiber.Ctx) error {
 	if h.ESLManager != nil && h.ESLManager.IsConnected() {
 		result, err := h.ESLManager.Client.API("show calls as json")
 		if err == nil && result != "" {
-			activeCalls = parseFreeSwitchCalls(result)
+			activeCalls, _ = parseFreeSwitchCalls(result)
 		}
 	}
 
@@ -75,7 +77,7 @@ func (h *Handler) GetOperatorPanelData(c *fiber.Ctx) error {
 	if h.ESLManager != nil && h.ESLManager.IsConnected() {
 		result, err := h.ESLManager.Client.API("callcenter_config queue list")
 		if err == nil && result != "" {
-			queueSummary = parseQueueList(result)
+			queueSummary, _ = parseQueueList(result)
 		}
 	}
 
@@ -87,11 +89,63 @@ func (h *Handler) GetOperatorPanelData(c *fiber.Ctx) error {
 }
 
 // parseFreeSwitchCalls parses the "show calls as json" output from FreeSWITCH
-func parseFreeSwitchCalls(result string) []map[string]interface{} {
-	return []map[string]interface{}{}
+func parseFreeSwitchCalls(data string) ([]map[string]interface{}, error) {
+	if data == "" {
+		return []map[string]interface{}{}, nil
+	}
+
+	var calls []map[string]interface{}
+	if err := json.Unmarshal([]byte(data), &calls); err != nil {
+		return []map[string]interface{}{}, nil
+	}
+	return calls, nil
 }
 
 // parseQueueList parses callcenter queue list output
-func parseQueueList(result string) []map[string]interface{} {
-	return []map[string]interface{}{}
+func parseQueueList(data string) ([]map[string]interface{}, error) {
+	if data == "" {
+		return []map[string]interface{}{}, nil
+	}
+
+	lines := strings.Split(data, "\n")
+	var results []map[string]interface{}
+
+	for _, line := range lines {
+		// Skip headers and separators
+		if strings.HasPrefix(line, " queues:") || strings.HasPrefix(line, "+--") || strings.HasPrefix(line, "| Name") {
+			continue
+		}
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.HasPrefix(line, "|") {
+			continue
+		}
+
+		// Parse pipe-separated fields
+		fields := strings.Split(line, "|")
+		if len(fields) < 9 {
+			continue
+		}
+
+		// Trim spaces from each field
+		for i := range fields {
+			fields[i] = strings.TrimSpace(fields[i])
+		}
+
+		queue := map[string]interface{}{
+			"name":      fields[1],
+			"strategy":  fields[2],
+			"max_wait":  fields[3],
+			"total_act": fields[4],
+			"ram_act":   fields[5],
+			"ram_queue": fields[6],
+			"waiting":   fields[7],
+			"calls":     fields[8],
+		}
+		results = append(results, queue)
+	}
+
+	if results == nil {
+		results = []map[string]interface{}{}
+	}
+	return results, nil
 }

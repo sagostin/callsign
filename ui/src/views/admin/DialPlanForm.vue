@@ -100,11 +100,13 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { dialPlansAPI } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
+const toast = inject('toast')
 const isNew = computed(() => !route.params.id)
 const rawMode = ref(false)
 
@@ -131,9 +133,29 @@ const removeAction = (idx) => {
    form.value.actions.splice(idx, 1)
 }
 
-const save = () => {
-  console.log('Saving dial plan:', form.value)
-  router.back()
+const save = async () => {
+  try {
+    const payload = {
+      name: form.value.name,
+      condition: form.value.condition,
+      order: form.value.order,
+      continue: form.value.continue,
+      actions: form.value.actions,
+      rawXml: form.value.rawXml
+    }
+
+    if (isNew.value) {
+      await dialPlansAPI.create(payload)
+      toast.success('Dial plan created')
+    } else {
+      await dialPlansAPI.update(route.params.id, payload)
+      toast.success('Dial plan updated')
+    }
+    router.push('/admin/global-dialplans')
+  } catch (e) {
+    console.error(e)
+    toast.error(e.response?.data?.error || e.message)
+  }
 }
 </script>
 

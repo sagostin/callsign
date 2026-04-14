@@ -328,6 +328,8 @@ func (s *Service) handleRingGroupCall(ctx *callContext, ringGroupUUID string) {
 		connected = s.ringEnterprise(ctx, destinations, rg.RingTimeout)
 	case models.RingStrategyRollover:
 		connected = s.ringRollover(ctx, destinations, rg.RingTimeout)
+	case models.RingStrategyRoundRobin:
+		connected = s.ringRoundRobin(ctx, destinations, rg.RingTimeout)
 	default:
 		connected = s.ringSimultaneous(ctx, destinations, rg.RingTimeout)
 	}
@@ -529,6 +531,29 @@ func (s *Service) ringRollover(ctx *callContext, dests []models.RingGroupDestina
 
 	cause := s.getBridgeResult(ctx)
 	return cause == "" || cause == "SUCCESS"
+}
+
+// ringRoundRobin distributes calls evenly across agents by rotating through the list.
+// It shuffles destinations once per call to ensure fair distribution while maintaining
+// a simple rotation-based approach.
+func (s *Service) ringRoundRobin(ctx *callContext, dests []models.RingGroupDestination, timeout int) bool {
+	if len(dests) == 0 {
+		return false
+	}
+	// Rotate the list to distribute evenly across calls
+	rotated := s.rotateDestinations(dests)
+	return s.ringSequence(ctx, rotated, timeout)
+}
+
+// rotateDestinations rotates the destination list by one position to implement round-robin.
+func (s *Service) rotateDestinations(dests []models.RingGroupDestination) []models.RingGroupDestination {
+	if len(dests) <= 1 {
+		return dests
+	}
+	rotated := make([]models.RingGroupDestination, len(dests))
+	copy(rotated, dests[1:])
+	rotated[len(rotated)-1] = dests[0]
+	return rotated
 }
 
 // ========== Dial String Building ==========

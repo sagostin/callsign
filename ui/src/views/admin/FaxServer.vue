@@ -105,9 +105,9 @@
                 <td>{{ fax.date }}</td>
                 <td>{{ fax.pages }} pages</td>
                 <td class="actions-cell">
-                  <button class="btn-link"><EyeIcon /> View</button>
-                  <button class="btn-link"><DownloadIcon /> PDF</button>
-                  <button class="btn-link danger"><TrashIcon /></button>
+                  <button class="btn-link" @click="handleViewFax(fax.id)"><EyeIcon /> View</button>
+                  <button class="btn-link" @click="handleDownloadPdf(fax.id)"><DownloadIcon /> PDF</button>
+                  <button class="btn-link danger" @click="handleTrashFax(fax.id, 'inbound')"><TrashIcon /></button>
                 </td>
               </tr>
             </tbody>
@@ -133,8 +133,8 @@
                 <td>{{ fax.pages }} pages</td>
                 <td><span class="status-pill" :class="fax.status.toLowerCase()">{{ fax.status }}</span></td>
                 <td class="actions-cell">
-                  <button class="btn-link"><RefreshIcon /> Retry</button>
-                  <button class="btn-link danger"><TrashIcon /></button>
+                  <button class="btn-link" @click="handleRetryFax(fax.id)"><RefreshIcon /> Retry</button>
+                  <button class="btn-link danger" @click="handleTrashFax(fax.id, 'outbound')"><TrashIcon /></button>
                 </td>
               </tr>
             </tbody>
@@ -172,7 +172,7 @@
             </div>
           </div>
           <div class="settings-footer">
-            <button class="btn-primary">Save Settings</button>
+            <button class="btn-primary" @click="handleSaveSettings">Save Settings</button>
           </div>
         </div>
       </div>
@@ -188,29 +188,29 @@
         <div class="modal-body">
           <div class="form-group">
             <label>From Fax Box</label>
-            <select class="input-field">
+            <select v-model="composeForm.fromBoxId" class="input-field">
               <option v-for="s in servers" :key="s.id" :value="s.id">{{ s.name }} ({{ s.did }})</option>
             </select>
           </div>
           <div class="form-group">
             <label>To Number</label>
-            <input class="input-field" placeholder="+1 555-123-4567">
+            <input v-model="composeForm.toNumber" class="input-field" placeholder="+1 555-123-4567">
           </div>
           <div class="form-group">
             <label>Subject (Cover Page)</label>
-            <input class="input-field" placeholder="Invoice #12345">
+            <input v-model="composeForm.subject" class="input-field" placeholder="Invoice #12345">
           </div>
           <div class="form-group">
             <label>Attach PDF</label>
             <div class="file-upload">
-              <input type="file" id="fax-file" accept=".pdf">
+              <input type="file" id="fax-file" accept=".pdf" @change="composeForm.file = $event.target.files[0]">
               <label for="fax-file" class="file-label">Choose file or drag & drop</label>
             </div>
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="showComposeModal = false">Cancel</button>
-          <button class="btn-primary">Send Fax</button>
+          <button class="btn-primary" @click="handleSendFax">Send Fax</button>
         </div>
       </div>
     </div>
@@ -218,40 +218,108 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { 
   Plus as PlusIcon, Send as SendIcon, Printer as PrinterIcon, Phone as PhoneIcon,
   Mail as MailIcon, Settings as SettingsIcon, Inbox as InboxIcon, Eye as EyeIcon,
   Download as DownloadIcon, Trash2 as TrashIcon, RefreshCw as RefreshIcon
 } from 'lucide-vue-next'
+import { faxAPI } from '@/services/api'
 
 const activeTab = ref('inbox')
 const showComposeModal = ref(false)
 const showNewServerModal = ref(false)
 
-const servers = ref([
-  { id: 1, name: 'Sales Fax', did: '(415) 555-0199', ext: '8801', email: 'sales@fax.acme.com', unread: 3, retentionDays: 90, emailOnReceive: true },
-  { id: 2, name: 'HR Confidential', did: '(415) 555-0299', ext: '8802', email: 'hr@fax.acme.com', unread: 0, retentionDays: 365, emailOnReceive: true },
-  { id: 3, name: 'General', did: '(415) 555-0300', ext: '8800', email: 'fax@acme.com', unread: 1, retentionDays: 30, emailOnReceive: false },
-])
+// Server state - loaded from API
+const servers = ref([])
+const activeServer = ref(null)
 
-const activeServer = ref(servers.value[0])
+// Fax data - loaded from API
+const inboxData = ref([])
+const sentData = ref([])
 
-const inboxData = ref([
-  { id: 1, from: '(555) 987-6543', date: '2024-03-20 14:30', pages: 2, unread: true },
-  { id: 2, from: '(555) 111-2222', date: '2024-03-19 09:15', pages: 5, unread: false },
-  { id: 3, from: '(555) 333-4444', date: '2024-03-18 16:45', pages: 1, unread: true },
-])
+// Form state for compose modal
+const composeForm = ref({
+  fromBoxId: '',
+  toNumber: '',
+  subject: '',
+  file: null
+})
 
-const sentData = ref([
-  { id: 1, to: '(555) 555-5555', date: '2024-03-20 10:00', pages: 3, status: 'Sent' },
-  { id: 2, to: '(555) 444-4444', date: '2024-03-20 10:05', pages: 2, status: 'Failed' },
-  { id: 3, to: '(555) 222-2222', date: '2024-03-19 15:30', pages: 1, status: 'Pending' },
-])
-
-const totalInbox = computed(() => servers.value.reduce((sum, s) => sum + s.unread, 0) + 2)
+// Computed aggregates from server data
+const totalInbox = computed(() => servers.value.reduce((sum, s) => sum + (s.unread || 0), 0))
 const totalSent = computed(() => sentData.value.filter(f => f.status === 'Sent').length)
 const pendingCount = computed(() => sentData.value.filter(f => f.status === 'Pending').length)
+
+// Data loading - atomic, predictable, fail loud
+const loadServers = async () => {
+  const { data } = await faxAPI.listBoxes()
+  servers.value = data
+  if (!activeServer.value && servers.value.length > 0) {
+    activeServer.value = servers.value[0]
+  }
+}
+
+const loadInbox = async () => {
+  const { data } = await faxAPI.listInbox()
+  inboxData.value = data
+}
+
+const loadSent = async () => {
+  const { data } = await faxAPI.listSent()
+  sentData.value = data
+}
+
+onMounted(async () => {
+  await Promise.all([loadServers(), loadInbox(), loadSent()])
+})
+
+// Button handlers - each is a pure async operation with early exit
+const handleSaveSettings = async () => {
+  if (!activeServer.value) return
+  await faxAPI.updateBox(activeServer.value.id, activeServer.value)
+}
+
+const handleSendFax = async () => {
+  const formData = new FormData()
+  formData.set('boxId', composeForm.value.fromBoxId)
+  formData.set('to', composeForm.value.toNumber)
+  formData.set('subject', composeForm.value.subject)
+  if (composeForm.value.file) {
+    formData.set('file', composeForm.value.file)
+  }
+  await faxAPI.send(formData)
+  showComposeModal.value = false
+  await loadSent()
+}
+
+const handleViewFax = (faxId) => {
+  window.open(`/fax/jobs/${faxId}/view`, '_blank')
+}
+
+const handleDownloadPdf = async (faxId) => {
+  const { data } = await faxAPI.download(faxId)
+  const url = URL.createObjectURL(data)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `fax-${faxId}.pdf`
+  link.click()
+}
+
+const handleTrashFax = async (faxId, direction) => {
+  if (!confirm('Delete this fax?')) return
+  await faxAPI.delete(faxId)
+  if (direction === 'inbound') {
+    inboxData.value = inboxData.value.filter(f => f.id !== faxId)
+  } else {
+    sentData.value = sentData.value.filter(f => f.id !== faxId)
+  }
+}
+
+const handleRetryFax = async (faxId) => {
+  await faxAPI.resend(faxId)
+  await loadSent()
+}
 
 const editServer = (server) => { /* open edit modal */ }
 </script>

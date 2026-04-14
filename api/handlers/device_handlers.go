@@ -584,6 +584,36 @@ func (h *Handler) ReprovisionDevice(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Reprovision triggered"})
 }
 
+// RebootDevice sends a reboot command to a device via ESL
+func (h *Handler) RebootDevice(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+	id := c.Params("id")
+
+	var device models.Device
+	if err := h.DB.Where("id = ? AND tenant_id = ?", id, tenantID).First(&device).Error; err != nil {
+		h.logWarn("DEVICE", "RebootDevice: Device not found", h.reqFields(c, nil))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Device not found"})
+	}
+
+	// Send reboot command via ESL
+	if h.ESLManager != nil && h.ESLManager.IsConnected() {
+		var ext models.Extension
+		var tenant models.Tenant
+		if device.Lines != nil && len(device.Lines) > 0 {
+			h.DB.Preload("Lines.Extension").First(&device, device.ID)
+		}
+		h.DB.First(&tenant, device.TenantID)
+
+		if err := h.DB.Where("id = ?", device.Lines[0].ExtensionID).First(&ext).Error; err == nil {
+			cmd := fmt.Sprintf("sofia profile internal flush_inbound_reg %s@%s reboot",
+				ext.Extension, tenant.Domain)
+			h.ESLManager.API(cmd)
+		}
+	}
+
+	return c.JSON(fiber.Map{"message": "Reboot triggered"})
+}
+
 // ==================
 // Device Template Handlers (Tenant)
 // ==================

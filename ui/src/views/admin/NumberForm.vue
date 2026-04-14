@@ -8,54 +8,31 @@
 
   <div class="form-container">
     <div class="form-section">
-      <h3>1. Select Carrier & Location</h3>
+      <h3>1. Number Details</h3>
       <div class="form-grid">
         <div class="form-group">
-          <label>Provider / Carrier</label>
-          <select v-model="form.carrier" class="input-field">
-            <option value="" disabled>Select Carrier</option>
-            <option value="bandwidth">Bandwidth</option>
-            <option value="twilio">Twilio</option>
-            <option value="telnyx">Telnyx</option>
-          </select>
+          <label>Phone Number</label>
+          <input 
+            type="text" 
+            v-model="form.destinationNumber" 
+            class="input-field" 
+            placeholder="+14155550101"
+          >
         </div>
 
         <div class="form-group">
-          <label>Country</label>
-          <select v-model="form.country" class="input-field">
-            <option value="US">United States</option>
-            <option value="CA">Canada</option>
-            <option value="GB">United Kingdom</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>Area Code / Prefix</label>
-          <div class="input-group">
-            <input type="text" v-model="form.prefix" class="input-field" placeholder="415">
-            <button class="btn-secondary">Search</button>
-          </div>
+          <label>Description (optional)</label>
+          <input 
+            type="text" 
+            v-model="form.description" 
+            class="input-field" 
+            placeholder="Main line, Support, etc."
+          >
         </div>
       </div>
     </div>
 
-    <!-- Search Results Placeholder -->
-    <div class="form-section" v-if="form.prefix">
-      <h3>Available Numbers</h3>
-      <div class="number-grid">
-        <div 
-          v-for="num in availableNumbers" 
-          :key="num" 
-          class="number-card"
-          :class="{ selected: form.selectedNumber === num }"
-          @click="form.selectedNumber = num"
-        >
-          {{ num }}
-        </div>
-      </div>
-    </div>
-
-    <div class="form-section" v-if="form.selectedNumber">
+    <div class="form-section" v-if="form.destinationNumber">
       <h3>2. Initial Routing</h3>
       <div class="form-group">
         <label>Destination Type</label>
@@ -67,56 +44,158 @@
         </select>
       </div>
 
-      <div class="form-group">
+      <div class="form-group" v-if="destinationOptions.length">
         <label>Destination Target</label>
         <select v-model="form.destinationTarget" class="input-field">
           <option value="" disabled>Select Target</option>
-          <option value="101">101 - Alice Smith</option>
-          <option value="102">102 - Bob Jones</option>
-          <option value="8000">8000 - Main Menu</option>
+          <option 
+            v-for="opt in destinationOptions" 
+            :key="opt.value" 
+            :value="opt.value"
+          >
+            {{ opt.label }}
+          </option>
         </select>
       </div>
     </div>
 
     <div class="form-actions">
-      <button class="btn-primary large" :disabled="!isValid" @click="saveNumber">
-        Purchase & Configure
+      <button 
+        class="btn-primary large" 
+        :disabled="!isValid || isSaving" 
+        @click="saveNumber"
+      >
+        <span v-if="isSaving">Creating...</span>
+        <span v-else>Create Number</span>
       </button>
+    </div>
+
+    <div v-if="errorMessage" class="error-message">
+      {{ errorMessage }}
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { numbersAPI, extensionsAPI, queuesAPI, ivrAPI, voicemailAPI } from '@/services/api'
 
 const router = useRouter()
 
 const form = ref({
-  carrier: '',
-  country: 'US',
-  prefix: '',
-  selectedNumber: null,
+  destinationNumber: '',
+  description: '',
   destinationType: 'extension',
   destinationTarget: ''
 })
 
-const availableNumbers = ref([
-  '(415) 555-0101',
-  '(415) 555-0122',
-  '(415) 555-0199',
-  '(415) 555-0200',
-  '(415) 555-0250',
-])
+const isSaving = ref(false)
+const errorMessage = ref('')
+const availableExtensions = ref([])
+const availableIVRs = ref([])
+const availableQueues = ref([])
+const availableVoicemails = ref([])
 
 const isValid = computed(() => {
-  return form.value.selectedNumber && form.value.destinationTarget
+  return form.value.destinationNumber?.trim() && form.value.destinationTarget
 })
 
-const saveNumber = () => {
-  alert(`Purchased ${form.value.selectedNumber} from ${form.value.carrier}!`)
-  router.push('/numbers')
+const destinationOptions = computed(() => {
+  switch (form.value.destinationType) {
+    case 'extension':
+      return availableExtensions.value
+    case 'ivr':
+      return availableIVRs.value
+    case 'queue':
+      return availableQueues.value
+    case 'voicemail':
+      return availableVoicemails.value
+    default:
+      return []
+  }
+})
+
+const buildDestinationAction = () => {
+  const target = form.value.destinationTarget
+  switch (form.value.destinationType) {
+    case 'extension':
+      return `transfer ${target} XML default`
+    case 'ivr':
+      return `menu ${target} default`
+    case 'queue':
+      return `queue ${target} default`
+    case 'voicemail':
+      return `voicemail ${target}@default`
+    default:
+      return ''
+  }
 }
+
+const loadDestinationOptions = async () => {
+  try {
+    const [extRes, ivrRes, queueRes, vmRes] = await Promise.all([
+      extensionsAPI.list(),
+      ivrAPI.listMenus(),
+      queuesAPI.list(),
+      voicemailAPI.listBoxes()
+    ])
+
+    availableExtensions.value = (extRes.data || []).map(ext => ({
+      value: ext.extension,
+      label: `${ext.extension} - ${ext.effective_caller_id_name || ext.display_name || 'Extension'}`
+    }))
+
+    availableIVRs.value = (ivrRes.data || []).map(ivr => ({
+      value: String(ivr.id),
+      label: ivr.name || `IVR ${ivr.id}`
+    }))
+
+    availableQueues.value = (queueRes.data || []).map(q => ({
+      value: String(q.id),
+      label: q.name || `Queue ${q.id}`
+    }))
+
+    availableVoicemails.value = (vmRes.data || []).map(vm => ({
+      value: vm.extension,
+      label: `${vm.extension} - Voicemail`
+    }))
+  } catch (err) {
+    console.error('Failed to load destination options:', err)
+  }
+}
+
+// Reset target when type changes
+watch(() => form.value.destinationType, () => {
+  form.value.destinationTarget = ''
+})
+
+const saveNumber = async () => {
+  if (!isValid.value || isSaving.value) return
+
+  isSaving.value = true
+  errorMessage.value = ''
+
+  try {
+    const payload = {
+      destination_number: form.value.destinationNumber.trim(),
+      description: form.value.description.trim(),
+      destination_type: form.value.destinationType,
+      destination_action: buildDestinationAction(),
+      enabled: true
+    }
+
+    await numbersAPI.create(payload)
+    router.push('/numbers')
+  } catch (err) {
+    errorMessage.value = err.message || 'Failed to create number. Please try again.'
+  } finally {
+    isSaving.value = false
+  }
+}
+
+// Load options on mount
+loadDestinationOptions()
 </script>
 
 <style scoped>
@@ -244,5 +323,14 @@ label {
   font-weight: 500;
   color: var(--text-main);
   cursor: pointer;
+}
+
+.error-message {
+  color: var(--error-color, #dc3545);
+  padding: 12px;
+  background: var(--error-bg, #f8d7da);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  margin-top: var(--spacing-md);
 }
 </style>

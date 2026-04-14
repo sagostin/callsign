@@ -26,8 +26,9 @@
         <label>Associated DID (Number)</label>
         <select v-model="form.did" class="input-field">
             <option value="">Select a Number...</option>
-            <option value="14155550100">(415) 555-0100</option>
-            <option value="14155550101">(415) 555-0101</option>
+            <option v-for="num in availableDIDs" :key="num.id || num.number" :value="num.number || num.id">
+              {{ num.formatted_number || num.number }} - {{ num.name || '' }}
+            </option>
         </select>
       </div>
 
@@ -52,24 +53,28 @@
         <div class="extension-selector" v-if="form.access === 'selected'">
            <label class="sub-label">Allowed Extensions</label>
            <select multiple v-model="form.allowed_exts" class="input-field multiple-select">
-              <option value="101">101 - Alice Smith</option>
-              <option value="102">102 - Bob Jones</option>
-              <option value="103">103 - Support Lead</option>
+              <option v-for="ext in availableExtensions" :key="ext.id || ext.extension" :value="ext.extension">
+                {{ ext.extension }} - {{ ext.name || 'Extension' }}
+              </option>
            </select>
            <p class="text-xs text-muted">Hold Cmd/Ctrl to select multiple.</p>
         </div>
       </div>
 
       <div class="form-actions">
-        <button class="btn-primary" @click="save">Save Fax Box</button>
+        <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+        <button class="btn-primary" :disabled="isSaving" @click="save">
+          {{ isSaving ? 'Saving...' : 'Save Fax Box' }}
+        </button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { numbersAPI, extensionsAPI, faxAPI } from '../../services/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -84,9 +89,63 @@ const form = ref({
   allowed_exts: []
 })
 
-const save = () => {
-  console.log('Saving fax box:', form.value)
-  router.back()
+// Dropdown data loaded from API
+const availableDIDs = ref([])
+const availableExtensions = ref([])
+
+const loadDropdownData = async () => {
+  try {
+    const [didRes, extRes] = await Promise.allSettled([
+      numbersAPI.list(),
+      extensionsAPI.list()
+    ])
+    if (didRes.status === 'fulfilled') {
+      availableDIDs.value = didRes.value.data?.data || didRes.value.data || []
+    }
+    if (extRes.status === 'fulfilled') {
+      availableExtensions.value = extRes.value.data?.data || extRes.value.data || []
+    }
+  } catch (err) {
+    console.error('Failed to load dropdown data:', err)
+  }
+}
+
+onMounted(() => {
+  loadDropdownData()
+})
+
+const isSaving = ref(false)
+const errorMessage = ref('')
+
+const save = async () => {
+  if (isSaving.value) return
+
+  isSaving.value = true
+  errorMessage.value = ''
+
+  try {
+    const payload = {
+      name: form.value.name.trim(),
+      extension: form.value.extension.trim(),
+      email: form.value.email.trim(),
+      cid_name: form.value.cid_name.trim(),
+      did: form.value.did || null,
+      access: form.value.access,
+      allowed_exts: form.value.access === 'selected' ? form.value.allowed_exts : []
+    }
+
+    if (isNew.value) {
+      await faxAPI.createBox(payload)
+    } else {
+      await faxAPI.updateBox(route.params.id, payload)
+    }
+
+    router.push('/admin/fax')
+  } catch (err) {
+    errorMessage.value = err.message || 'Failed to save fax box. Please try again.'
+  } finally {
+    isSaving.value = false
+  }
 }
 </script>
 
@@ -102,8 +161,10 @@ label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var
 .input-field:focus { border-color: var(--primary-color); }
 
 .btn-primary { background: var(--primary-color); color: white; border: none; padding: 10px 24px; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-secondary { background: white; border: 1px solid var(--border-color); color: var(--text-main); padding: 8px 16px; border-radius: var(--radius-sm); font-weight: 500; cursor: pointer; }
-.form-actions { margin-top: 24px; display: flex; justify-content: flex-end; }
+.form-actions { margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
+.error-text { color: var(--error-color); font-size: 13px; margin: 0; }
 
 /* Access Control Styles */
 .radio-group { display: flex; gap: 16px; margin-bottom: 8px; }

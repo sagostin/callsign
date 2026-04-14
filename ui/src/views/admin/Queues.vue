@@ -142,11 +142,11 @@
             <div class="form-group">
               <label>Strategy</label>
               <select v-model="groupForm.strategy" class="input-field">
-                <option value="Simultaneous">Simultaneous (Ring All)</option>
-                <option value="Sequential">Sequential</option>
-                <option value="Enterprise">Enterprise</option>
-                <option value="Rollover">Rollover</option>
-                <option value="Random">Random</option>
+                <option value="simultaneous">Simultaneous (Ring All)</option>
+                <option value="sequence">Sequential</option>
+                <option value="enterprise">Enterprise</option>
+                <option value="rollover">Rollover</option>
+                <option value="random">Random</option>
               </select>
             </div>
           </div>
@@ -195,7 +195,7 @@ const groups = ref([])
 const groupForm = ref({
   name: '',
   extension: '',
-  strategy: 'Simultaneous',
+  strategy: 'simultaneous',
   membersList: '',
   enabled: true
 })
@@ -233,7 +233,7 @@ async function fetchRingGroups() {
       id: g.id,
       name: g.name,
       extension: g.extension,
-      strategy: g.strategy || 'Simultaneous',
+      strategy: g.strategy || 'simultaneous',
       members: g.destination_count || 0,
       enabled: g.enabled,
       protected: g.is_system
@@ -285,7 +285,7 @@ const saveGroup = async () => {
     await fetchRingGroups()
     showGroupModal.value = false
     editingGroup.value = null
-    groupForm.value = { name: '', extension: '', strategy: 'Simultaneous', membersList: '', enabled: true }
+    groupForm.value = { name: '', extension: '', strategy: 'simultaneous', membersList: '', enabled: true }
   } catch (error) {
     toast?.error(error.message, 'Failed to save ring group')
   }

@@ -14,7 +14,9 @@
     <button class="tab" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">General</button>
     <button class="tab" :class="{ active: activeTab === 'call-handling' }" @click="activeTab = 'call-handling'" v-if="!isNew">Call Handling</button>
     <button class="tab" :class="{ active: activeTab === 'voicemail' }" @click="activeTab = 'voicemail'" v-if="!isNew">Voicemail</button>
-    <button class="tab" :class="{ active: activeTab === 'devices' }" @click="activeTab = 'devices'" v-if="!isNew">Devices</button>
+    <button class="tab" :class="{ active: activeTab === 'forwarding' }" @click="activeTab = 'forwarding'" v-if="!isNew">Forwarding</button>
+    <button class="tab" :class="{ active: activeTab === 'devices' }" @click="activeTab = 'devices'; loadDevices()" v-if="!isNew">Devices</button>
+    <button class="tab" :class="{ active: activeTab === 'dids' }" @click="activeTab = 'dids'; loadDIDs()" v-if="!isNew">Phone Numbers</button>
   </div>
 
   <div class="tab-content">
@@ -291,17 +293,21 @@
               <div class="greeting-row">
                 <span>Unavailable Message</span>
                 <div class="greeting-actions">
-                  <button class="btn-small">Play</button>
-                  <button class="btn-small">Upload</button>
-                  <button class="btn-small text-bad">Reset</button>
+                  <button class="btn-small" @click="playGreeting('unavailable')" :disabled="greetingState.unavailable.loading">
+                    {{ greetingState.unavailable.loading ? '...' : 'Play' }}
+                  </button>
+                  <button class="btn-small" @click="uploadGreeting('unavailable')">Upload</button>
+                  <button class="btn-small text-bad" @click="resetGreeting('unavailable')">Reset</button>
                 </div>
               </div>
               <div class="greeting-row">
                 <span>Busy Message</span>
                 <div class="greeting-actions">
-                  <button class="btn-small">Play</button>
-                  <button class="btn-small">Upload</button>
-                  <button class="btn-small text-bad">Reset</button>
+                  <button class="btn-small" @click="playGreeting('busy')" :disabled="greetingState.busy.loading">
+                    {{ greetingState.busy.loading ? '...' : 'Play' }}
+                  </button>
+                  <button class="btn-small" @click="uploadGreeting('busy')">Upload</button>
+                  <button class="btn-small text-bad" @click="resetGreeting('busy')">Reset</button>
                 </div>
               </div>
             </div>
@@ -326,7 +332,7 @@
         <div class="forward-option">
           <div class="forward-header">
             <label class="switch">
-              <input type="checkbox" v-model="forwarding.always.enabled">
+              <input type="checkbox" v-model="forwarding.always">
               <span class="slider round"></span>
             </label>
             <div class="forward-info">
@@ -334,14 +340,14 @@
               <span class="help-text">Immediately forward all calls</span>
             </div>
           </div>
-          <input v-if="forwarding.always.enabled" type="text" v-model="forwarding.always.number" 
+          <input v-if="forwarding.always" type="text" v-model="forwarding.alwaysNumber" 
             class="input-field" placeholder="Enter destination number">
         </div>
 
         <div class="forward-option">
           <div class="forward-header">
             <label class="switch">
-              <input type="checkbox" v-model="forwarding.busy.enabled">
+              <input type="checkbox" v-model="forwarding.busy">
               <span class="slider round"></span>
             </label>
             <div class="forward-info">
@@ -349,14 +355,14 @@
               <span class="help-text">When extension is on a call</span>
             </div>
           </div>
-          <input v-if="forwarding.busy.enabled" type="text" v-model="forwarding.busy.number" 
+          <input v-if="forwarding.busy" type="text" v-model="forwarding.busyNumber" 
             class="input-field" placeholder="Enter destination number">
         </div>
 
         <div class="forward-option">
           <div class="forward-header">
             <label class="switch">
-              <input type="checkbox" v-model="forwarding.noAnswer.enabled">
+              <input type="checkbox" v-model="forwarding.noAnswer">
               <span class="slider round"></span>
             </label>
             <div class="forward-info">
@@ -364,14 +370,8 @@
               <span class="help-text">After ringing for specified time</span>
             </div>
           </div>
-          <div v-if="forwarding.noAnswer.enabled" class="forward-fields">
-            <input type="text" v-model="forwarding.noAnswer.number" class="input-field" placeholder="Destination">
-            <select v-model="forwarding.noAnswer.timeout" class="input-field small">
-              <option value="15">15 sec</option>
-              <option value="20">20 sec</option>
-              <option value="30">30 sec</option>
-              <option value="45">45 sec</option>
-            </select>
+          <div v-if="forwarding.noAnswer" class="forward-fields">
+            <input type="text" v-model="forwarding.noAnswerNumber" class="input-field" placeholder="Destination">
           </div>
         </div>
       </div>
@@ -385,17 +385,76 @@
     <div v-else-if="activeTab === 'devices'" class="form-single">
       <div class="panel-header">
         <h3>Registered Devices</h3>
-        <button class="btn-secondary small">+ Assign Device</button>
+        <button class="btn-secondary small" @click="openAssignDeviceModal">+ Assign Device</button>
       </div>
       
       <DataTable :columns="deviceColumns" :data="devices" actions>
         <template #status="{ value }">
           <StatusBadge :status="value" />
         </template>
-        <template #actions>
-          <button class="btn-link text-bad">Unassign</button>
+        <template #actions="{ row }">
+          <button class="btn-link text-bad" @click="unassignDevice(row)">Unassign</button>
         </template>
       </DataTable>
+    </div>
+
+    <!-- ASSIGN DEVICE MODAL -->
+    <div class="modal-overlay" v-if="showAssignDeviceModal">
+      <div class="modal">
+        <h3>Assign Device</h3>
+        <p class="help-text" style="margin-bottom: 16px;">Select a device to assign to this extension.</p>
+        
+        <div class="form-group">
+          <select v-model="selectedDeviceId" class="input-field">
+            <option value="">Select a device...</option>
+            <option v-for="d in availableDevices" :key="d.id" :value="d.id">
+              {{ d.mac }} - {{ d.model || 'Unknown Model' }}
+            </option>
+          </select>
+        </div>
+        
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="showAssignDeviceModal = false">Cancel</button>
+          <button class="btn-primary" @click="assignDevice" :disabled="!selectedDeviceId">Assign</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DIDS TAB -->
+    <div v-else-if="activeTab === 'dids'" class="form-single">
+      <div class="did-section">
+        <h3>Assigned Phone Numbers</h3>
+        
+        <div v-if="assignedDID" class="assigned-did-card">
+          <div class="did-info">
+            <span class="did-number">{{ assignedDID.formatted_number || assignedDID.number }}</span>
+            <span class="did-name">{{ assignedDID.name || 'DID' }}</span>
+          </div>
+          <button class="btn-danger btn-sm" @click="unassignDID">Unassign</button>
+        </div>
+        
+        <div v-else class="no-did">
+          <p>No phone number assigned to this extension.</p>
+        </div>
+        
+        <div class="form-group" style="margin-top: 1rem;">
+          <label>Assign a Phone Number</label>
+          <select v-model="selectedDIDId" class="input-field">
+            <option value="">Select a number...</option>
+            <option v-for="did in availableDIDs" :key="did.id" :value="did.id">
+              {{ did.formatted_number || did.number }} - {{ did.name || 'Available' }}
+            </option>
+          </select>
+          <button 
+            class="btn-primary" 
+            :disabled="!selectedDIDId" 
+            @click="assignDID"
+            style="margin-top: 0.5rem;"
+          >
+            Assign Number
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- DELETE MODAL -->
@@ -419,7 +478,7 @@ import { Check as CheckIcon, X as XIcon, Phone as PhoneIcon, PhoneCall as PhoneC
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import CallHandlingRules from '../../components/common/CallHandlingRules.vue'
-import { extensionsAPI, extensionProfilesAPI, usersAPI } from '@/services/api'
+import { extensionsAPI, extensionProfilesAPI, usersAPI, numbersAPI, voicemailAPI, devicesAPI } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -453,6 +512,8 @@ const currentProfile = computed(() => {
   return profiles.value.find(p => p.id === extension.value.profileId)
 })
 
+const extensionId = computed(() => extension.value.id)
+
 const vm = ref({
   enabled: true,
   pin: '1234',
@@ -460,12 +521,30 @@ const vm = ref({
 })
 
 const forwarding = ref({
-  always: { enabled: false, number: '' },
-  busy: { enabled: false, number: '' },
-  noAnswer: { enabled: true, number: '', timeout: '20' }
+  always: false,
+  alwaysNumber: '',
+  busy: false,
+  busyNumber: '',
+  noAnswer: true,
+  noAnswerNumber: '',
 })
 
 const devices = ref([])
+
+// Greetings state
+const greetingState = ref({
+  unavailable: { hasRecording: false, loading: false },
+  busy: { hasRecording: false, loading: false }
+})
+const showAssignDeviceModal = ref(false)
+const availableDevices = ref([])
+const deviceToUnassign = ref(null)
+const selectedDeviceId = ref('')
+
+// DID (Phone Number) Assignment
+const availableDIDs = ref([])
+const assignedDID = ref(null)
+const selectedDIDId = ref('')
 
 // Call Handling
 const dragIndex = ref(null)
@@ -496,6 +575,7 @@ onMounted(async () => {
   await fetchProfiles()
   if (!isNew.value) {
     await fetchExtension()
+    await loadDIDs()
   } else {
     // Generate random SIP password for new extension
     extension.value.sipPassword = generatePassword(16)
@@ -513,6 +593,18 @@ async function fetchProfiles() {
     }))
   } catch (error) {
     console.error('Failed to load profiles', error)
+  }
+}
+
+const loadDIDs = async () => {
+  try {
+    const response = await numbersAPI.list()
+    const allDIDs = response.data?.data || response.data || []
+    
+    availableDIDs.value = allDIDs.filter(d => !d.extension_id || d.extension_id === extensionId.value)
+    assignedDID.value = allDIDs.find(d => d.extension_id === extensionId.value)
+  } catch (err) {
+    console.error('Failed to load DIDs:', err)
   }
 }
 
@@ -551,6 +643,16 @@ async function fetchExtension() {
     callHandling.value.strategy = ext.ring_strategy || 'simultaneous'
     callHandling.value.noAnswerAction = ext.no_answer_action || 'voicemail'
     callHandling.value.forwardNumber = ext.no_answer_forward_to || ''
+    
+    // Load forwarding settings
+    forwarding.value = {
+      always: ext.forward_all_enabled || false,
+      alwaysNumber: ext.forward_all_destination || '',
+      busy: ext.forward_busy_enabled || false,
+      busyNumber: ext.forward_busy_destination || '',
+      noAnswer: ext.forward_no_answer_enabled || false,
+      noAnswerNumber: ext.forward_no_answer_destination || '',
+    }
     
     // Parse device order if available
     if (ext.ring_device_order) {
@@ -653,7 +755,24 @@ const saveVoicemail = async () => {
   }
 }
 
-const saveForwarding = () => toast?.info('Forwarding rules would be saved here')
+const saveForwarding = async () => {
+  try {
+    const formData = {
+      forward_all_enabled: forwarding.value.always,
+      forward_all_destination: forwarding.value.alwaysNumber,
+      forward_busy_enabled: forwarding.value.busy,
+      forward_busy_destination: forwarding.value.busyNumber,
+      forward_no_answer_enabled: forwarding.value.noAnswer,
+      forward_no_answer_destination: forwarding.value.noAnswerNumber,
+    }
+    
+    await extensionsAPI.update(extension.value.id, formData)
+    toast?.success('Forwarding rules saved')
+  } catch (err) {
+    console.error('Failed to save forwarding:', err)
+    toast?.error('Failed to save forwarding rules')
+  }
+}
 
 const saveCallHandling = async () => {
   try {
@@ -667,6 +786,35 @@ const saveCallHandling = async () => {
     toast?.success('Call handling settings saved')
   } catch (error) {
     toast?.error(error.message || 'Failed to save call handling settings')
+  }
+}
+
+const assignDID = async () => {
+  if (!selectedDIDId.value) return
+  try {
+    await numbersAPI.update(selectedDIDId.value, {
+      extension_id: extensionId.value
+    })
+    toast?.success('Phone number assigned')
+    await loadDIDs()
+    selectedDIDId.value = ''
+  } catch (err) {
+    console.error('Failed to assign DID:', err)
+    toast?.error('Failed to assign phone number')
+  }
+}
+
+const unassignDID = async () => {
+  if (!assignedDID.value) return
+  try {
+    await numbersAPI.update(assignedDID.value.id, {
+      extension_id: null
+    })
+    toast?.success('Phone number unassigned')
+    await loadDIDs()
+  } catch (err) {
+    console.error('Failed to unassign DID:', err)
+    toast?.error('Failed to unassign phone number')
   }
 }
 
@@ -687,6 +835,97 @@ const confirmDelete = async () => {
     router.push('/admin/extensions')
   } catch (error) {
     toast?.error(error.message, 'Failed to delete extension')
+  }
+}
+
+// Greeting handlers
+const playGreeting = async (type) => {
+  if (!extension.value.ext) return
+  greetingState.value[type].loading = true
+  try {
+    const streamUrl = `/api/voicemail/boxes/${extension.value.ext}/greetings/${type}/stream`
+    window.open(streamUrl, '_blank')
+  } catch (err) {
+    toast?.error('Failed to play greeting')
+  } finally {
+    greetingState.value[type].loading = false
+  }
+}
+
+const uploadGreeting = async (type) => {
+  if (!extension.value.ext) return
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'audio/*'
+  input.onchange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const formData = new FormData()
+      formData.append('audio', file)
+      formData.append('type', type)
+      await voicemailAPI.uploadGreeting(extension.value.ext, formData)
+      toast?.success('Greeting uploaded successfully')
+      greetingState.value[type].hasRecording = true
+    } catch (err) {
+      toast?.error('Failed to upload greeting')
+    }
+  }
+  input.click()
+}
+
+const resetGreeting = async (type) => {
+  if (!extension.value.ext) return
+  try {
+    await voicemailAPI.resetGreeting(extension.value.ext, type)
+    toast?.success('Greeting reset to default')
+    greetingState.value[type].hasRecording = false
+  } catch (err) {
+    toast?.error('Failed to reset greeting')
+  }
+}
+
+// Device assignment handlers
+const openAssignDeviceModal = async () => {
+  try {
+    const response = await devicesAPI.list({ unassigned: true })
+    availableDevices.value = response.data || []
+    showAssignDeviceModal.value = true
+    selectedDeviceId.value = ''
+  } catch (err) {
+    toast?.error('Failed to load available devices')
+  }
+}
+
+const assignDevice = async () => {
+  if (!selectedDeviceId.value) return
+  try {
+    await devicesAPI.assignUser(selectedDeviceId.value, extension.value.id)
+    toast?.success('Device assigned successfully')
+    showAssignDeviceModal.value = false
+    await loadDevices()
+  } catch (err) {
+    toast?.error('Failed to assign device')
+  }
+}
+
+const unassignDevice = async (row) => {
+  if (!row?.id) return
+  try {
+    await devicesAPI.assignUser(row.id, null)
+    toast?.success('Device unassigned successfully')
+    await loadDevices()
+  } catch (err) {
+    toast?.error('Failed to unassign device')
+  }
+}
+
+const loadDevices = async () => {
+  try {
+    const response = await devicesAPI.list({ extension_id: extensionId.value })
+    devices.value = response.data || []
+  } catch (err) {
+    console.error('Failed to load devices:', err)
   }
 }
 </script>
@@ -1131,4 +1370,33 @@ input:checked + .slider:before { transform: translateX(18px); }
 
 .icon { width: 20px; height: 20px; }
 .icon-sm { width: 16px; height: 16px; }
+
+/* DID Section */
+.did-section {
+  padding: 1rem;
+}
+.assigned-did-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+}
+.did-number {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+.did-name {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.no-did {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--bg-app);
+  border-radius: var(--radius-md);
+}
 </style>

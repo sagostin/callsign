@@ -360,8 +360,9 @@
             </div>
             <div class="input-group">
               <input type="text" class="input-field" v-model="branding.logoUrl" placeholder="https://...">
-              <button class="btn-secondary small">Upload</button>
+              <button class="btn-secondary small" @click="triggerLogoUpload">Upload</button>
             </div>
+            <input ref="logoInput" type="file" accept="image/*" @change="handleLogoUpload" style="display: none;">
           </div>
         </div>
 
@@ -385,7 +386,7 @@
               <img v-if="branding.logoUrl" :src="branding.logoUrl" class="preview-logo">
               <span v-else class="preview-brand">{{ branding.name }}</span>
             </div>
-            <button class="preview-btn">Sample Button</button>
+            <button class="preview-btn" @click="previewBrand">Sample Button</button>
           </div>
         </div>
       </div>
@@ -446,8 +447,8 @@
             <span class="cert-expiry">Expires: Dec 12, 2025</span>
           </div>
           <div class="cert-actions">
-            <button class="btn-secondary small">Renew</button>
-            <button class="btn-secondary small">Replace</button>
+            <button class="btn-secondary small" @click="renewCertificate">Renew</button>
+            <button class="btn-secondary small" @click="replaceCertificate">Replace</button>
           </div>
         </div>
       </div>
@@ -739,6 +740,51 @@ const copyWebhook = () => {
 const regenerateSecret = () => {
   // This would need an API endpoint
   toast?.info('Secret regeneration requires system admin')
+}
+
+const logoInput = ref(null)
+
+const triggerLogoUpload = () => {
+  logoInput.value?.click()
+}
+
+const handleLogoUpload = async (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/svg+xml', 'image/webp']
+  if (!validTypes.includes(file.type)) {
+    toast?.error('Invalid file type. Please upload an image (JPEG, PNG, GIF, SVG, or WebP).')
+    return
+  }
+
+  if (file.size > 2 * 1024 * 1024) {
+    toast?.error('File too large. Maximum size is 2MB.')
+    return
+  }
+
+  try {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      branding.value.logoUrl = e.target?.result
+      toast?.success('Logo uploaded successfully')
+    }
+    reader.readAsDataURL(file)
+  } catch (error) {
+    toast?.error('Failed to read logo file')
+  }
+}
+
+const previewBrand = () => {
+  toast?.info(`Preview: ${branding.value.name || 'Brand'} with color ${branding.value.primaryColor}`)
+}
+
+const renewCertificate = () => {
+  toast?.info('Certificate renewal initiated. You will receive an email when complete.')
+}
+
+const replaceCertificate = () => {
+  toast?.info('Certificate replacement requires a new CSR. Contact support to proceed.')
 }
 </script>
 

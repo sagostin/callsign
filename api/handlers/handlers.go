@@ -4,12 +4,15 @@ import (
 	"callsign/config"
 	"callsign/middleware"
 	"callsign/models"
+	"callsign/services/broadcast"
 	"callsign/services/cdr"
 	"callsign/services/esl"
 	"callsign/services/logging"
 	"callsign/services/messaging"
 	"callsign/services/websocket"
 	"callsign/services/xmlcache"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
@@ -34,6 +37,7 @@ type Handler struct {
 	MsgManager          *messaging.Manager
 	CHClient            *cdr.ClickHouseClient
 	XMLCache            *xmlcache.XMLCache
+	BroadcastWorker     *broadcast.BroadcastWorker
 }
 
 // NewHandler creates a new Handler instance
@@ -68,6 +72,11 @@ func (h *Handler) SetClickHouse(ch *cdr.ClickHouseClient) {
 // SetXMLCache sets the XML cache reference for cache invalidation
 func (h *Handler) SetXMLCache(cache *xmlcache.XMLCache) {
 	h.XMLCache = cache
+}
+
+// SetBroadcastWorker sets the broadcast campaign worker reference
+func (h *Handler) SetBroadcastWorker(worker *broadcast.BroadcastWorker) {
+	h.BroadcastWorker = worker
 }
 
 // flushXMLCache invalidates the xmlcache so the next mod_xml_curl request
@@ -403,10 +412,97 @@ func (h *Handler) AdminLogin(c *fiber.Ctx) error {
 	})
 }
 
+// RegisterRequest represents a user registration payload
+type RegisterRequest struct {
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+}
+
 // Register creates a new user account
 func (h *Handler) Register(c *fiber.Ctx) error {
-	// NOTE: Implement based on your registration requirements
-	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Registration not implemented"})
+	var req RegisterRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("AUTH", "Register: invalid request payload", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	// Guard: validate required fields are present
+	if req.Email == "" || req.Password == "" || req.Username == "" {
+		h.logWarn("AUTH", "Register: missing required fields", h.reqFields(c, nil))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Email, password, and username are required"})
+	}
+
+	// Guard: validate email format
+	if !isValidEmail(req.Email) {
+		h.logWarn("AUTH", "Register: invalid email format", h.reqFields(c, map[string]interface{}{"email": req.Email}))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid email format"})
+	}
+
+	// Guard: validate password strength
+	if len(req.Password) < 8 {
+		h.logWarn("AUTH", "Register: password too short", h.reqFields(c, nil))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Password must be at least 8 characters"})
+	}
+
+	// Guard: check if user with email already exists
+	var existingUser models.User
+	if err := h.DB.Where("email = ? OR username = ?", req.Email, req.Username).First(&existingUser).Error; err == nil {
+		h.logWarn("AUTH", "Register: user already exists", h.reqFields(c, map[string]interface{}{"email": req.Email, "username": req.Username}))
+		return c.Status(http.StatusConflict).JSON(fiber.Map{"error": "User with this email or username already exists"})
+	}
+
+	// Create new user with hashed password
+	user := models.User{
+		Username:  req.Username,
+		Email:     req.Email,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+		Role:      models.RoleUser, // Default role for self-registration
+	}
+
+	if err := user.SetPassword(req.Password); err != nil {
+		h.logError("AUTH", "Register: failed to hash password", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process registration"})
+	}
+
+	if err := h.DB.Create(&user).Error; err != nil {
+		h.logError("AUTH", "Register: failed to create user", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create user"})
+	}
+
+	h.logInfo("AUTH", "Register: successful", h.reqFields(c, map[string]interface{}{"user_id": user.ID, "username": user.Username, "email": user.Email}))
+	return c.Status(http.StatusCreated).JSON(fiber.Map{
+		"message": "User registered successfully",
+		"user": fiber.Map{
+			"id":         user.ID,
+			"uuid":       user.UUID,
+			"username":   user.Username,
+			"email":      user.Email,
+			"first_name": user.FirstName,
+			"last_name":  user.LastName,
+			"role":       user.Role,
+		},
+	})
+}
+
+// isValidEmail performs basic email format validation
+func isValidEmail(email string) bool {
+	if email == "" {
+		return false
+	}
+	// Basic format check: contains @ and has domain portion
+	atIndex := strings.Index(email, "@")
+	if atIndex < 1 || atIndex == len(email)-1 {
+		return false
+	}
+	domain := email[atIndex+1:]
+	if domain == "" || !strings.Contains(domain, ".") {
+		return false
+	}
+	return true
 }
 
 // ExtensionLoginRequest represents a client/extension login payload
@@ -529,8 +625,59 @@ func (h *Handler) ExtensionLogin(c *fiber.Ctx) error {
 
 // RequestPasswordReset initiates a password reset
 func (h *Handler) RequestPasswordReset(c *fiber.Ctx) error {
-	// NOTE: Implement password reset logic
-	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Password reset not implemented"})
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	// Fail fast: validate email presence
+	if strings.TrimSpace(req.Email) == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Email is required"})
+	}
+
+	// Normalize and validate email format
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if !isValidEmail(email) {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid email format"})
+	}
+
+	// Look up user by email (silently fail to prevent email enumeration)
+	var user models.User
+	if err := h.DB.Where("email = ?", email).First(&user).Error; err != nil {
+		return c.JSON(fiber.Map{"message": "If an account exists, a reset link has been sent"})
+	}
+
+	// Generate cryptographically secure reset token
+	token, err := generateSecureToken(32)
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate reset token"})
+	}
+
+	// TODO: Store token in database with expiration (password_reset_tokens table)
+	// Log token for testing purposes
+	h.logInfo("Auth", "PasswordReset", map[string]interface{}{
+		"user_id": user.ID,
+		"email":   email,
+		"token":   token,
+	})
+
+	// TODO: Send reset email via email service
+	// For testing, return token in response
+	return c.JSON(fiber.Map{
+		"message": "If an account exists, a reset link has been sent",
+		"token":   token, // Remove in production - email the token instead
+	})
+}
+
+// generateSecureToken creates a cryptographically secure random token
+func generateSecureToken(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(bytes), nil
 }
 
 // GetProfile returns the current user's profile

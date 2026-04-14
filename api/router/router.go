@@ -236,6 +236,7 @@ func (r *Router) Init() {
 	devices.Post("/:id/assign-user", r.Handler.AssignDeviceToUser)
 	devices.Post("/:id/assign-profile", r.Handler.AssignDeviceToProfile)
 	devices.Post("/:id/reprovision", r.Handler.ReprovisionDevice)
+	devices.Post("/:id/reboot", r.Handler.RebootDevice)
 	devices.Put("/:id/lines", r.Handler.UpdateDeviceLines)
 
 	// Client Registrations (apps, web clients, device registrations)
@@ -292,6 +293,7 @@ func (r *Router) Init() {
 	ivr.Get("/menus/:id", r.Handler.GetIVRMenu)
 	ivr.Put("/menus/:id", r.Handler.UpdateIVRMenu)
 	ivr.Delete("/menus/:id", r.Handler.DeleteIVRMenu)
+	ivr.Post("/menus/:id/test", r.Handler.TestIVRMenu)
 
 	// Queues
 	queues := tenantScoped.Group("/queues")

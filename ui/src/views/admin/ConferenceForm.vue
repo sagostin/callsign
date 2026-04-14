@@ -50,12 +50,16 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { conferencesAPI } from '../../services/api'
 
+const toast = inject('toast')
 const route = useRoute()
 const router = useRouter()
 const isNew = computed(() => !route.params.id)
+
+const saving = ref(false)
 
 const form = ref({
   name: '',
@@ -66,9 +70,43 @@ const form = ref({
   description: ''
 })
 
-const save = () => {
-  console.log('Saving conference:', form.value)
-  router.back()
+const save = async () => {
+  // Guard: require name and extension
+  if (!form.value.name) {
+    toast?.warning('Conference name is required.')
+    return
+  }
+  if (!form.value.extension) {
+    toast?.warning('Extension is required.')
+    return
+  }
+
+  saving.value = true
+  try {
+    const payload = {
+      name: form.value.name,
+      extension: form.value.extension,
+      profile: form.value.profile,
+      pin: form.value.pin || '',
+      mod_pin: form.value.mod_pin || '',
+      description: form.value.description || '',
+    }
+
+    if (isNew.value) {
+      await conferencesAPI.create(payload)
+      toast?.success(`Conference "${form.value.name}" created`)
+    } else {
+      await conferencesAPI.update(route.params.id, payload)
+      toast?.success(`Conference "${form.value.name}" updated`)
+    }
+
+    router.push('/admin/conferences')
+  } catch (err) {
+    console.error('Failed to save conference:', err)
+    toast?.error(err.message || 'Failed to save conference')
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 

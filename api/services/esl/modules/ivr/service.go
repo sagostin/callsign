@@ -3,10 +3,12 @@ package ivr
 import (
 	"callsign/models"
 	"callsign/services/esl"
+	"callsign/services/messaging"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +26,7 @@ const (
 // in IVRMenu.FlowData, executing each node via ESL commands.
 type Service struct {
 	*esl.BaseService
+	messagingManager *messaging.Manager
 }
 
 // New creates a new IVR service
@@ -40,6 +43,11 @@ func (s *Service) Init(manager *esl.Manager) error {
 	}
 	log.Info("Custom IVR engine initialized")
 	return nil
+}
+
+// SetMessagingManager sets the messaging manager for SMS sending
+func (s *Service) SetMessagingManager(mgr *messaging.Manager) {
+	s.messagingManager = mgr
 }
 
 // Handle processes incoming IVR call connections
@@ -268,6 +276,12 @@ func (s *Service) executeNode(ctx *flowContext, node *models.IVRFlowNode) string
 	case "voicemail":
 		return s.nodeTransferVoicemail(ctx, config)
 
+	case "speech":
+		return s.nodeSpeech(ctx, config)
+
+	case "database":
+		return s.nodeDatabase(ctx, node)
+
 	case "hangup":
 		ctx.conn.Execute("hangup", "", false)
 		return "__hangup__"
@@ -479,16 +493,42 @@ func (s *Service) nodeWebRequest(ctx *flowContext, config map[string]interface{}
 // nodeSendSMS sends an SMS message (via configured provider)
 func (s *Service) nodeSendSMS(ctx *flowContext, config map[string]interface{}) string {
 	to := s.resolveVars(ctx, getConfigStr(config, "to", ""))
+	from := s.resolveVars(ctx, getConfigStr(config, "from", ""))
 	msgBody := s.resolveVars(ctx, getConfigStr(config, "body", ""))
+
+	// Validate required fields
 	if to == "" || msgBody == "" {
-		return "failed"
+		ctx.logger.Warn("IVR send_sms: missing required fields (to or body)")
+		return "error"
 	}
 
-	ctx.logger.WithFields(log.Fields{"to": to, "body": msgBody[:min(len(msgBody), 50)]}).
-		Info("IVR: SMS send requested")
+	// Check if messaging manager is available
+	if s.messagingManager == nil {
+		ctx.logger.Error("IVR send_sms: messaging manager not available")
+		return "error"
+	}
 
-	// TODO: Integrate with actual SMS provider (Telnyx, Twilio, etc.)
-	// For now, log the intent
+	// Get tenant ID from the IVR menu
+	tenantID := ctx.menu.TenantID
+	if tenantID == 0 {
+		ctx.logger.Error("IVR send_sms: no tenant ID available")
+		return "error"
+	}
+
+	ctx.logger.WithFields(log.Fields{
+		"to":   to,
+		"from": from,
+		"body": msgBody[:min(len(msgBody), 50)],
+	}).Info("IVR: sending SMS")
+
+	// Send the SMS via the messaging manager
+	err := s.messagingManager.SendMessage(tenantID, from, to, msgBody, nil, 0)
+	if err != nil {
+		ctx.logger.WithError(err).Error("IVR send_sms: failed to send SMS")
+		return "error"
+	}
+
+	ctx.logger.Info("IVR: SMS sent successfully")
 	return "sent"
 }
 
@@ -597,6 +637,236 @@ func (s *Service) nodeTransferVoicemail(ctx *flowContext, config map[string]inte
 	ctx.logger.WithField("voicemail", mailboxID).Info("IVR: transferring to voicemail")
 	ctx.conn.Execute("transfer", fmt.Sprintf("*99%s XML %s", mailboxID, ctx.domain), false)
 	return "__hangup__"
+}
+
+// nodeDatabase executes a database query (REST, MySQL, or default)
+func (s *Service) nodeDatabase(ctx *flowContext, node *models.IVRFlowNode) string {
+	connection := getConfigStr(node.Config, "connection", "default")
+	operation := getConfigStr(node.Config, "operation", "query")
+	query := s.resolveVars(ctx, getConfigStr(node.Config, "query", ""))
+	resultVar := getConfigStr(node.Config, "result_variable", "db_result")
+
+	if query == "" {
+		ctx.logger.Warn("IVR database: no query specified")
+		return "error"
+	}
+
+	var result string
+	var err error
+
+	switch connection {
+	case "rest":
+		result, err = s.executeRestQuery(ctx, query, operation)
+	case "mysql":
+		result, err = s.executeMySQLQuery(ctx, query, operation)
+	default:
+		result, err = s.executeDefaultQuery(ctx, query, operation)
+	}
+
+	if err != nil {
+		ctx.logger.WithFields(log.Fields{
+			"connection": connection,
+			"operation":  operation,
+			"error":      err,
+		}).Warn("IVR database: query failed")
+		return "error"
+	}
+
+	// Store result in flow variable
+	ctx.variables[resultVar] = result
+
+	// Determine next node based on result
+	if result != "" {
+		return "success"
+	}
+	return "empty"
+}
+
+// executeRestQuery performs a REST API query
+func (s *Service) executeRestQuery(ctx *flowContext, query, operation string) (string, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	var req *http.Request
+	var err error
+
+	switch operation {
+	case "query":
+		req, err = http.NewRequest("GET", query, nil)
+	case "insert", "update", "delete":
+		req, err = http.NewRequest("POST", query, strings.NewReader("{}"))
+	default:
+		req, err = http.NewRequest("GET", query, nil)
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return string(body), nil
+}
+
+// executeMySQLQuery executes a MySQL query (placeholder)
+func (s *Service) executeMySQLQuery(ctx *flowContext, query, operation string) (string, error) {
+	ctx.logger.Warn("IVR database: MySQL queries not yet implemented")
+	return "", fmt.Errorf("mysql connection not implemented")
+}
+
+// executeDefaultQuery executes a default database query (placeholder)
+func (s *Service) executeDefaultQuery(ctx *flowContext, query, operation string) (string, error) {
+	ctx.logger.Warn("IVR database: default database queries not yet implemented")
+	return "", fmt.Errorf("default database connection not implemented")
+}
+
+// =====================
+// Speech Recognition
+// =====================
+
+// SpeechResult holds the result of speech recognition
+type SpeechResult struct {
+	Text       string
+	Confidence float64
+}
+
+// nodeSpeech handles speech recognition using FreeSWITCH detect_speech
+func (s *Service) nodeSpeech(ctx *flowContext, config map[string]interface{}) string {
+	provider := getConfigStr(config, "provider", "google")
+	language := getConfigStr(config, "language", "en-US")
+	hints := getConfigStr(config, "hints", "")
+	timeout := getConfigInt(config, "timeout", 10)
+	_ = getConfigInt(config, "maxSpeechNodes", 1) // maxNodes - reserved for multi-utterance support
+	variable := getConfigStr(config, "variable", "speech_text")
+
+	ctx.logger.WithFields(log.Fields{
+		"provider": provider,
+		"language": language,
+		"timeout":  timeout,
+		"variable": variable,
+	}).Info("IVR: speech recognition started")
+
+	// Play prompt if specified
+	if nodePrompt := getConfigStr(config, "prompt", ""); nodePrompt != "" {
+		promptType := getConfigStr(config, "promptType", "tts")
+		if promptType == "audio" {
+			ctx.conn.Execute("playback", getConfigStr(config, "audioFile", nodePrompt), true)
+		} else {
+			ttsText := getConfigStr(config, "ttsText", nodePrompt)
+			if ctx.manager.TTS != nil {
+				if cached := ctx.manager.TTS.PlaybackCommand(ttsText, "flite", "kal"); cached != "" {
+					ctx.conn.Execute("playback", cached, true)
+				} else {
+					ctx.conn.Execute("speak", fmt.Sprintf("flite|kal|%s", ttsText), true)
+				}
+			} else {
+				ctx.conn.Execute("speak", fmt.Sprintf("flite|kal|%s", ttsText), true)
+			}
+		}
+	}
+
+	// Build the detect_speech command
+	// Format: detect_speech <grammar_name> <language> [timeout [params]]
+	detectCmd := fmt.Sprintf("detect_speech speech %s %d", language, timeout)
+	if hints != "" {
+		detectCmd += " " + hints
+	}
+
+	// Send detect_speech command
+	resp, err := ctx.conn.Send(detectCmd)
+	if err != nil {
+		ctx.logger.Errorf("IVR speech: failed to start speech recognition: %v", err)
+		return "error"
+	}
+
+	// Check if detect_speech was accepted
+	respBody := strings.TrimSpace(resp.Body)
+	if respBody != "+OK" && respBody != "" && !strings.Contains(respBody, "OK") {
+		ctx.logger.Warnf("IVR speech: detect_speech returned: %s", respBody)
+	}
+
+	// Wait for speech event or timeout
+	result := s.waitForSpeechEvent(ctx, timeout)
+
+	// Stop speech recognition
+	ctx.conn.Send("detect_speech off")
+
+	if result != nil {
+		// Store recognized text
+		ctx.variables[variable] = result.Text
+		ctx.variables[variable+"_confidence"] = fmt.Sprintf("%.2f", result.Confidence)
+		ctx.logger.WithFields(log.Fields{
+			"text":       result.Text,
+			"confidence": result.Confidence,
+		}).Info("IVR: speech recognized")
+		return "recognized"
+	}
+
+	ctx.logger.Info("IVR: speech recognition timed out")
+	return "timeout"
+}
+
+// waitForSpeechEvent waits for speech to be detected or timeout to occur
+func (s *Service) waitForSpeechEvent(ctx *flowContext, timeout int) *SpeechResult {
+	deadline := time.Now().Add(time.Duration(timeout) * time.Second)
+
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil
+		}
+
+		// Set a shorter sleep to check timeout more precisely
+		sleepDur := remaining
+		if sleepDur > 500*time.Millisecond {
+			sleepDur = 500 * time.Millisecond
+		}
+		time.Sleep(sleepDur)
+
+		// Try to read an event (non-blocking check)
+		ev, err := ctx.conn.ReadEvent()
+		if err != nil {
+			// If we're past the deadline, return nil (timeout)
+			if time.Now().After(deadline) {
+				return nil
+			}
+			continue // Try again
+		}
+
+		// Check for speech detected event
+		speechType := ev.Get("Speech-Type")
+		if speechType == "detected" || speechType == "speech-detected" {
+			text := ev.Get("Speech-Text")
+			if text != "" {
+				confidence := 0.85 // Default confidence
+				if confStr := ev.Get("Confidence"); confStr != "" {
+					if conf, err := strconv.ParseFloat(confStr, 64); err == nil {
+						confidence = conf
+					}
+				}
+				return &SpeechResult{
+					Text:       text,
+					Confidence: confidence,
+				}
+			}
+		}
+
+		// Check for ASR result alternative header
+		if resultText := ev.Get("variable_speech_text"); resultText != "" {
+			return &SpeechResult{
+				Text:       resultText,
+				Confidence: 0.85,
+			}
+		}
+	}
 }
 
 // =====================

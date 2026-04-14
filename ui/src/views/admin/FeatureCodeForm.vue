@@ -65,26 +65,37 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { featureCodesAPI } from '../../services/api'
 
 const route = useRoute()
 const router = useRouter()
+const toast = inject('toast')
 const isNew = computed(() => !route.params.id)
 
 const form = ref({
   code: '',
   type: 'custom',
   description: '',
-  description: '',
   enabled: true,
   action: '',
   argument: ''
 })
 
-const save = () => {
-  console.log('Saving feature code:', form.value)
-  router.back()
+const save = async () => {
+  try {
+    if (isNew.value) {
+      await featureCodesAPI.create(form.value)
+      toast.success('Feature code created')
+    } else {
+      await featureCodesAPI.update(route.params.id, form.value)
+      toast.success('Feature code updated')
+    }
+    router.back()
+  } catch (e) {
+    toast.error(e.response?.data?.error || e.message)
+  }
 }
 </script>
 

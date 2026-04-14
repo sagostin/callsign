@@ -19,15 +19,15 @@
     <!-- Stats Row -->
     <div class="stats-row">
       <div class="stat-card">
-        <span class="stat-value">1,247</span>
+        <span class="stat-value">{{ totalRecordings.toLocaleString() }}</span>
         <span class="stat-label">Total Recordings</span>
       </div>
       <div class="stat-card">
-        <span class="stat-value">156</span>
+        <span class="stat-value">{{ todayRecordings }}</span>
         <span class="stat-label">Today</span>
       </div>
       <div class="stat-card">
-        <span class="stat-value">45.2 GB</span>
+        <span class="stat-value">{{ storageUsed }}</span>
         <span class="stat-label">Storage Used</span>
       </div>
       <div class="stat-card">
@@ -60,9 +60,9 @@
         <label>Extension</label>
         <select v-model="filters.extension" class="input-field">
           <option value="">All Extensions</option>
-          <option value="101">101 - Alice Smith</option>
-          <option value="102">102 - Bob Jones</option>
-          <option value="103">103 - Charlie Brown</option>
+          <option v-for="ext in extensionsList" :key="ext.extension" :value="ext.extension">
+            {{ ext.extension }} - {{ ext.name || ext.first_name || 'Extension' }}
+          </option>
         </select>
       </div>
       <div class="filter-group">
@@ -190,7 +190,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   Filter as FilterIcon, Download as DownloadIcon, Play as PlayIcon,
   Trash2 as TrashIcon, PhoneIncoming as PhoneIncomingIcon,
@@ -199,12 +199,18 @@ import {
   X as XIcon, ArrowRight as ArrowRightIcon, Volume2 as VolumeIcon,
   Mail as MailIcon
 } from 'lucide-vue-next'
+import { recordingsAPI, extensionsAPI } from '../../services/api'
 
 const search = ref('')
 const showFilters = ref(false)
 const showPlayer = ref(false)
 const currentRecording = ref(null)
 const selectedIds = ref([])
+
+const totalRecordings = ref(0)
+const todayRecordings = ref(0)
+const storageUsed = ref('0 MB')
+const extensionsList = ref([])
 
 const filters = ref({
   dateRange: 'week',
@@ -213,23 +219,91 @@ const filters = ref({
   minDuration: '0'
 })
 
-const recordings = ref([
-  { id: 1, date: '2025-12-09', time: '14:32:45', direction: 'inbound', from: '+1 415-555-1234', fromName: 'John Customer', to: 'Ext 101', toName: 'Alice Smith', duration: '03:24', size: '2.1 MB' },
-  { id: 2, date: '2025-12-09', time: '14:15:22', direction: 'outbound', from: 'Ext 102', fromName: 'Bob Jones', to: '+1 310-555-9999', toName: null, duration: '01:45', size: '1.1 MB' },
-  { id: 3, date: '2025-12-09', time: '13:48:11', direction: 'internal', from: 'Ext 101', fromName: 'Alice Smith', to: 'Ext 103', toName: 'Charlie Brown', duration: '00:52', size: '0.5 MB' },
-  { id: 4, date: '2025-12-09', time: '12:30:00', direction: 'inbound', from: '+1 800-555-0000', fromName: 'Support Queue', to: 'Ext 105', toName: 'Edward Kim', duration: '08:15', size: '5.2 MB' },
-  { id: 5, date: '2025-12-08', time: '16:45:33', direction: 'outbound', from: 'Ext 101', fromName: 'Alice Smith', to: '+1 212-555-4567', toName: 'Client Corp', duration: '15:30', size: '9.8 MB' },
-])
+const recordings = ref([])
+
+const formatRecording = (r) => {
+  const dt = new Date(r.created_at || r.start_time || r.date)
+  const durationSec = r.duration || r.billsec || 0
+  const mins = Math.floor(durationSec / 60)
+  const secs = String(durationSec % 60).padStart(2, '0')
+  const sizeKB = r.file_size || 0
+  const sizeMB = (sizeKB / (1024 * 1024)).toFixed(1)
+
+  return {
+    id: r.id,
+    date: dt.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
+    time: dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+    direction: r.direction || 'inbound',
+    from: r.caller_id_number || r.src || 'Unknown',
+    fromName: r.caller_id_name || null,
+    to: r.destination_number || r.dst || 'Unknown',
+    toName: r.destination_name || null,
+    duration: `${mins}:${secs}`,
+    size: sizeKB > 0 ? `${sizeMB} MB` : '0 MB',
+    rawDate: dt.toISOString(),
+  }
+}
+
+const loadStats = async () => {
+  try {
+    const response = await recordingsAPI.list()
+    const allRecordings = response.data?.data || response.data?.recordings || []
+    totalRecordings.value = allRecordings.length
+    
+    const today = new Date().toISOString().split('T')[0]
+    todayRecordings.value = allRecordings.filter(r => {
+      const recDate = new Date(r.created_at || r.start_time || r.date).toISOString().split('T')[0]
+      return recDate === today
+    }).length
+    
+    const totalMB = allRecordings.length * 1
+    storageUsed.value = totalMB > 1000 ? `${(totalMB / 1000).toFixed(1)} GB` : `${totalMB} MB`
+  } catch (err) {
+    console.error('Failed to load recording stats:', err)
+  }
+}
+
+const loadExtensions = async () => {
+  try {
+    const response = await extensionsAPI.list()
+    extensionsList.value = response.data?.data || []
+  } catch (err) {
+    console.error('Failed to load extensions:', err)
+  }
+}
+
+const loadRecordings = async () => {
+  try {
+    const response = await recordingsAPI.list()
+    const rawRecordings = response.data?.data || response.data?.recordings || []
+    recordings.value = rawRecordings.map(formatRecording)
+  } catch (err) {
+    console.error('Failed to load recordings:', err)
+  }
+}
+
+onMounted(() => {
+  loadStats()
+  loadExtensions()
+  loadRecordings()
+})
 
 const filteredRecordings = computed(() => {
-  return recordings.value.filter(r => {
-    if (search.value) {
-      const q = search.value.toLowerCase()
-      return r.from.toLowerCase().includes(q) || r.to.toLowerCase().includes(q) ||
-             (r.fromName && r.fromName.toLowerCase().includes(q)) || (r.toName && r.toName.toLowerCase().includes(q))
-    }
-    return true
-  })
+  let result = recordings.value
+  
+  if (search.value) {
+    const q = search.value.toLowerCase()
+    result = result.filter(r =>
+      r.from.toLowerCase().includes(q) || r.to.toLowerCase().includes(q) ||
+      (r.fromName && r.fromName.toLowerCase().includes(q)) || (r.toName && r.toName.toLowerCase().includes(q))
+    )
+  }
+  
+  if (filters.value.extension) {
+    result = result.filter(r => r.from?.includes(`Ext ${filters.value.extension}`) || r.to?.includes(`Ext ${filters.value.extension}`))
+  }
+  
+  return result
 })
 
 const selectAll = (e) => {
@@ -259,13 +333,67 @@ const playRecording = (rec) => {
   showPlayer.value = true
 }
 
-const downloadRecording = (rec) => alert(`Downloading: ${rec.id}`)
-const deleteRecording = (rec) => {
-  if (confirm('Delete this recording?')) {
-    recordings.value = recordings.value.filter(r => r.id !== rec.id)
+const downloadRecording = async (rec) => {
+  if (!rec?.id) {
+    console.error('Invalid recording: missing id')
+    return
+  }
+
+  try {
+    const response = await recordingsAPI.download(rec.id)
+    const blob = response.data
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `recording-${rec.id}.bin`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error('Download failed:', err)
+    alert('Failed to download recording. Please try again.')
   }
 }
-const exportRecordings = () => alert('Exporting recordings...')
+
+const exportRecordings = () => {
+  const dataToExport = selectedIds.value.length > 0
+    ? recordings.value.filter(r => selectedIds.value.includes(r.id))
+    : recordings.value
+
+  if (dataToExport.length === 0) {
+    alert('No recordings to export.')
+    return
+  }
+
+  const headers = ['Date', 'Time', 'Direction', 'From', 'From Name', 'To', 'To Name', 'Duration', 'Size']
+  const rows = dataToExport.map(rec => [
+    rec.date,
+    rec.time,
+    rec.direction,
+    rec.from,
+    rec.fromName || '',
+    rec.to,
+    rec.toName || '',
+    rec.duration,
+    rec.size,
+  ])
+
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+  ].join('\n')
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `call-recordings-${new Date().toISOString().split('T')[0]}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
 </script>
 
 <style scoped>

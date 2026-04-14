@@ -263,8 +263,51 @@ const filteredLogs = computed(() => {
   })
 })
 
-const exportLogs = () => {
-  toast?.info('Export functionality coming soon')
+const exporting = ref(false)
+
+const exportLogs = async () => {
+  if (exporting.value) return
+  if (logs.value.length === 0) {
+    toast?.warning('No logs available to export')
+    return
+  }
+
+  exporting.value = true
+  try {
+    const params = { ...buildExportParams() }
+    const response = await auditLogAPI.export(params)
+    const blob = response.data
+    downloadFile(blob, buildExportFilename())
+    toast?.success('Audit logs exported successfully')
+  } catch (e) {
+    console.error('Export failed:', e)
+    toast?.error('Failed to export audit logs')
+  } finally {
+    exporting.value = false
+  }
+}
+
+function buildExportParams() {
+  const params = { format: 'csv' }
+  if (categoryFilter.value) params.category = categoryFilter.value
+  if (severityFilter.value) params.severity = severityFilter.value
+  return params
+}
+
+function buildExportFilename() {
+  const timestamp = new Date().toISOString().slice(0, 10)
+  return `audit-logs-${timestamp}.csv`
+}
+
+function downloadFile(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 }
 
 // --- Helper functions for verbose audit data ---

@@ -41,18 +41,20 @@
       </div>
 
       <div class="form-actions">
-        <button class="btn-primary" @click="save">Save Schedule</button>
+        <button class="btn-primary" :disabled="isSaving" @click="save">{{ isSaving ? 'Saving...' : 'Save Schedule' }}</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { wakeupCallsAPI } from '../../services/api'
 
 const route = useRoute()
 const router = useRouter()
+const toast = inject('toast')
 const isNew = computed(() => !route.params.id)
 
 const form = ref({
@@ -63,9 +65,39 @@ const form = ref({
   status: 'pending'
 })
 
-const save = () => {
-  console.log('Saving wake up call:', form.value)
-  router.back()
+const isSaving = ref(false)
+
+const save = async () => {
+  // Guard clause: extension is required
+  if (!form.value.extension?.trim()) {
+    toast?.error('Room/Extension is required')
+    return
+  }
+
+  isSaving.value = true
+  try {
+    const payload = {
+      extension: form.value.extension.trim(),
+      time: form.value.time,
+      date: form.value.date || null,
+      recurrence: form.value.recurrence,
+      status: form.value.status
+    }
+
+    if (isNew.value) {
+      await wakeupCallsAPI.create(payload)
+      toast?.success('Wake up call scheduled')
+    } else {
+      await wakeupCallsAPI.update(route.params.id, payload)
+      toast?.success('Wake up call updated')
+    }
+
+    router.push('/admin/wakeup-calls')
+  } catch (err) {
+    toast?.error(err.message || 'Failed to save wake up call')
+  } finally {
+    isSaving.value = false
+  }
 }
 </script>
 

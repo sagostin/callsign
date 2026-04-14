@@ -146,6 +146,72 @@
 
     <!-- Backdrop for dropdown -->
     <div class="dropdown-backdrop" v-if="showUserDropdown" @click="showUserDropdown = false"></div>
+
+    <!-- Help Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showHelpModal" class="modal-overlay" @click.self="showHelpModal = false">
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>Help & Documentation</h3>
+              <button class="modal-close-btn" @click="showHelpModal = false" aria-label="Close">
+                <XIcon class="icon-sm" />
+              </button>
+            </div>
+            <div class="modal-body">
+              <div class="help-links">
+                <a 
+                  v-for="link in helpLinks" 
+                  :key="link.href"
+                  class="help-link-item"
+                  :href="link.href"
+                  @click.prevent="openHelpLink(link)"
+                >
+                  <BookIcon v-if="link.icon === 'book'" class="link-icon" />
+                  <PlayIcon v-else-if="link.icon === 'play'" class="link-icon" />
+                  <CodeIcon v-else-if="link.icon === 'code'" class="link-icon" />
+                  <LifeBuoyIcon v-else-if="link.icon === 'life-buoy'" class="link-icon" />
+                  <span>{{ link.label }}</span>
+                  <ExternalLinkIcon class="link-arrow" />
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Quick Add Panel -->
+    <Teleport to="body">
+      <Transition name="panel">
+        <div v-if="showQuickAddPanel" class="quickadd-overlay" @click="showQuickAddPanel = false">
+          <div class="quickadd-panel" @click.stop>
+            <div class="quickadd-header">
+              <h4>Quick Add</h4>
+              <button class="modal-close-btn" @click="showQuickAddPanel = false" aria-label="Close">
+                <XIcon class="icon-sm" />
+              </button>
+            </div>
+            <div class="quickadd-list">
+              <button 
+                v-for="item in quickAddItems" 
+                :key="item.route"
+                class="quickadd-item"
+                @click="handleQuickAdd(item)"
+              >
+                <PhoneIcon v-if="item.icon === 'phone'" class="item-icon" />
+                <SmartphoneIcon v-else-if="item.icon === 'smartphone'" class="item-icon" />
+                <UsersIcon v-else-if="item.icon === 'users'" class="item-icon" />
+                <MenuIcon v-else-if="item.icon === 'menu'" class="item-icon" />
+                <BellIcon v-else-if="item.icon === 'bell'" class="item-icon" />
+                <MicIcon v-else-if="item.icon === 'mic'" class="item-icon" />
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </header>
 </template>
 
@@ -159,7 +225,11 @@ import {
   PlusCircle as PlusCircleIcon, Phone as PhoneIcon,
   LayoutDashboard as LayoutDashboardIcon, ServerCog as ServerCogIcon,
   User as UserIcon, Settings as SettingsIcon, LogOut as LogOutIcon,
-  Eye as EyeIcon
+  Eye as EyeIcon, X as XIcon,
+  Book as BookIcon, Play as PlayIcon, Code as CodeIcon,
+  LifeBuoy as LifeBuoyIcon, ExternalLink as ExternalLinkIcon,
+  Menu as MenuIcon, Mic as MicIcon, Smartphone as SmartphoneIcon,
+  Users as UsersIcon, Bell as BellIcon
 } from 'lucide-vue-next'
 import NotificationCenter from '@/components/NotificationCenter.vue'
 
@@ -269,8 +339,49 @@ const navigateToTenantAdmin = () => {
   router.push('/admin')
 }
 
-const showHelp = () => alert('Help & Documentation')
-const showQuickAdd = () => alert('Quick Add Menu')
+// Help Modal
+const showHelpModal = ref(false)
+
+const helpLinks = [
+  { label: 'Documentation', href: '/docs', icon: 'book' },
+  { label: 'Video Tutorials', href: '/tutorials', icon: 'play' },
+  { label: 'API Reference', href: '/api-docs', icon: 'code' },
+  { label: 'Contact Support', href: '/support', icon: 'life-buoy' },
+]
+
+const openHelpLink = (link) => {
+  if (link.href.startsWith('/')) {
+    router.push(link.href)
+  } else {
+    window.open(link.href, '_blank')
+  }
+  showHelpModal.value = false
+}
+
+const showHelp = () => {
+  showHelpModal.value = true
+}
+
+// Quick Add Panel
+const showQuickAddPanel = ref(false)
+
+const quickAddItems = [
+  { label: 'New Extension', route: '/admin/extensions/new', icon: 'phone' },
+  { label: 'New Device', route: '/admin/devices/new', icon: 'smartphone' },
+  { label: 'New Queue', route: '/admin/queues/new', icon: 'users' },
+  { label: 'New IVR', route: '/admin/ivr/new', icon: 'menu' },
+  { label: 'New Ring Group', route: '/admin/ring-groups/new', icon: 'bell' },
+  { label: 'New Recording', route: '/admin/recordings/new', icon: 'mic' },
+]
+
+const handleQuickAdd = (item) => {
+  router.push(item.route)
+  showQuickAddPanel.value = false
+}
+
+const showQuickAdd = () => {
+  showQuickAddPanel.value = true
+}
 const logout = async () => {
   showUserDropdown.value = false
   const isAdmin = auth.hasRole(['system_admin', 'tenant_admin'])
@@ -868,5 +979,197 @@ const logout = async () => {
     width: 32px;
     height: 32px;
   }
+}
+
+/* Help Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal, 1000);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  padding: var(--spacing-4);
+}
+
+.modal-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  width: 100%;
+  max-width: 400px;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-4);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+}
+
+.modal-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.modal-close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: var(--spacing-4);
+}
+
+.help-links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.help-link-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  color: var(--text-primary);
+  transition: all var(--transition-fast);
+}
+
+.help-link-item:hover {
+  background: var(--bg-hover);
+}
+
+.link-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.link-arrow {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* Quick Add Panel */
+.quickadd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal, 1000);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.quickadd-panel {
+  position: absolute;
+  top: 60px;
+  right: var(--spacing-4);
+  width: 280px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+.quickadd-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-3) var(--spacing-4);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.quickadd-header h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.quickadd-list {
+  padding: var(--spacing-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.quickadd-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-2-5) var(--spacing-3);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  width: 100%;
+}
+
+.quickadd-item:hover {
+  background: var(--bg-hover);
+}
+
+.item-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Modal Transitions */
+.modal-enter-active,
+.modal-leave-active {
+  transition: all var(--transition-fast);
+}
+
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+}
+
+.modal-enter-from .modal-card,
+.modal-leave-to .modal-card {
+  transform: scale(0.95);
+}
+
+/* Panel Transitions */
+.panel-enter-active,
+.panel-leave-active {
+  transition: all var(--transition-fast);
+}
+
+.panel-enter-from,
+.panel-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 </style>

@@ -44,10 +44,12 @@
                        {{ ext.extension }} {{ ext.name ? `- ${ext.name}` : '' }}
                      </option>
                    </optgroup>
-                   <optgroup label="Voicemail">
-                     <option value="voicemail:general">General Voicemail</option>
-                     <option value="voicemail:operator">Operator Voicemail</option>
-                   </optgroup>
+<optgroup label="Voicemail">
+                      <option value="">Select voicemail...</option>
+                      <option v-for="box in voicemailBoxes" :key="box.id || box.extension" :value="`voicemail:${box.extension}`">
+                        {{ box.name || box.extension }} ({{ box.extension }})
+                      </option>
+                    </optgroup>
                 </select>
              </div>
           </div>
@@ -139,11 +141,13 @@
                       {{ ext.extension }} {{ ext.name ? `- ${ext.name}` : '' }}
                     </option>
                   </optgroup>
-                  <optgroup label="Voicemail">
-                    <option value="voicemail:general">General Voicemail</option>
-                    <option value="voicemail:operator">Operator Voicemail</option>
-                  </optgroup>
-                  <optgroup label="IVR Menus">
+<optgroup label="Voicemail">
+                     <option value="">Select voicemail...</option>
+                     <option v-for="box in voicemailBoxes" :key="box.id || box.extension" :value="`voicemail:${box.extension}`">
+                       {{ box.name || box.extension }} ({{ box.extension }})
+                     </option>
+                   </optgroup>
+                   <optgroup label="IVR Menus">
                     <option v-for="ivr in ivrs" :key="ivr.id" :value="`ivr:${ivr.id}`">
                       {{ ivr.name }}
                     </option>
@@ -161,19 +165,21 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { holidaysAPI, extensionsAPI, ivrAPI, ringGroupsAPI } from '@/services/api'
+import { holidaysAPI, extensionsAPI, ivrAPI, ringGroupsAPI, voicemailAPI, timeConditionsAPI } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
-const isNew = computed(() => !route.params.id)
+const toast = inject('toast')
+const isNew = computed(() => !route.params.id || route.params.id === 'new')
 
 // Data for dropdowns
 const holidayLists = ref([])
 const extensions = ref([])
 const ivrs = ref([])
 const ringGroups = ref([])
+const voicemailBoxes = ref([])
 
 const form = ref({
   name: '',
@@ -201,17 +207,19 @@ const daysOfWeek = [
 // Load data on mount
 onMounted(async () => {
   try {
-    const [holidayRes, extRes, ivrRes, rgRes] = await Promise.all([
+    const [holidayRes, extRes, ivrRes, rgRes, voicemailRes] = await Promise.all([
       holidaysAPI.list().catch(() => ({ data: [] })),
       extensionsAPI.list().catch(() => ({ data: [] })),
       ivrAPI.list().catch(() => ({ data: [] })),
-      ringGroupsAPI.list().catch(() => ({ data: [] }))
+      ringGroupsAPI.list().catch(() => ({ data: [] })),
+      voicemailAPI.listBoxes().catch(() => ({ data: [] }))
     ])
     
     holidayLists.value = holidayRes.data?.data || holidayRes.data || []
     extensions.value = extRes.data?.data || extRes.data || []
     ivrs.value = ivrRes.data?.data || ivrRes.data || []
     ringGroups.value = rgRes.data?.data || rgRes.data || []
+    voicemailBoxes.value = voicemailRes.data?.data || voicemailRes.data || []
   } catch (e) {
     console.error('Failed to load form data:', e)
   }
@@ -233,7 +241,13 @@ const toggleDow = (block, dayVal) => {
    }
 }
 
-const save = () => {
+const save = async () => {
+  // Guard: Require a name before saving
+  if (!form.value.name?.trim()) {
+    toast?.warning('Please enter a schedule name.')
+    return
+  }
+
   // Parse dest values (format: "type:value") for API
   const parseDestination = (dest) => {
     if (!dest) return { type: '', value: '' }
@@ -246,18 +260,32 @@ const save = () => {
   const holidayDest = parseDestination(form.value.holiday_dest)
   
   const payload = {
-    ...form.value,
+    name: form.value.name.trim(),
+    extension: form.value.extension?.trim() || null,
+    description: form.value.description?.trim() || null,
+    time_blocks: form.value.time_blocks,
     match_dest_type: matchDest.type,
     match_dest_value: matchDest.value,
     nomatch_dest_type: nomatchDest.type,
     nomatch_dest_value: nomatchDest.value,
+    holiday_list_id: form.value.holiday_list_id ? parseInt(form.value.holiday_list_id) : null,
     holiday_dest_type: holidayDest.type,
     holiday_dest_value: holidayDest.value,
-    holiday_list_id: form.value.holiday_list_id ? parseInt(form.value.holiday_list_id) : null
   }
   
-  console.log('Saving schedule:', payload)
-  router.back()
+  try {
+    if (isNew.value) {
+      await timeConditionsAPI.create(payload)
+      toast?.success('Schedule created successfully')
+    } else {
+      await timeConditionsAPI.update(route.params.id, payload)
+      toast?.success('Schedule updated successfully')
+    }
+    router.push('/admin/schedules')
+  } catch (err) {
+    toast?.error(err.message || 'Failed to save schedule')
+    console.error('Save error:', err)
+  }
 }
 </script>
 

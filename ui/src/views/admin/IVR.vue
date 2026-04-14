@@ -98,8 +98,8 @@
               <option value="">Select recording...</option>
               <option v-for="r in recordings" :key="r.id" :value="r.name">{{ r.name }}</option>
             </select>
-            <button class="btn-secondary small">Record</button>
-            <button class="btn-secondary small">Upload</button>
+            <button class="btn-secondary small" @click="openRecordModal">Record</button>
+            <button class="btn-secondary small" @click="openUploadModal">Upload</button>
           </div>
         </div>
 
@@ -187,22 +187,26 @@
 
         <div class="form-section">
           <div class="section-header">
-            <h4>Schedule Rules</h4>
-            <button class="btn-small" @click="addTimeRule">+ Add Rule</button>
+            <h4>Schedule</h4>
           </div>
           
-          <div class="time-rules">
-            <div class="time-rule" v-for="(rule, i) in timeForm.rules" :key="i">
-              <div class="rule-days">
-                <label v-for="d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d" class="day-check">
-                  <input type="checkbox" :value="d" v-model="rule.days">
-                  <span>{{ d.charAt(0) }}</span>
-                </label>
+          <div class="time-rule-single">
+            <div class="rule-days">
+              <label v-for="(d, idx) in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d" class="day-check">
+                <input type="checkbox" :value="idx + 1" v-model="timeForm.weekdays">
+                <span>{{ d.charAt(0) }}</span>
+              </label>
+            </div>
+            <div class="time-row">
+              <div class="time-field">
+                <label>Start</label>
+                <input type="time" v-model="timeForm.startTime" class="input-field">
               </div>
-              <input type="time" v-model="rule.startTime" class="input-field time-input">
               <span class="time-sep">to</span>
-              <input type="time" v-model="rule.endTime" class="input-field time-input">
-              <button class="btn-icon" @click="removeTimeRule(i)"><XIcon class="icon-sm" /></button>
+              <div class="time-field">
+                <label>End</label>
+                <input type="time" v-model="timeForm.endTime" class="input-field">
+              </div>
             </div>
           </div>
         </div>
@@ -226,6 +230,45 @@
       </div>
     </div>
   </div>
+
+  <!-- Upload Recording Modal -->
+  <div v-if="showUploadModal" class="modal-overlay" @click.self="showUploadModal = false">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Upload Recording</h3>
+        <button class="btn-icon" @click="showUploadModal = false"><XIcon class="icon-sm" /></button>
+      </div>
+      <div class="modal-body">
+        <div class="upload-zone" @click="$refs.fileInput.click()">
+          <div class="upload-icon">⬆️</div>
+          <div class="upload-text">
+            <strong>Click to upload</strong> or drag and drop<br>
+            <span class="sub-text">WAV, MP3, or OGG (Max 10MB)</span>
+          </div>
+          <input ref="fileInput" type="file" class="file-input" accept="audio/*" @change="onUploadFile">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" @click="showUploadModal = false">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Record Audio Modal -->
+  <div v-if="showRecordModal" class="modal-overlay" @click.self="showRecordModal = false">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Record Greeting</h3>
+        <button class="btn-icon" @click="showRecordModal = false"><XIcon class="icon-sm" /></button>
+      </div>
+      <div class="modal-body">
+        <AudioRecorder @record-complete="onRecordComplete" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" @click="showRecordModal = false">Cancel</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -238,7 +281,8 @@ import {
   Mic as MicIcon
 } from 'lucide-vue-next'
 import StatusBadge from '../../components/common/StatusBadge.vue'
-import { ivrAPI } from '@/services/api'
+import AudioRecorder from '../../components/common/AudioRecorder.vue'
+import { ivrAPI, timeConditionsAPI, recordingsAPI } from '@/services/api'
 
 const toast = inject('toast')
 const isLoading = ref(false)
@@ -261,8 +305,21 @@ const menuForm = ref({
 const menus = ref([])
 
 onMounted(async () => {
-  await fetchMenus()
+  await Promise.all([
+    fetchMenus(),
+    loadTimeConditions(),
+    fetchRecordings()
+  ])
 })
+
+async function fetchRecordings() {
+  try {
+    const response = await recordingsAPI.list()
+    recordings.value = response.data?.data || []
+  } catch (error) {
+    console.warn('Failed to load recordings:', error.message)
+  }
+}
 
 async function fetchMenus() {
   isLoading.value = true
@@ -343,45 +400,101 @@ const saveMenu = async () => {
 const showTimeModal = ref(false)
 const editingTime = ref(false)
 const timeForm = ref({
+  id: null,
   name: '',
-  rules: [{ days: ['Mon','Tue','Wed','Thu','Fri'], startTime: '09:00', endTime: '17:00' }],
-  matchDestination: '',
-  noMatchDestination: ''
+  weekdays: [1, 2, 3, 4, 5],
+  startTime: '09:00',
+  endTime: '17:00',
+  matchDestType: 'extension',
+  matchDestValue: '',
+  noMatchDestType: 'extension',
+  noMatchDestValue: ''
 })
 
-const timeConditions = ref([
-  {
-    id: 1, name: 'Business Hours', enabled: true, currentMatch: true,
-    rules: [
-      { id: 1, days: ['Mon','Tue','Wed','Thu','Fri'], startTime: '09:00', endTime: '17:00' }
-    ],
-    matchDestination: 'IVR: Main Menu (8000)',
-    noMatchDestination: 'IVR: After Hours (8001)'
-  },
-])
+const timeConditions = ref([])
 
-const addTimeRule = () => {
-  timeForm.value.rules.push({ days: [], startTime: '09:00', endTime: '17:00' })
-}
-
-const removeTimeRule = (i) => {
-  timeForm.value.rules.splice(i, 1)
+const loadTimeConditions = async () => {
+  try {
+    const response = await timeConditionsAPI.list()
+    timeConditions.value = response.data?.data || []
+  } catch (error) {
+    toast?.error(error.message, 'Failed to load time conditions')
+    timeConditions.value = []
+  }
 }
 
 const editTimeCondition = (tc) => {
   editingTime.value = true
+  timeForm.value = {
+    id: tc.id,
+    name: tc.name,
+    weekdays: tc.weekdays || [],
+    startTime: tc.start_time || '09:00',
+    endTime: tc.end_time || '17:00',
+    matchDestType: tc.match_dest_type || 'extension',
+    matchDestValue: tc.match_dest_value || '',
+    noMatchDestType: tc.no_match_dest_type || 'extension',
+    noMatchDestValue: tc.no_match_dest_value || ''
+  }
   showTimeModal.value = true
 }
 
-const deleteTimeCondition = (tc) => {
+const deleteTimeCondition = async (tc) => {
   if (confirm(`Delete time condition "${tc.name}"?`)) {
-    timeConditions.value = timeConditions.value.filter(t => t.id !== tc.id)
+    try {
+      await timeConditionsAPI.delete(tc.id)
+      toast?.success(`Time condition "${tc.name}" deleted`)
+      await loadTimeConditions()
+    } catch (error) {
+      toast?.error(error.message, 'Failed to delete time condition')
+    }
   }
 }
 
-const saveTimeCondition = () => {
+const saveTimeCondition = async () => {
+  try {
+    const isNew = !editingTime.value || !timeForm.value.id
+    const data = {
+      name: timeForm.value.name,
+      extension: timeForm.value.extension || null,
+      timezone: timeForm.value.timezone || 'America/New_York',
+      weekdays: timeForm.value.weekdays,
+      start_time: timeForm.value.startTime,
+      end_time: timeForm.value.endTime,
+      match_dest_type: timeForm.value.matchDestType,
+      match_dest_value: timeForm.value.matchDestValue,
+      no_match_dest_type: timeForm.value.noMatchDestType,
+      no_match_dest_value: timeForm.value.noMatchDestValue
+    }
+    
+    if (isNew) {
+      await timeConditionsAPI.create(data)
+      toast?.success('Time condition created')
+    } else {
+      await timeConditionsAPI.update(timeForm.value.id, data)
+      toast?.success('Time condition updated')
+    }
+    closeTimeModal()
+    await loadTimeConditions()
+  } catch (error) {
+    toast?.error(error.message, 'Failed to save time condition')
+  }
+}
+
+const closeTimeModal = () => {
   showTimeModal.value = false
   editingTime.value = false
+  timeForm.value = {
+    id: null,
+    name: '',
+    weekdays: [1, 2, 3, 4, 5],
+    startTime: '09:00',
+    endTime: '17:00',
+    matchDestType: 'extension',
+    matchDestValue: '',
+    noMatchDestType: 'extension',
+    noMatchDestValue: ''
+  }
 }
 
 // Mode Toggles
@@ -400,12 +513,63 @@ const deleteToggle = (t) => {
 
 // Recordings
 const showUploadModal = ref(false)
+const showRecordModal = ref(false)
 const recordings = ref([
   { id: 1, name: 'main_greeting.wav', duration: '0:32', format: 'WAV/8kHz' },
   { id: 2, name: 'after_hours.wav', duration: '0:18', format: 'WAV/8kHz' },
 ])
+const pendingRecording = ref(null)
 
 const playRecording = (rec) => toast?.info(`Playing: ${rec.name}`)
+
+// Open upload modal
+const openUploadModal = () => {
+  showUploadModal.value = true
+}
+
+// Open record modal
+const openRecordModal = () => {
+  showRecordModal.value = true
+}
+
+// Handle recording complete - upload the recorded audio
+const onRecordComplete = async (blob) => {
+  showRecordModal.value = false
+  try {
+    const formData = new FormData()
+    formData.append('file', blob, 'recording.wav')
+    formData.append('name', `greeting_${Date.now()}.wav`)
+    const response = await recordingsAPI.upload(formData)
+    const uploadedName = response.data?.name || response.data?.file || response.data?.filename
+    if (uploadedName) {
+      menuForm.value.greeting = uploadedName
+      toast?.success('Recording saved')
+    }
+  } catch (error) {
+    toast?.error(error.message, 'Failed to save recording')
+  }
+}
+
+// Handle file upload from modal
+const onUploadFile = async (event) => {
+  const file = event.target?.files?.[0]
+  if (!file) return
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('name', file.name.replace(/\.[^.]+$/, ''))
+    const response = await recordingsAPI.upload(formData)
+    const uploadedName = response.data?.name || response.data?.file || response.data?.filename
+    if (uploadedName) {
+      menuForm.value.greeting = uploadedName
+      showUploadModal.value = false
+      toast?.success('File uploaded')
+    }
+  } catch (error) {
+    toast?.error(error.message, 'Failed to upload file')
+  }
+  event.target.value = ''
+}
 </script>
 
 <style scoped>
@@ -555,6 +719,10 @@ label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var
 
 .time-rules { display: flex; flex-direction: column; gap: 8px; }
 .time-rule { display: flex; align-items: center; gap: 8px; padding: 8px; background: var(--bg-app); border-radius: 4px; }
+.time-rule-single { display: flex; flex-direction: column; gap: 12px; padding: 12px; background: var(--bg-app); border-radius: 4px; }
+.time-row { display: flex; align-items: center; gap: 12px; }
+.time-field { display: flex; flex-direction: column; gap: 4px; }
+.time-field label { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); }
 .rule-days { display: flex; gap: 4px; }
 .day-check { display: flex; flex-direction: column; align-items: center; }
 .day-check input { display: none; }
@@ -581,4 +749,21 @@ input:checked + .slider { background-color: var(--primary-color); }
 input:checked + .slider:before { transform: translateX(16px); }
 .slider.round { border-radius: 20px; }
 .slider.round:before { border-radius: 50%; }
+
+/* Upload Zone */
+.upload-zone {
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 40px;
+  text-align: center;
+  background: var(--bg-app);
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.2s;
+  overflow: hidden;
+}
+.upload-zone:hover { border-color: var(--primary-color); }
+.upload-icon { font-size: 24px; }
+.upload-text { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-top: 12px; }
+.file-input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 </style>

@@ -7,11 +7,12 @@
   </div>
 
   <div class="filter-bar">
-    <input type="text" placeholder="Search mailboxes..." class="search-input">
-    <select class="filter-select">
-       <option>All Tenants</option>
-       <option>Acme Corp</option>
-       <option>Globex Inc</option>
+    <input type="text" v-model="searchQuery" placeholder="Search mailboxes..." class="search-input">
+    <select v-model="selectedTenant" class="filter-select">
+       <option value="">All Tenants</option>
+       <option v-for="tenant in tenants" :key="tenant.id" :value="tenant.id">
+         {{ tenant.name }}
+       </option>
     </select>
   </div>
 
@@ -35,9 +36,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
+import { systemAPI } from '../../services/api.js'
+import { voicemailAPI } from '../../services/api.js'
 
 const columns = [
   { key: 'mailbox', label: 'Mailbox', width: '100px' },
@@ -47,12 +50,33 @@ const columns = [
   { key: 'usage', label: 'Storage' }
 ]
 
-const mailboxes = ref([
-  { mailbox: '1001', user: 'Alice Smith', tenant: 'Acme Corp', messages: 12, usage: 45 },
-  { mailbox: '1002', user: 'Bob Jones', tenant: 'Acme Corp', messages: 0, usage: 2 },
-  { mailbox: '5001', user: 'Support Queue', tenant: 'Globex Inc', messages: 142, usage: 92 },
-  { mailbox: '2023', user: 'Front Desk', tenant: 'Hampton Hotel', messages: 5, usage: 10 },
-])
+const mailboxes = ref([])
+const tenants = ref([])
+const searchQuery = ref('')
+const selectedTenant = ref('')
+
+const loadTenants = async () => {
+  const response = await systemAPI.listTenants()
+  tenants.value = response.data
+}
+
+const loadMailboxes = async () => {
+  const params = {}
+  if (selectedTenant.value) {
+    params.tenant_id = selectedTenant.value
+  }
+  const response = await voicemailAPI.listBoxes({ params })
+  mailboxes.value = response.data
+}
+
+onMounted(() => {
+  loadTenants()
+  loadMailboxes()
+})
+
+watch(selectedTenant, () => {
+  loadMailboxes()
+})
 </script>
 
 <style scoped>

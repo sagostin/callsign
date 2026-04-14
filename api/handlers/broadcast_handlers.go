@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/lib/pq"
@@ -191,17 +190,19 @@ func (h *Handler) StartBroadcast(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Campaign has no recipients"})
 	}
 
-	now := time.Now()
-	h.DB.Model(&campaign).Updates(map[string]interface{}{
-		"status":     models.BroadcastStatusRunning,
-		"started_at": now,
-	})
+	// Check that broadcast worker is available
+	if h.BroadcastWorker == nil {
+		h.logError("BROADCAST", "StartBroadcast: Broadcast worker not configured", h.reqFields(c, nil))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Broadcast worker not configured"})
+	}
 
-	// TODO: Launch async broadcast worker via ESL
-	// The worker would iterate recipients, originate calls via FreeSWITCH,
-	// and play the recording, updating stats as calls complete.
+	// Launch async broadcast worker - it handles status update internally
+	if err := h.BroadcastWorker.StartCampaign(uint(id)); err != nil {
+		h.logError("BROADCAST", "StartBroadcast: Failed to start campaign: "+err.Error(), h.reqFields(c, nil))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to start campaign"})
+	}
 
-	return c.JSON(fiber.Map{"message": "Campaign started", "started_at": now})
+	return c.JSON(fiber.Map{"message": "Campaign started"})
 }
 
 // StopBroadcast stops a running broadcast campaign
@@ -219,9 +220,17 @@ func (h *Handler) StopBroadcast(c *fiber.Ctx) error {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Running campaign not found"})
 	}
 
-	h.DB.Model(&campaign).Update("status", models.BroadcastStatusPaused)
+	// Check that broadcast worker is available
+	if h.BroadcastWorker == nil {
+		h.logError("BROADCAST", "StopBroadcast: Broadcast worker not configured", h.reqFields(c, nil))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Broadcast worker not configured"})
+	}
 
-	// TODO: Signal broadcast worker to stop originating new calls
+	// Signal broadcast worker to stop
+	if err := h.BroadcastWorker.StopCampaign(uint(id)); err != nil {
+		h.logWarn("BROADCAST", "StopBroadcast: "+err.Error(), h.reqFields(c, nil))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to stop campaign"})
+	}
 
 	return c.JSON(fiber.Map{"message": "Campaign stopped"})
 }
