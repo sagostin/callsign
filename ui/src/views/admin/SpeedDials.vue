@@ -115,9 +115,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import { PlusIcon, ZapIcon, EditIcon, TrashIcon, PhoneIcon, X, RefreshCw, GripVertical } from 'lucide-vue-next'
 import { speedDialsAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 const groups = ref([])
 const loading = ref(false)
@@ -201,7 +203,7 @@ async function saveGroup() {
     closeModal()
   } catch (error) {
     console.error('Failed to save speed dial group:', error)
-    alert('Failed to save speed dial group')
+    toast.error('Failed to save speed dial group')
   }
 }
 
@@ -212,7 +214,7 @@ async function deleteGroup(group) {
     await loadGroups()
   } catch (error) {
     console.error('Failed to delete speed dial group:', error)
-    alert('Failed to delete speed dial group')
+    toast.error('Failed to delete speed dial group')
   }
 }
 

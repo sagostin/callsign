@@ -181,7 +181,7 @@
 
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import { 
   Search as SearchIcon, 
@@ -196,6 +196,8 @@ import {
   AlertTriangle as AlertTriangleIcon
 } from 'lucide-vue-next'
 import { audioLibraryAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 const activeTab = ref('manage')
 const searchQuery = ref('')
@@ -282,7 +284,7 @@ const submitUpload = async () => {
     loadRecordings()
   } catch (e) {
     console.error('Upload failed', e)
-    alert('Upload failed: ' + (e.response?.data?.error || e.message))
+    toast.error('Upload failed: ' + (e.response?.data?.error || e.message))
   } finally {
     isUploading.value = false
   }
@@ -306,7 +308,7 @@ const submitEdit = async () => {
     loadRecordings()
   } catch (e) {
     console.error('Update failed', e)
-    alert('Update failed')
+    toast.error('Update failed')
   }
 }
 
@@ -318,7 +320,7 @@ const deleteRecording = async (row) => {
     loadRecordings()
   } catch (e) {
     console.error('Delete failed', e)
-    alert('Failed to delete recording')
+    toast.error('Failed to delete recording')
   }
 }
 
@@ -371,7 +373,7 @@ const playAudio = async (row) => {
       playing.value = true
     } catch (e) {
       console.error('Failed to play audio', e)
-      alert('Failed to play audio: ' + e.message)
+      toast.error('Failed to play audio: ' + e.message)
     }
   }
 }
@@ -431,7 +433,7 @@ const downloadAudio = async (row) => {
     URL.revokeObjectURL(blobUrl)
   } catch (e) {
     console.error('Download failed', e)
-    alert('Download failed: ' + e.message)
+    toast.error('Download failed: ' + e.message)
   }
 }
 

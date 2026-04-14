@@ -26,10 +26,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import { systemAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 const columns = [
   { key: 'gateway_name', label: 'Trunk Name' },
@@ -66,7 +68,7 @@ const deleteTrunk = async (trunk) => {
       await systemAPI.deleteGateway(trunk.id)
       await loadTrunks()
     } catch (e) {
-      alert('Failed to delete trunk: ' + e.message)
+      toast.error('Failed to delete trunk: ' + e.message)
     }
   }
 }

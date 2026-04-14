@@ -3,6 +3,8 @@ package handlers
 import (
 	"callsign/middleware"
 	"callsign/models"
+	"encoding/json"
+	"io"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -761,6 +763,66 @@ func (h *Handler) DeleteHolidayList(c *fiber.Ctx) error {
 	return nil
 }
 
+// fetchAndParseICS fetches an ICS file from a URL and extracts holiday dates.
+func fetchAndParseICS(url string) ([]models.HolidayDate, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, err
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseICSEvents(string(body))
+}
+
+// parseICSEvents extracts VEVENT entries from ICS content and returns holiday dates.
+func parseICSEvents(icsContent string) ([]models.HolidayDate, error) {
+	var holidays []models.HolidayDate
+
+	// Match VEVENT blocks: BEGIN:VEVENT...END:VEVENT
+	veventRegex := regexp.MustCompile(`(?is:BEGIN:VEVENT.*?END:VEVENT)`)
+	events := veventRegex.FindAllString(icsContent, -1)
+
+	for _, event := range events {
+		var date, name string
+
+		// Extract DTSTART (event date)
+		dtstartRegex := regexp.MustCompile(`(?im)^DTSTART[^:]*:\s*(\d{4})(\d{2})(\d{2})`)
+		if match := dtstartRegex.FindStringSubmatch(event); len(match) == 4 {
+			date = match[1] + "-" + match[2] + "-" + match[3]
+		}
+
+		// Extract SUMMARY (event name/title)
+		summaryRegex := regexp.MustCompile(`(?im)^SUMMARY[^:]*:\s*(.+)`)
+		if match := summaryRegex.FindStringSubmatch(event); len(match) == 2 {
+			name = strings.TrimSpace(match[1])
+		}
+
+		if date != "" && name != "" {
+			holidays = append(holidays, models.HolidayDate{
+				Date: date,
+				Name: name,
+			})
+		}
+	}
+
+	return holidays, nil
+}
+
 func (h *Handler) SyncHolidayList(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
@@ -776,8 +838,18 @@ func (h *Handler) SyncHolidayList(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "No external URL configured for this holiday list"})
 	}
 
-	// TODO: Fetch and parse ICS from external URL
-	// For now, just update the last synced time
+	holidays, err := fetchAndParseICS(list.ExternalURL)
+	if err != nil {
+		h.logWarn("ROUTING", "SyncHolidayList: Failed to fetch ICS from URL", h.reqFields(c, nil))
+		return c.Status(http.StatusBadGateway).JSON(fiber.Map{"error": "Failed to fetch ICS calendar"})
+	}
+
+	datesJSON, err := json.Marshal(holidays)
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process holiday data"})
+	}
+
+	list.Dates = datesJSON
 	now := time.Now()
 	list.LastSynced = &now
 	h.DB.Save(&list)

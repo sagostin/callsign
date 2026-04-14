@@ -190,13 +190,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { 
   Info as InfoIcon, GripVertical as GripVerticalIcon,
   ArrowRight as ArrowRightIcon, Edit as EditIcon,
   Trash2 as TrashIcon, X as XIcon
 } from 'lucide-vue-next'
 import { systemAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 const rules = ref([])
 const loading = ref(true)
@@ -272,7 +274,7 @@ const saveRule = async () => {
     await loadDialplans()
     showModal.value = false
   } catch (e) {
-    alert('Failed to save dial plan: ' + e.message)
+    toast.error('Failed to save dial plan: ' + e.message)
   } finally {
     saving.value = false
   }
@@ -284,7 +286,7 @@ const deleteRule = async (rule) => {
     await systemAPI.deleteDialplan(rule.id)
     await loadDialplans()
   } catch (e) {
-    alert('Failed to delete dial plan: ' + e.message)
+    toast.error('Failed to delete dial plan: ' + e.message)
   }
 }
 
@@ -292,7 +294,7 @@ const toggleRule = async (rule) => {
   try {
     await systemAPI.updateDialplan(rule.id, { enabled: rule.enabled })
   } catch (e) {
-    alert('Failed to update dial plan: ' + e.message)
+    toast.error('Failed to update dial plan: ' + e.message)
   }
 }
 

@@ -202,12 +202,18 @@
         <div v-else-if="activeSection === 'cluster'" class="panel">
           <div class="panel-header">
             <h3>Cluster Nodes</h3>
-            <span class="coming-soon-badge">Coming Soon</span>
+            <span class="deferred-badge">Deferred</span>
           </div>
-          <div class="coming-soon-overlay">
-            <ClusterIcon style="width: 48px; height: 48px; opacity: 0.2; margin-bottom: 12px;" />
-            <p class="panel-desc">Cluster management is coming in a future update.</p>
-            <p class="panel-desc">This will allow you to manage multi-node FreeSWITCH clusters, view node health, and configure failover.</p>
+          <!-- TODO: Implement cluster management for multi-node FreeSWITCH orchestration
+               - Node health monitoring and status
+               - Failover configuration
+               - Shared ESL connection pooling
+               - Cluster-wide configuration sync
+          -->
+          <div class="deferred-notice">
+            <ClusterIcon class="deferred-icon" />
+            <p class="panel-desc">Cluster management is planned for future release.</p>
+            <p class="panel-desc">This will enable multi-node FreeSWITCH cluster orchestration, node health monitoring, and failover configuration.</p>
           </div>
         </div>
       </div>
@@ -456,8 +462,9 @@ const testSmtp = async () => {
 
 .status-badge.offline { background: #fef2f2; color: #dc2626; }
 
-.coming-soon-badge { font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 4px; background: #fef3c7; color: #b45309; text-transform: uppercase; }
-.coming-soon-overlay { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 60px 40px; }
+.deferred-badge { font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 4px; background: #e0e7ff; color: #4338ca; text-transform: uppercase; }
+.deferred-notice { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 60px 40px; }
+.deferred-icon { width: 48px; height: 48px; opacity: 0.2; margin-bottom: 12px; }
 
 /* ============================================
    RESPONSIVE STYLES - System Settings
@@ -619,7 +626,7 @@ const testSmtp = async () => {
   
   .precedence-badge,
   .status-badge,
-  .coming-soon-badge {
+  .deferred-badge {
     font-size: 9px;
     padding: 3px 8px;
   }
@@ -668,11 +675,11 @@ const testSmtp = async () => {
     transform: translateX(14px);
   }
   
-  .coming-soon-overlay {
+  .deferred-notice {
     padding: 40px 20px;
   }
-  
-  .coming-soon-overlay p {
+
+  .deferred-notice p {
     font-size: 12px;
   }
 }

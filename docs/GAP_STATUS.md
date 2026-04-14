@@ -466,6 +466,14 @@ Files modified:
 - MOH stream CRUD handlers
 - Full MySQL database node support
 
+### Deferred Features (Not Planned for Initial Stability Release)
+
+#### Cluster Management
+- **Frontend**: `ui/src/views/system/SystemSettings.vue` (Cluster tab)
+- **Deferred Reason**: Multi-node FreeSWITCH cluster management (node health, failover, shared ESL pooling) is not planned for the initial stability release
+- **Planned For**: Future release after single-node stability is established
+- **UI Note**: Tab shows "Deferred" badge with placeholder message
+
 ---
 
 ## Round 6 - System & Tenant Admin Fixes
@@ -578,3 +586,297 @@ Files modified:
 - **Was**: SMS body stored in plaintext
 - **Fixed**: SMS body now encrypted at rest via encryption service
 - **Files**: `api/handlers/sms_handlers.go`
+
+---
+
+## Round 7 - Form Saves & Non-Functional UI Fixes
+
+### PHASE 1: Critical Form Save Stubs Fixed (9 files)
+
+#### 1. FaxBoxForm.vue - save() now calls faxAPI.createBox/updateBox
+- **Was**: save() function was a stub
+- **Fixed**: save() now calls `faxAPI.createBox()` for new fax boxes and `faxAPI.updateBox()` for existing ones
+- **Files**: `ui/src/views/admin/FaxBoxForm.vue`
+
+#### 2. ScheduleForm.vue - save() now calls timeConditionsAPI.create/update
+- **Was**: save() function was a stub
+- **Fixed**: save() now calls `timeConditionsAPI.create()` for new schedules and `timeConditionsAPI.update()` for existing ones
+- **Files**: `ui/src/views/admin/ScheduleForm.vue`
+
+#### 3. WakeUpCallForm.vue - save() now calls wakeupCallsAPI.create/update + wakeupCallsAPI.cancel
+- **Was**: save() function was a stub
+- **Fixed**: save() now calls `wakeupCallsAPI.create()` for new calls and `wakeupCallsAPI.update()` for existing ones, plus `wakeupCallsAPI.cancel()` for cancellation
+- **Files**: `ui/src/views/admin/WakeUpCallForm.vue`
+
+#### 4. VoicemailBoxForm.vue - save() now calls voicemailAPI.createBox/updateBox
+- **Was**: save() function was a stub
+- **Fixed**: save() now calls `voicemailAPI.createBox()` for new boxes and `voicemailAPI.updateBox()` for existing ones
+- **Files**: `ui/src/views/admin/VoicemailBoxForm.vue`
+
+#### 5. StreamForm.vue - save() now calls mohAPI.create/update
+- **Was**: save() function was a stub
+- **Fixed**: save() now calls `mohAPI.create()` for new streams and `mohAPI.update()` for existing ones
+- **Files**: `ui/src/views/admin/StreamForm.vue`
+
+#### 6. FeatureCodeForm.vue - save() now calls featureCodesAPI.create/update
+- **Was**: save() function was a stub
+- **Fixed**: save() now calls `featureCodesAPI.create()` for new codes and `featureCodesAPI.update()` for existing ones
+- **Files**: `ui/src/views/admin/FeatureCodeForm.vue`
+
+#### 7. DialPlanForm.vue - save() now calls dialPlansAPI.create/update
+- **Was**: save() function was a stub
+- **Fixed**: save() now calls `dialPlansAPI.create()` for new plans and `dialPlansAPI.update()` for existing ones
+- **Files**: `ui/src/views/admin/DialPlanForm.vue`
+
+#### 8. ConferenceForm.vue - save() now calls conferencesAPI.create/update
+- **Was**: save() function was a stub
+- **Fixed**: save() now calls `conferencesAPI.create()` for new conferences and `conferencesAPI.update()` for existing ones
+- **Files**: `ui/src/views/admin/ConferenceForm.vue`
+
+#### 9. CallBlockForm.vue - save() now calls routingAPI.createBlock/updateBlock
+- **Was**: save() function was a stub
+- **Fixed**: save() now calls `routingAPI.createBlock()` for new blocks and `routingAPI.updateBlock()` for existing ones
+- **Files**: `ui/src/views/admin/CallBlockForm.vue`
+
+---
+
+### PHASE 2: Mock Data Pages Fixed (8 files)
+
+#### 1. FaxServer.vue - wired to faxAPI, buttons now functional
+- **Was**: Mock data displayed, buttons non-functional
+- **Fixed**: Now fetches fax data from `faxAPI`, buttons fully functional
+- **Files**: `ui/src/views/admin/FaxServer.vue`
+
+#### 2. Hospitality.vue - room stats from API, wake-up calls wired
+- **Was**: Mock room statistics, wake-up call buttons non-functional
+- **Fixed**: Room stats now from API, wake-up calls wired to `wakeupCallsAPI`
+- **Files**: `ui/src/views/admin/Hospitality.vue`
+
+#### 3. SystemMailboxes.vue - mailboxes from API, tenant filter dynamic
+- **Was**: Hardcoded mailbox data, static tenant filter
+- **Fixed**: Mailboxes now from `voicemailAPI`, tenant filter dynamically populated
+- **Files**: `ui/src/views/system/SystemMailboxes.vue`
+
+#### 4. SystemExtensions.vue - extensions from API, tenant filter dynamic
+- **Was**: Hardcoded extension list, static tenant filter
+- **Fixed**: Extensions now from `extensionsAPI`, tenant filter dynamically populated
+- **Files**: `ui/src/views/system/SystemExtensions.vue`
+
+#### 5. ConferenceProfiles.vue - profiles from API, wired CRUD + XML config
+- **Was**: Mock conference profiles, no CRUD functionality
+- **Fixed**: Profiles from `conferencesAPI`, CRUD operations wired, XML config generation functional
+- **Files**: `ui/src/views/admin/ConferenceProfiles.vue`
+
+#### 6. Schedules.vue - schedules/holidays from API, delete handlers wired
+- **Was**: Mock schedule data, delete handlers non-functional
+- **Fixed**: Schedules and holidays from `timeConditionsAPI`, delete handlers fully wired
+- **Files**: `ui/src/views/admin/Schedules.vue`
+
+#### 7. WakeUpCalls.vue - calls from API, cancel button wired
+- **Was**: Mock call data, cancel button non-functional
+- **Fixed**: Calls from `wakeupCallsAPI`, cancel button fully wired
+- **Files**: `ui/src/views/admin/WakeUpCalls.vue`
+
+#### 8. SipProfiles.vue - profiles from API, restart/stop buttons wired
+- **Was**: Mock SIP profile data, buttons non-functional
+- **Fixed**: Profiles from API, restart and stop buttons fully wired
+- **Files**: `ui/src/views/admin/SipProfiles.vue`
+
+---
+
+### PHASE 3: Non-Functional Buttons Fixed
+
+#### 1. TemplateDetail.vue - Save Changes handler + v-model bindings fixed
+- **Was**: Save Changes button stub, v-model bindings incomplete
+- **Fixed**: Save handler wired to API, v-model bindings properly connected
+- **Files**: `ui/src/views/admin/TemplateDetail.vue`
+
+#### 2. ExtensionDetail.vue - Greeting Play/Upload/Reset + Device Assign/Unassign
+- **Was**: Greeting buttons non-functional, device assignment stubs
+- **Fixed**: Play/Upload/Reset greeting buttons wired, Device Assign/Unassign functional
+- **Files**: `ui/src/views/admin/ExtensionDetail.vue`
+
+#### 3. RecordingForm.vue - file input wired to onFileSelect
+- **Was**: File input not connected to handler
+- **Fixed**: File input now triggers `onFileSelect` properly
+- **Files**: `ui/src/views/admin/RecordingForm.vue`
+
+#### 4. NumberDetail.vue - Release Number button wired
+- **Was**: Release Number button was stub
+- **Fixed**: Release Number button now calls `numbersAPI.release()`
+- **Files**: `ui/src/views/admin/NumberDetail.vue`
+
+#### 5. IVR.vue - Record/Upload greeting buttons wired
+- **Was**: Record/Upload greeting buttons non-functional
+- **Fixed**: Both buttons now properly wired to their respective handlers
+- **Files**: `ui/src/views/admin/IVR.vue`
+
+#### 6. LocationManager.vue - Add/Edit/Remove buttons wired
+- **Was**: Location management buttons were stubs
+- **Fixed**: Add/Edit/Remove buttons fully wired to API
+- **Files**: `ui/src/views/admin/LocationManager.vue`
+
+#### 7. TenantSettings.vue - Upload logo, Renew/Replace SSL cert buttons wired
+- **Was**: Logo upload and SSL cert buttons non-functional
+- **Fixed**: Upload logo calls `tenantSettingsAPI.uploadLogo()`, Renew/Replace SSL certs wired
+- **Files**: `ui/src/views/admin/TenantSettings.vue`
+
+#### 8. Reports.vue - Last 7 Days filter button wired
+- **Was**: "Last 7 Days" filter button was stub
+- **Fixed**: Filter button now properly updates the date range and refreshes data
+- **Files**: `ui/src/views/admin/Reports.vue`
+
+#### 9. UserSettings.vue - Change Photo, Voicemail buttons wired
+- **Was**: Change Photo and Voicemail buttons non-functional
+- **Fixed**: Both buttons now properly wired to their respective handlers
+- **Files**: `ui/src/views/user/UserSettings.vue`
+
+#### 10. TopBar.vue - Help/QuickAdd now open modals instead of alert()
+- **Was**: Help and QuickAdd buttons showed alert() dialogs
+- **Fixed**: Help opens help modal, QuickAdd opens quick add modal
+- **Files**: `ui/src/layouts/TopBar.vue`
+
+---
+
+### PHASE 4: Backend Endpoints Implemented
+
+#### 1. POST /devices/:id/reboot - Device reboot handler
+- **Was**: Endpoint existed but was a stub returning success without action
+- **Fixed**: Now properly sends reboot command to device via FreeSWITCH
+- **Files**: `api/handlers/device_handlers.go`
+
+#### 2. POST /ivr/menus/:id/test - IVR test call handler
+- **Was**: Endpoint returned 501 Not Implemented
+- **Fixed**: Now originates a test call to the IVR menu
+- **Files**: `api/handlers/ivr_handlers.go`
+
+#### 3. POST /auth/register - User registration (was 501, now implemented)
+- **Was**: Endpoint returned 501 Not Implemented
+- **Fixed**: Now properly creates new user account with validation
+- **Files**: `api/handlers/auth_handlers.go`
+
+#### 4. POST /auth/password/reset - Password reset request (was 501, now implemented)
+- **Was**: Endpoint returned 501 Not Implemented
+- **Fixed**: Now properly handles password reset request flow
+- **Files**: `api/handlers/auth_handlers.go`
+
+---
+
+## Round 8 - Chat Module, SMS/MMS & Backend TODOs
+
+### FRONTEND NEW COMPONENTS
+
+#### 1. Chat.vue (NEW)
+- **Description**: Chat module frontend with threads, rooms, queues tabs
+- **Features**: Real-time chat interface with multiple tabs for threads, rooms, and queues
+- **Files**: `ui/src/views/chat/Chat.vue`
+
+#### 2. MessagingNumbers.vue (NEW)
+- **Description**: SMS/MMS number management frontend
+- **Features**: Manage SMS/MMS capable numbers with configuration options
+- **Files**: `ui/src/views/admin/MessagingNumbers.vue`
+
+---
+
+### BACKEND TODOS FIXED
+
+#### 1. chat_handlers.go - SMS body encryption for external channels (AES-256-GCM)
+- **Was**: SMS body stored in plaintext for external channel messages
+- **Fixed**: Implemented AES-256-GCM encryption for SMS bodies before storage
+- **Files**: `api/handlers/chat_handlers.go`
+
+#### 2. chat_handlers.go - Webhook sync logic implemented
+- **Was**: Webhook sync functionality was TODO
+- **Fixed**: Implemented webhook sync logic for chat events
+- **Files**: `api/handlers/chat_handlers.go`
+
+#### 3. chat_handlers.go - Contact field mapping implemented
+- **Was**: Contact field mapping was TODO
+- **Fixed**: Implemented proper contact field mapping for chat contacts
+- **Files**: `api/handlers/chat_handlers.go`
+
+#### 4. messaging_handlers.go - Webhook sync logic implemented
+- **Was**: Webhook sync functionality was TODO
+- **Fixed**: Implemented webhook sync logic for messaging events
+- **Files**: `api/handlers/messaging_handlers.go`
+
+#### 5. routing_handlers.go - ICS calendar import implemented (fetch and parse VEVENT)
+- **Was**: ICS calendar import was TODO
+- **Fixed**: Implemented fetch and parse VEVENT for calendar imports
+- **Files**: `api/handlers/routing_handlers.go`
+
+#### 6. dialplan.go - Phrase handling in XML generation implemented
+- **Was**: Phrase handling in XML generation was TODO
+- **Fixed**: Implemented phrase handling for dialplan XML generation
+- **Files**: `api/services/dialplan/dialplan.go`
+
+#### 7. fax/manager.go - Webhook fax delivery implemented
+- **Was**: Webhook fax delivery was TODO
+- **Fixed**: Implemented webhook-based fax delivery
+- **Files**: `api/services/fax/manager.go`
+
+#### 8. fax/manager.go - Email fax delivery implemented (SMTP with TLS)
+- **Was**: Email fax delivery was TODO
+- **Fixed**: Implemented SMTP with TLS for email fax delivery
+- **Files**: `api/services/fax/manager.go`
+
+---
+
+## UI Polish
+
+### Toast Notifications (Replaced alert())
+- **Was**: Used browser `alert()` dialogs for user feedback
+- **Fixed**: Replaced with toast notifications across 12 admin view files
+- **Files**: `ui/src/views/admin/*.vue` (12 files updated)
+- **Benefits**: Non-blocking, dismissible, better UX
+
+### Console Log Cleanup
+- **Was**: Unnecessary `console.log` statements throughout codebase
+- **Fixed**: Removed debug logging statements
+- **Files**: Various frontend components
+
+---
+
+## Deferred Features
+
+### MySQL Database Node - IVR Flow
+- **Feature**: IVR flow database queries via database node
+- **Status**: Deferred to later release
+- **Reason**: Requires additional infrastructure planning (connection pooling, query builder, security)
+- **Files**: `api/services/esl/modules/ivr/service.go` (database node handler stub exists)
+
+### Cluster Management
+- **Feature**: Multi-node FreeSWITCH cluster management
+- **Status**: Deferred (not planned for initial stability release)
+- **Reason**: Focus on single-node stability before distributed setup
+- **Components Deferred**:
+  - Node health monitoring
+  - Failover ESL pooling
+  - Shared session state
+- **UI Note**: Cluster tab in SystemSettings.vue shows "Deferred" badge
+
+---
+
+## Enhanced Features
+
+### web_request Node - JSON Path Extraction
+- **Was**: web_request node only returned raw response
+- **Enhanced**: Now supports JSON path extraction for storing response values
+- **Usage**: Extract nested values from JSON responses using `$.path.expression` syntax
+- **Example**: Store `$.data.user.name` to variable `user_name`
+- **Files**: `api/services/esl/modules/ivr/service.go`
+
+### condition Node - Enhanced Operators
+- **Was**: condition node only supported basic equality checks
+- **Enhanced**: Now supports comparing:
+  - Variables
+  - JSON path values
+  - Static values
+- **New Operators**:
+  - `>=` (greater than or equal)
+  - `<=` (less than or equal)
+  - `starts_with` (string prefix match)
+  - `ends_with` (string suffix match)
+  - `is_empty` (null or empty string check)
+  - `is_not_empty` (has content check)
+- **Files**: `api/services/esl/modules/ivr/service.go`

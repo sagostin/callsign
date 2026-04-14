@@ -423,6 +423,17 @@ export const messagingAPI = {
 }
 
 // =====================
+// Messaging Numbers API (tenant-level SMS/MMS number management)
+// =====================
+export const messagingNumbersAPI = {
+    list: (params) => api.get('/messaging/numbers', { params }),
+    configureSms: (id, data) => api.put(`/messaging/numbers/${id}/sms`, data),
+    listAssignments: (id) => api.get(`/messaging/numbers/${id}/assignments`),
+    assignNumber: (id, data) => api.post(`/messaging/numbers/${id}/assignments`, data),
+    unassignNumber: (id, assignId) => api.delete(`/messaging/numbers/${id}/assignments/${assignId}`),
+}
+
+// =====================
 // Fax API
 // =====================
 export const faxAPI = {
@@ -951,4 +962,23 @@ export const userGreetingsAPI = {
     update: (id, data) => api.put(`/user/greetings/${id}`, data),
     delete: (id) => api.delete(`/user/greetings/${id}`),
     activate: (id) => api.post(`/user/greetings/${id}/activate`),
+}
+
+// =====================
+// Chat API
+// =====================
+export const chatAPI = {
+    // Threads
+    listThreads: (params) => api.get('/chat/threads', { params }),
+    getThread: (id) => api.get(`/chat/threads/${id}`),
+    createThread: (data) => api.post('/chat/threads', data),
+    // Messages
+    sendMessage: (threadId, data) => api.post(`/chat/threads/${threadId}/messages`, data),
+    // Rooms
+    listRooms: (params) => api.get('/chat/rooms', { params }),
+    createRoom: (data) => api.post('/chat/rooms', data),
+    joinRoom: (id, data) => api.post(`/chat/rooms/${id}/join`, data),
+    // Queues
+    listQueues: (params) => api.get('/chat/queues', { params }),
+    createQueue: (data) => api.post('/chat/queues', data),
 }

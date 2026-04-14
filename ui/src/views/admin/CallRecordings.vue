@@ -190,7 +190,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import {
   Filter as FilterIcon, Download as DownloadIcon, Play as PlayIcon,
   Trash2 as TrashIcon, PhoneIncoming as PhoneIncomingIcon,
@@ -200,6 +200,8 @@ import {
   Mail as MailIcon
 } from 'lucide-vue-next'
 import { recordingsAPI, extensionsAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 const search = ref('')
 const showFilters = ref(false)
@@ -352,7 +354,7 @@ const downloadRecording = async (rec) => {
     URL.revokeObjectURL(url)
   } catch (err) {
     console.error('Download failed:', err)
-    alert('Failed to download recording. Please try again.')
+    toast.error('Failed to download recording. Please try again.')
   }
 }
 
@@ -362,7 +364,7 @@ const exportRecordings = () => {
     : recordings.value
 
   if (dataToExport.length === 0) {
-    alert('No recordings to export.')
+    toast.error('No recordings to export.')
     return
   }
 

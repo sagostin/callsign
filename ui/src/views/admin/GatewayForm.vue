@@ -63,9 +63,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { systemAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 const router = useRouter()
 const route = useRoute()
@@ -131,7 +133,7 @@ const saveGateway = async () => {
     }
     router.push('/admin/trunks')
   } catch (e) {
-    alert('Failed to save gateway: ' + (e.message || 'Unknown error'))
+    toast.error('Failed to save gateway: ' + (e.message || 'Unknown error'))
   } finally {
     saving.value = false
   }

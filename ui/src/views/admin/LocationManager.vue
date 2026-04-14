@@ -79,8 +79,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import { tenantSettingsAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 // State
 const locations = ref([])
@@ -158,7 +160,7 @@ function closeModal() {
 // Save location - handles both create and update
 async function saveLocation() {
   if (!form.value.name.trim()) {
-    alert('Location name is required')
+    toast.error('Location name is required')
     return
   }
 
@@ -180,7 +182,7 @@ async function saveLocation() {
     await fetchLocations()
   } catch (err) {
     console.error('Failed to save location:', err)
-    alert('Failed to save location. Please try again.')
+    toast.error('Failed to save location. Please try again.')
   }
 }
 
@@ -195,7 +197,7 @@ async function removeLocation(loc) {
     await fetchLocations()
   } catch (err) {
     console.error('Failed to remove location:', err)
-    alert('Failed to remove location. Please try again.')
+    toast.error('Failed to remove location. Please try again.')
   }
 }
 </script>

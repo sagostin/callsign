@@ -1030,9 +1030,89 @@ func (h *FSHandler) buildExtensionDialplans(req *XMLCurlRequest) string {
 	return b.String()
 }
 
-// handlePhrases processes phrase section requests
+// handlePhrases processes phrase section requests from FreeSWITCH mod_xml_curl
+// It looks up phrase macros in the phrases table and generates proper XML for playback
 func (h *FSHandler) handlePhrases(req *XMLCurlRequest) string {
-	// TODO: Implement phrase handling
-	// For now, return empty to fall back to static config
-	return ""
+	// Guard: Only handle macro lookups
+	if req.KeyName != "macro" {
+		return ""
+	}
+
+	// Guard: Must have a macro name
+	macroName := req.KeyValue
+	if macroName == "" {
+		return ""
+	}
+
+	// Look up phrase by macro name
+	var phrase models.Phrase
+	result := h.DB.Where("macro_name = ? AND enabled = ?", macroName, true).First(&phrase)
+	if result.Error != nil {
+		// Phrase not found - fall back to static config
+		return ""
+	}
+
+	// Generate phrase XML
+	return h.buildPhraseXML(&phrase)
+}
+
+// buildPhraseXML generates FreeSWITCH phrase macro XML for a phrase
+func (h *FSHandler) buildPhraseXML(phrase *models.Phrase) string {
+	var b strings.Builder
+
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`)
+	b.WriteString("\n")
+	b.WriteString(`<document type="freeswitch/xml">`)
+	b.WriteString("\n")
+	b.WriteString(`  <section name="phrases">`)
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf(`    <macros>`))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf(`      <macro name="%s">`, xmlEscape(phrase.MacroName)))
+	b.WriteString("\n")
+	b.WriteString(`        <input pattern="(.*)">`)
+	b.WriteString("\n")
+	b.WriteString(`          <match>`)
+	b.WriteString("\n")
+
+	// Generate action based on phrase type
+	switch phrase.Type {
+	case "tts":
+		// TTS: speak using the configured module and content
+		// Format: module|voice|text
+		module := phrase.Module
+		if module == "" {
+			module = "flite"
+		}
+		b.WriteString(fmt.Sprintf(`            <action function="speak" data="%s|ssf|%s"/>`,
+			xmlEscape(module), xmlEscape(phrase.Content)))
+	case "file":
+		// Audio file: play-file
+		b.WriteString(fmt.Sprintf(`            <action function="play-file" data="%s"/>`,
+			xmlEscape(phrase.Content)))
+	case "prompt":
+		// Prompts use the phrase system - might be TTS or file depending on setup
+		// Treat as play-file with the content as the file path
+		b.WriteString(fmt.Sprintf(`            <action function="play-file" data="%s"/>`,
+			xmlEscape(phrase.Content)))
+	default:
+		// Default to TTS for backwards compatibility
+		b.WriteString(fmt.Sprintf(`            <action function="speak" data="flite|ssf|%s"/>`,
+			xmlEscape(phrase.Content)))
+	}
+
+	b.WriteString("\n")
+	b.WriteString(`          </match>`)
+	b.WriteString("\n")
+	b.WriteString(`        </input>`)
+	b.WriteString("\n")
+	b.WriteString(`      </macro>`)
+	b.WriteString("\n")
+	b.WriteString(`    </macros>`)
+	b.WriteString("\n")
+	b.WriteString(`  </section>`)
+	b.WriteString("\n")
+	b.WriteString(`</document>`)
+
+	return b.String()
 }

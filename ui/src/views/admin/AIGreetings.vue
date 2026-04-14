@@ -213,7 +213,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import { 
   Search as SearchIcon, Plus as PlusIcon, Mic as MicIcon,
@@ -222,6 +222,8 @@ import {
   Copy as CopyIcon
 } from 'lucide-vue-next'
 import { greetingsAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 const searchQuery = ref('')
 const filterCategory = ref('')
@@ -314,7 +316,7 @@ const onProviderChange = () => {
 
 const saveScript = async (generate = false) => {
   if (!form.value.name || !form.value.script_text) {
-    alert('Name and script text are required')
+    toast.error('Name and script text are required')
     return
   }
   isSaving.value = true
@@ -331,7 +333,7 @@ const saveScript = async (generate = false) => {
     loadScripts()
   } catch (e) {
     console.error('Save failed', e)
-    alert('Failed to save: ' + (e.message || 'Unknown error'))
+    toast.error('Failed to save: ' + (e.message || 'Unknown error'))
   } finally {
     isSaving.value = false
   }
@@ -354,7 +356,7 @@ const deleteScript = async (row) => {
     loadScripts()
   } catch (e) {
     console.error('Delete failed', e)
-    alert('Failed to delete')
+    toast.error('Failed to delete')
   }
 }
 
@@ -365,7 +367,7 @@ const regenerateScript = async (row) => {
     loadScripts()
   } catch (e) {
     console.error('Regeneration failed', e)
-    alert('Generation failed: ' + (e.message || 'Unknown error'))
+    toast.error('Generation failed: ' + (e.message || 'Unknown error'))
   } finally {
     regenerating.value = null
   }
@@ -418,7 +420,7 @@ const playAudio = async (row) => {
     playing.value = true
   } catch (e) {
     console.error('Playback failed', e)
-    alert('Failed to play: ' + e.message)
+    toast.error('Failed to play: ' + e.message)
   }
 }
 

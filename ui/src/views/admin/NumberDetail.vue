@@ -85,12 +85,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { numbersAPI, extensionsAPI, queuesAPI, ringGroupsAPI, ivrAPI, voicemailAPI } from '../../services/api.js'
 
 const router = useRouter()
 const route = useRoute()
+const toast = inject('toast')
 
 // State with atomic predictability - explicit initial state
 const loading = ref(true)
@@ -175,7 +176,7 @@ const releaseNumber = async () => {
   const numberId = route.params.id
 
   if (!numberId) {
-    alert('Error: No number ID provided')
+    toast.error('No number ID provided')
     return
   }
 
@@ -186,7 +187,7 @@ const releaseNumber = async () => {
     await numbersAPI.delete(numberId)
     router.push('/numbers')
   } catch (err) {
-    alert(`Failed to release number: ${err.message || 'Unknown error'}`)
+    toast.error(`Failed to release number: ${err.message || 'Unknown error'}`)
   }
 }
 
@@ -198,13 +199,13 @@ const saveChanges = async () => {
   const numberId = route.params.id
   
   if (!numberId) {
-    alert('Error: No number ID provided')
+    toast.error('No number ID provided')
     return
   }
 
   // Fail loud if no destination selected
   if (!form.value.destinationTarget) {
-    alert('Please select a destination target')
+    toast.error('Please select a destination target')
     return
   }
 
@@ -223,7 +224,7 @@ const saveChanges = async () => {
     
     router.push('/numbers')
   } catch (err) {
-    alert(`Failed to save changes: ${err.message || 'Unknown error'}`)
+    toast.error(`Failed to save changes: ${err.message || 'Unknown error'}`)
   } finally {
     saving.value = false
   }

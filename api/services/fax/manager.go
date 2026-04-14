@@ -5,17 +5,29 @@
 package fax
 
 import (
+	"bytes"
+	"crypto/tls"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"math/rand"
+	"mime/multipart"
+	"net"
+	"net/http"
+	"net/smtp"
+	"net/textproto"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
 	"callsign/config"
 	"callsign/models"
 	"callsign/services/fax/gofaxlib"
 	"callsign/services/logging"
 	"context"
-	"fmt"
-	"math/rand"
-	"sort"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/fiorix/go-eventsocket/eventsocket"
 	"github.com/google/uuid"
@@ -550,26 +562,428 @@ func (m *Manager) processGatewayGroup(job *FaxJobInternal, group []*models.FaxEn
 }
 
 // processWebhookGroup handles webhook endpoint group (from gofaxserver queue.go)
+// Each endpoint in the group is a webhook URL to POST the fax document to.
+// The fax TIFF is base64-encoded and sent as JSON along with fax metadata.
 func (m *Manager) processWebhookGroup(job *FaxJobInternal, group []*models.FaxEndpoint, prio uint, maxAttempts int, baseDelay, maxDelay time.Duration) bool {
+	if len(group) == 0 {
+		return false
+	}
+
 	m.LogManager.Info("FAX.QUEUE", fmt.Sprintf("Processing webhook group (priority %d, %d endpoints)", prio, len(group)), map[string]interface{}{
 		"uuid": job.UUID.String(),
 	})
 
-	// TODO: Implement webhook delivery (TIFF→PDF, base64, POST to endpoint URL)
-	// This follows the same pattern as gofaxserver queue.go webhook processing
-	log.Warn("Webhook fax delivery not yet implemented")
+	// Determine the fax file to send (prefer PDF over TIFF)
+	faxFilePath := job.FileName
+	if job.Result != nil && job.Result.TotalPages > 0 {
+		var dbJob models.FaxJob
+		if m.DB.First(&dbJob, job.DBJobID).Error == nil && dbJob.PDFFileName != "" {
+			faxFilePath = dbJob.PDFFileName
+		}
+	}
+
+	for _, ep := range group {
+		webhookURL := ep.Endpoint
+		if webhookURL == "" {
+			m.LogManager.Error("FAX.QUEUE", "Webhook endpoint has empty URL", map[string]interface{}{
+				"uuid":  job.UUID.String(),
+				"ep_id": ep.ID,
+			})
+			continue
+		}
+
+		delivered := m.retryWithBackoff(context.Background(), maxAttempts, baseDelay, maxDelay, func(attempt int) (bool, bool) {
+			m.LogManager.Info("FAX.QUEUE", fmt.Sprintf("Delivering fax via webhook (attempt %d/%d): %s", attempt, maxAttempts, webhookURL), map[string]interface{}{
+				"uuid":        job.UUID.String(),
+				"webhook_url": webhookURL,
+			})
+
+			if sendErr := m.sendFaxToWebhook(webhookURL, faxFilePath, job); sendErr != nil {
+				m.LogManager.Error("FAX.QUEUE", fmt.Sprintf("Webhook delivery failed: %v", sendErr), map[string]interface{}{
+					"uuid":        job.UUID.String(),
+					"webhook_url": webhookURL,
+					"attempt":     attempt,
+				})
+				job.LastError = sendErr.Error()
+				return false, true // retriable
+			}
+
+			m.LogManager.Info("FAX.QUEUE", "Webhook delivery successful", map[string]interface{}{
+				"uuid":        job.UUID.String(),
+				"webhook_url": webhookURL,
+			})
+			return true, false
+		})
+
+		if delivered {
+			return true
+		}
+	}
+
 	return false
 }
 
-// processEmailGroup handles email endpoint group
+// sendFaxToWebhook POSTs the fax document to the configured webhook URL.
+// The request body is JSON containing base64-encoded fax data and metadata.
+func (m *Manager) sendFaxToWebhook(webhookURL, faxFilePath string, job *FaxJobInternal) error {
+	if webhookURL == "" {
+		return fmt.Errorf("webhook URL is empty")
+	}
+
+	// Read fax file content
+	var faxData []byte
+	var readErr error
+	if faxFilePath != "" {
+		faxData, readErr = os.ReadFile(faxFilePath)
+		if readErr != nil {
+			return fmt.Errorf("failed to read fax file %s: %w", faxFilePath, readErr)
+		}
+	} else {
+		return fmt.Errorf("no fax file available for delivery")
+	}
+
+	// Encode as base64
+	encoded := base64.StdEncoding.EncodeToString(faxData)
+
+	// Determine content type from file extension
+	contentType := "image/tiff"
+	if strings.HasSuffix(strings.ToLower(faxFilePath), ".pdf") {
+		contentType = "application/pdf"
+	}
+
+	// Build request payload
+	payload := map[string]interface{}{
+		"fax_uuid":       job.UUID.String(),
+		"caller_number":  job.CallerIdNumber,
+		"callee_number":  job.CalleeNumber,
+		"caller_id_name": job.CallerIdName,
+		"header":         job.Header,
+		"file_name":      filepath.Base(faxFilePath),
+		"content_type":   contentType,
+		"data":           encoded, // base64-encoded fax document
+	}
+
+	if job.Result != nil {
+		payload["success"] = job.Result.Success
+		payload["pages"] = job.Result.TotalPages
+		payload["transfer_rate"] = job.Result.TransferRate
+		payload["ecm"] = job.Result.Ecm
+		payload["result_code"] = job.Result.ResultCode
+		payload["result_text"] = job.Result.ResultText
+	}
+
+	payloadBytes, jsonErr := json.Marshal(payload)
+	if jsonErr != nil {
+		return fmt.Errorf("failed to marshal webhook payload: %w", jsonErr)
+	}
+
+	// Create HTTP request
+	req, reqErr := http.NewRequest("POST", webhookURL, bytes.NewReader(payloadBytes))
+	if reqErr != nil {
+		return fmt.Errorf("failed to create webhook request: %w", reqErr)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "CallSign-Fax/1.0")
+
+	// Send request with timeout
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, respErr := client.Do(req)
+	if respErr != nil {
+		return fmt.Errorf("webhook request failed: %w", respErr)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("webhook returned error status: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// processEmailGroup handles email endpoint group — sends fax as email attachment
 func (m *Manager) processEmailGroup(job *FaxJobInternal, group []*models.FaxEndpoint, prio uint) bool {
+	if len(group) == 0 {
+		return false
+	}
+
 	m.LogManager.Info("FAX.QUEUE", fmt.Sprintf("Processing email group (priority %d, %d endpoints)", prio, len(group)), map[string]interface{}{
 		"uuid": job.UUID.String(),
 	})
 
-	// TODO: Implement email delivery (TIFF→PDF attachment, SMTP send)
-	log.Warn("Email fax delivery not yet implemented")
-	return false
+	// Gather email addresses from all endpoints in the group
+	var emailRecipients []string
+	for _, ep := range group {
+		if ep.Endpoint == "" {
+			continue
+		}
+		// Endpoint field may contain multiple emails separated by commas
+		emails := strings.Split(ep.Endpoint, ",")
+		for _, e := range emails {
+			e = strings.TrimSpace(e)
+			if e != "" {
+				emailRecipients = append(emailRecipients, e)
+			}
+		}
+	}
+
+	if len(emailRecipients) == 0 {
+		m.LogManager.Error("FAX.QUEUE", "No email recipients found in endpoint group", map[string]interface{}{
+			"uuid": job.UUID.String(),
+		})
+		return false
+	}
+
+	// Get tenant SMTP settings for sending
+	tenantSMTP := m.getTenantSMTPSettings(job.DstTenantID)
+	if tenantSMTP == nil {
+		m.LogManager.Error("FAX.QUEUE", "Tenant SMTP not configured", map[string]interface{}{
+			"uuid":      job.UUID.String(),
+			"tenant_id": job.DstTenantID,
+		})
+		return false
+	}
+
+	// Determine the fax file to send (prefer PDF over TIFF)
+	faxFilePath := job.FileName
+	var dbJob models.FaxJob
+	if m.DB.First(&dbJob, job.DBJobID).Error == nil && dbJob.PDFFileName != "" {
+		faxFilePath = dbJob.PDFFileName
+	}
+
+	// Build email subject and body
+	subject := fmt.Sprintf("Fax from %s to %s", job.CallerIdNumber, job.CalleeNumber)
+	body := fmt.Sprintf(
+		"You have received a fax.\n\n"+
+			"From: %s\n"+
+			"To: %s\n"+
+			"Date: %s\n"+
+			"The fax document is attached to this email.\n",
+		job.CallerIdNumber, job.CalleeNumber, time.Now().Format("2006-01-02 15:04:05"),
+	)
+
+	// Send to each recipient
+	var lastErr error
+	for _, recipient := range emailRecipients {
+		if sendErr := m.sendFaxEmail(tenantSMTP, recipient, subject, body, faxFilePath, job); sendErr != nil {
+			m.LogManager.Error("FAX.QUEUE", fmt.Sprintf("Failed to send fax email to %s: %v", recipient, sendErr), map[string]interface{}{
+				"uuid":      job.UUID.String(),
+				"recipient": recipient,
+			})
+			lastErr = sendErr
+			continue
+		}
+		m.LogManager.Info("FAX.QUEUE", fmt.Sprintf("Fax email sent to %s", recipient), map[string]interface{}{
+			"uuid":      job.UUID.String(),
+			"recipient": recipient,
+		})
+	}
+
+	return lastErr == nil
+}
+
+// tenantSMTPConfig holds SMTP settings for a tenant
+type tenantSMTPConfig struct {
+	Host     string
+	Port     string
+	Username string
+	Password string
+	FromAddr string
+	FromName string
+	UseTLS   bool
+}
+
+// getTenantSMTPSettings retrieves SMTP configuration for a tenant
+func (m *Manager) getTenantSMTPSettings(tenantID uint) *tenantSMTPConfig {
+	if tenantID == 0 {
+		return nil
+	}
+
+	var tenant models.Tenant
+	if err := m.DB.First(&tenant, tenantID).Error; err != nil {
+		return nil
+	}
+
+	// Parse settings JSON
+	var settings struct {
+		SMTPOverride   bool   `json:"smtp_override"`
+		SMTPHost       string `json:"smtp_host"`
+		SMTPPort       string `json:"smtp_port"`
+		SMTPUsername   string `json:"smtp_username"`
+		SMTPPassword   string `json:"smtp_password"`
+		SMTPFromEmail  string `json:"smtp_from_email"`
+		SMTPEncryption string `json:"smtp_encryption"`
+	}
+
+	if tenant.Settings != "" && tenant.Settings != "{}" {
+		if err := json.Unmarshal([]byte(tenant.Settings), &settings); err != nil {
+			return nil
+		}
+	}
+
+	// If SMTP not overridden and not configured, skip
+	if !settings.SMTPOverride && settings.SMTPHost == "" {
+		return nil
+	}
+
+	port := settings.SMTPPort
+	if port == "" {
+		port = "587"
+	}
+
+	useTLS := false
+	if strings.ToLower(settings.SMTPEncryption) == "tls" || strings.ToLower(settings.SMTPEncryption) == "ssl" {
+		useTLS = true
+	}
+
+	return &tenantSMTPConfig{
+		Host:     settings.SMTPHost,
+		Port:     port,
+		Username: settings.SMTPUsername,
+		Password: settings.SMTPPassword,
+		FromAddr: settings.SMTPFromEmail,
+		FromName: "CallSign Fax",
+		UseTLS:   useTLS,
+	}
+}
+
+// sendFaxEmail sends a fax document as an email attachment
+func (m *Manager) sendFaxEmail(cfg *tenantSMTPConfig, to, subject, body, attachmentPath string, job *FaxJobInternal) error {
+	if cfg == nil || cfg.Host == "" {
+		return fmt.Errorf("SMTP configuration is empty")
+	}
+
+	var attachData []byte
+	var attachErr error
+	if attachmentPath != "" {
+		attachData, attachErr = os.ReadFile(attachmentPath)
+		if attachErr != nil {
+			m.LogManager.Warn("FAX.QUEUE", fmt.Sprintf("Could not read fax attachment: %s", attachmentPath), nil)
+			// Continue without attachment — body text is still useful
+		}
+	}
+
+	// Build multipart email
+	var msg bytes.Buffer
+	writer := multipart.NewWriter(&msg)
+
+	// Email headers
+	headers := make(textproto.MIMEHeader)
+	headers.Set("From", fmt.Sprintf("%s <%s>", cfg.FromName, cfg.FromAddr))
+	headers.Set("To", to)
+	headers.Set("Subject", subject)
+	headers.Set("MIME-Version", "1.0")
+	headers.Set("Content-Type", fmt.Sprintf("multipart/mixed; boundary=%s", writer.Boundary()))
+
+	for k, v := range headers {
+		msg.WriteString(fmt.Sprintf("%s: %s\r\n", k, strings.Join(v, ", ")))
+	}
+	msg.WriteString("\r\n")
+
+	// Text body part
+	textPart, err := writer.CreatePart(textproto.MIMEHeader{
+		"Content-Type": {"text/plain; charset=utf-8"},
+	})
+	if err != nil {
+		return fmt.Errorf("create text part: %w", err)
+	}
+	textPart.Write([]byte(body))
+
+	// Attachment part (if we have fax data)
+	if len(attachData) > 0 {
+		filename := filepath.Base(attachmentPath)
+		if filename == "" {
+			filename = fmt.Sprintf("fax-%s.tiff", job.UUID.String()[:8])
+		}
+
+		var contentType string
+		switch {
+		case strings.HasSuffix(strings.ToLower(filename), ".pdf"):
+			contentType = "application/pdf"
+		case strings.HasSuffix(strings.ToLower(filename), ".tif"):
+			contentType = "image/tiff"
+		case strings.HasSuffix(strings.ToLower(filename), ".tiff"):
+			contentType = "image/tiff"
+		default:
+			contentType = "application/octet-stream"
+		}
+
+		attachPart, err := writer.CreatePart(textproto.MIMEHeader{
+			"Content-Type":              {contentType},
+			"Content-Transfer-Encoding": {"base64"},
+			"Content-Disposition":       {fmt.Sprintf("attachment; filename=%q", filename)},
+		})
+		if err != nil {
+			return fmt.Errorf("create attachment part: %w", err)
+		}
+
+		encoded := base64.StdEncoding.EncodeToString(attachData)
+		for i := 0; i < len(encoded); i += 76 {
+			end := i + 76
+			if end > len(encoded) {
+				end = len(encoded)
+			}
+			attachPart.Write([]byte(encoded[i:end] + "\r\n"))
+		}
+	}
+
+	writer.Close()
+
+	// Send via SMTP
+	addr := net.JoinHostPort(cfg.Host, cfg.Port)
+	var auth smtp.Auth
+	if cfg.Username != "" {
+		auth = smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
+	}
+
+	var sendErr error
+	if cfg.UseTLS {
+		// Connect with TLS
+		tlsConfig := &tls.Config{
+			ServerName: cfg.Host,
+		}
+		conn, connErr := tls.Dial("tcp", addr, tlsConfig)
+		if connErr != nil {
+			return fmt.Errorf("TLS connection failed: %w", connErr)
+		}
+		client, clientErr := smtp.NewClient(conn, cfg.Host)
+		if clientErr != nil {
+			return fmt.Errorf("SMTP client creation failed: %w", clientErr)
+		}
+		defer client.Close()
+
+		if auth != nil {
+			if authErr := client.Auth(auth); authErr != nil {
+				return fmt.Errorf("SMTP auth failed: %w", authErr)
+			}
+		}
+		if fromErr := client.Mail(cfg.FromAddr); fromErr != nil {
+			return fmt.Errorf("SMTP MAIL from failed: %w", fromErr)
+		}
+		if rcptErr := client.Rcpt(to); rcptErr != nil {
+			return fmt.Errorf("SMTP RCPT to failed: %w", rcptErr)
+		}
+		w, wErr := client.Data()
+		if wErr != nil {
+			return fmt.Errorf("SMTP DATA failed: %w", wErr)
+		}
+		_, wErr = w.Write(msg.Bytes())
+		if wErr != nil {
+			return fmt.Errorf("SMTP write failed: %w", wErr)
+		}
+		wErr = w.Close()
+		if wErr != nil {
+			return fmt.Errorf("SMTP data close failed: %w", wErr)
+		}
+		client.Quit()
+	} else {
+		sendErr = smtp.SendMail(addr, auth, cfg.FromAddr, []string{to}, msg.Bytes())
+		if sendErr != nil {
+			return fmt.Errorf("SMTP send failed: %w", sendErr)
+		}
+	}
+
+	return nil
 }
 
 // retryWithBackoff runs fn up to maxAttempts with exponential backoff + jitter

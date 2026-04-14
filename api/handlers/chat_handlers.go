@@ -2,10 +2,15 @@ package handlers
 
 import (
 	"callsign/models"
+	"callsign/services/encryption"
 	"callsign/services/messaging"
 	"callsign/services/websocket"
+	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
@@ -16,11 +21,12 @@ type ChatHandler struct {
 	DB         *gorm.DB
 	WSHub      *websocket.Hub
 	MsgManager *messaging.Manager
+	EncMgr     *encryption.Manager
 }
 
 // NewChatHandler creates a new chat handler
-func NewChatHandler(db *gorm.DB, wsHub *websocket.Hub, msgManager *messaging.Manager) *ChatHandler {
-	return &ChatHandler{DB: db, WSHub: wsHub, MsgManager: msgManager}
+func NewChatHandler(db *gorm.DB, wsHub *websocket.Hub, msgManager *messaging.Manager, encMgr *encryption.Manager) *ChatHandler {
+	return &ChatHandler{DB: db, WSHub: wsHub, MsgManager: msgManager, EncMgr: encMgr}
 }
 
 // ==================== Chat Threads ====================
@@ -105,10 +111,16 @@ func (h *ChatHandler) SendMessage(c *fiber.Ctx) error {
 	msg.TenantID = tenantID
 	msg.ThreadID = threadID
 
-	// TODO: Encrypt body for external channels
-	// if thread.Channel == models.ChannelSMS || thread.Channel == models.ChannelMMS {
-	//     msg.BodyEncrypted = encMgr.Encrypt(msg.Body)
-	// }
+	// Encrypt body for external channels (fail loud if encryption fails)
+	if msg.Body != "" && h.EncMgr != nil && (thread.Channel == models.ChannelSMS || thread.Channel == models.ChannelMMS) {
+		encrypted, err := h.EncMgr.Encrypt(msg.Body)
+		if err != nil {
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to encrypt message"})
+		}
+		msg.BodyEncrypted = encrypted
+		msg.BodyHash = h.EncMgr.HashForLookup(msg.Body)
+		msg.Body = "" // Clear plaintext after encryption
+	}
 
 	if err := h.DB.Create(&msg).Error; err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
@@ -351,12 +363,83 @@ func (h *ContactHandler) SyncContact(c *fiber.Ctx) error {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Contact not found"})
 	}
 
-	// TODO: Implement webhook sync logic
-	// 1. Find associated ContactWebhook by contact.ExternalSource
-	// 2. Fetch data from webhook URL with ExternalID
-	// 3. Map fields and update contact
+	// Guard: contact must have external source for webhook sync
+	if contact.ExternalSource == "" || contact.ExternalID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Contact has no external source configured"})
+	}
 
-	return c.JSON(fiber.Map{"message": "Sync queued", "contact_id": id})
+	// Find associated ContactWebhook by contact.ExternalSource
+	var webhook models.ContactWebhook
+	if err := h.DB.Where("tenant_id = ? AND source = ? AND enabled = true", tenantID, contact.ExternalSource).
+		First(&webhook).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Webhook source not found"})
+	}
+
+	// Guard: webhook must have a fetch URL
+	if webhook.FetchURL == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Webhook has no fetch URL configured"})
+	}
+
+	// Build fetch URL with ExternalID
+	fetchURL := strings.ReplaceAll(webhook.FetchURL, "{{external_id}}", contact.ExternalID)
+
+	// Create HTTP request
+	req, err := http.NewRequest(webhook.FetchMethod, fetchURL, nil)
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create webhook request"})
+	}
+
+	// Apply custom headers if configured
+	if webhook.FetchHeaders != "" {
+		var headers map[string]string
+		if err := json.Unmarshal([]byte(webhook.FetchHeaders), &headers); err == nil {
+			for key, value := range headers {
+				req.Header.Set(key, value)
+			}
+		}
+	}
+
+	// Execute request with timeout
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch webhook data"})
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return c.Status(resp.StatusCode).JSON(fiber.Map{"error": "Webhook returned non-200 status"})
+	}
+
+	// Parse response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to read webhook response"})
+	}
+
+	var webhookData map[string]interface{}
+	if err := json.Unmarshal(body, &webhookData); err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to parse webhook response"})
+	}
+
+	// Apply field mapping if configured
+	if webhook.FieldMapping != "" {
+		var fieldMapping map[string]string
+		if err := json.Unmarshal([]byte(webhook.FieldMapping), &fieldMapping); err == nil {
+			h.applyFieldMapping(&contact, webhookData, fieldMapping)
+		}
+	}
+
+	// Update sync metadata
+	now := time.Now()
+	contact.LastSyncAt = &now
+
+	// Save updated contact
+	if err := h.DB.Save(&contact).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save contact"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Sync completed", "contact_id": id})
 }
 
 // WebhookIngestContact handles inbound webhook data for contacts
@@ -377,12 +460,112 @@ func (h *ContactHandler) WebhookIngestContact(c *fiber.Ctx) error {
 		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Webhook source not found"})
 	}
 
-	// TODO: Apply field mapping and upsert contact
-	// 1. Parse webhook.FieldMapping
-	// 2. Extract fields from data
-	// 3. Find or create contact by ExternalID
-	// 4. Update contact fields
-	// 5. Save
+	// Extract external_id from data using field mapping if present
+	externalID := ""
+	if webhook.FieldMapping != "" {
+		var fieldMapping map[string]string
+		if err := json.Unmarshal([]byte(webhook.FieldMapping), &fieldMapping); err == nil {
+			if extIDField, ok := fieldMapping["external_id"]; ok {
+				if val, ok := data[extIDField].(string); ok {
+					externalID = val
+				}
+			}
+		}
+	}
 
-	return c.JSON(fiber.Map{"message": "Contact ingested", "source": source})
+	// Fallback: try common field names for external_id
+	if externalID == "" {
+		if val, ok := data["external_id"].(string); ok {
+			externalID = val
+		} else if val, ok := data["id"].(string); ok {
+			externalID = val
+		}
+	}
+
+	// Guard: external_id is required for upsert
+	if externalID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "External ID not found in webhook data"})
+	}
+
+	// Find or create contact by ExternalID
+	var contact models.Contact
+	findErr := h.DB.Where("tenant_id = ? AND external_source = ? AND external_id = ?", tenantID, source, externalID).First(&contact).Error
+
+	if findErr != nil {
+		// Create new contact if not found
+		if findErr == gorm.ErrRecordNotFound {
+			contact = models.Contact{
+				TenantID:       tenantID,
+				ExternalSource: source,
+				ExternalID:     externalID,
+				Status:         "active",
+			}
+		} else {
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Database error"})
+		}
+	}
+
+	// Apply field mapping if configured
+	if webhook.FieldMapping != "" {
+		var fieldMapping map[string]string
+		if err := json.Unmarshal([]byte(webhook.FieldMapping), &fieldMapping); err == nil {
+			h.applyFieldMapping(&contact, data, fieldMapping)
+		}
+	}
+
+	// Store raw external data as JSON blob
+	rawJSON, _ := json.Marshal(data)
+	contact.ExternalData = string(rawJSON)
+
+	// Update sync metadata
+	now := time.Now()
+	contact.LastSyncAt = &now
+
+	// Save contact (create or update)
+	if err := h.DB.Save(&contact).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save contact"})
+	}
+
+	return c.Status(http.StatusCreated).JSON(contact)
+}
+
+// applyFieldMapping maps webhook data fields to contact fields based on mapping config
+func (h *ContactHandler) applyFieldMapping(contact *models.Contact, data map[string]interface{}, fieldMapping map[string]string) {
+	// Direct field assignments based on common mapping keys
+	fieldTypes := map[string]*string{
+		"first_name":         &contact.FirstName,
+		"last_name":          &contact.LastName,
+		"display_name":       &contact.DisplayName,
+		"company":            &contact.Company,
+		"title":              &contact.Title,
+		"email":              &contact.Email,
+		"phone":              &contact.Phone,
+		"phone_alt":          &contact.PhoneAlt,
+		"mobile_phone":       &contact.MobilePhone,
+		"address1":           &contact.Address1,
+		"address2":           &contact.Address2,
+		"city":               &contact.City,
+		"state":              &contact.State,
+		"postal_code":        &contact.PostalCode,
+		"country":            &contact.Country,
+		"external_id":        &contact.ExternalID,
+		"external_data":      &contact.ExternalData,
+		"notes":              &contact.Notes,
+		"preferred_channel":  &contact.PreferredChannel,
+		"preferred_language": &contact.PreferredLanguage,
+		"timezone":           &contact.Timezone,
+	}
+
+	for webhookField, contactField := range fieldMapping {
+		// Skip special fields
+		if webhookField == "external_id" || webhookField == "external_data" {
+			continue
+		}
+
+		if targetPtr, exists := fieldTypes[contactField]; exists {
+			if val, ok := data[webhookField].(string); ok {
+				*targetPtr = val
+			}
+		}
+	}
 }

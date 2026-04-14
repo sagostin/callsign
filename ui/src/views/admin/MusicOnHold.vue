@@ -449,7 +449,7 @@ const submitUpload = async () => {
     loadMusic()
   } catch (e) {
     console.error('Upload failed', e)
-    alert('Upload failed: ' + (e.message || 'Unknown error'))
+    toast.error('Upload failed: ' + (e.message || 'Unknown error'))
   }
 }
 
@@ -494,7 +494,7 @@ const deleteFile = async (file) => {
     loadMusic()
   } catch (e) {
     console.error('Delete failed', e)
-    alert('Failed to delete file')
+    toast.error('Failed to delete file')
   }
 }
 

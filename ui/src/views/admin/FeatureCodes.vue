@@ -250,7 +250,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import {
   Plus as PlusIcon, RefreshCw as RefreshCwIcon, Search as SearchIcon,
   Edit as EditIcon, Trash as TrashIcon, ToggleLeft as ToggleLeftIcon,
@@ -261,11 +261,7 @@ import {
 } from 'lucide-vue-next'
 import { featureCodesAPI } from '../../services/api'
 
-// Simple toast-like notification helper
-const notify = {
-  success: (msg) => console.log('✅', msg),
-  error: (msg) => { console.error('❌', msg); alert(msg) }
-}
+const toast = inject('toast')
 
 const featureCodes = ref([])
 const modules = ref([])
@@ -355,7 +351,7 @@ const loadData = async () => {
     featureCodes.value = codesRes.data || []
     modules.value = modulesRes.data || []
   } catch (error) {
-    notify.error('Failed to load feature codes')
+    toast.error('Failed to load feature codes')
     console.error(error)
   } finally {
     loading.value = false
@@ -367,14 +363,14 @@ const toggleModule = async (mod) => {
   try {
     if (mod.enabled) {
       await featureCodesAPI.deprovision([mod.module])
-      notify.success(`${mod.label} module disabled`)
+      toast.success(`${mod.label} module disabled`)
     } else {
       await featureCodesAPI.provision([mod.module])
-      notify.success(`${mod.label} module enabled`)
+      toast.success(`${mod.label} module enabled`)
     }
     await loadData()
   } catch (error) {
-    notify.error(`Failed to toggle ${mod.label}`)
+    toast.error(`Failed to toggle ${mod.label}`)
   } finally {
     togglingModule.value = null
   }
@@ -473,7 +469,7 @@ const closeModal = () => {
 
 const saveCode = async () => {
   if (!form.value.code || !form.value.name || !form.value.action) {
-    notify.error('Please fill in required fields')
+    toast.error('Please fill in required fields')
     return
   }
 
@@ -481,15 +477,15 @@ const saveCode = async () => {
   try {
     if (isEditing.value) {
       await featureCodesAPI.update(editingId.value, form.value)
-      notify.success('Feature code updated')
+      toast.success('Feature code updated')
     } else {
       await featureCodesAPI.create(form.value)
-      notify.success('Feature code created')
+      toast.success('Feature code created')
     }
     closeModal()
     loadData()
   } catch (error) {
-    notify.error(error.message || 'Failed to save feature code')
+    toast.error(error.message || 'Failed to save feature code')
   } finally {
     saving.value = false
   }
@@ -499,9 +495,9 @@ const toggleEnabled = async (code) => {
   try {
     await featureCodesAPI.update(code.id, { ...code, enabled: !code.enabled })
     code.enabled = !code.enabled
-    notify.success(`Feature code ${code.enabled ? 'enabled' : 'disabled'}`)
+    toast.success(`Feature code ${code.enabled ? 'enabled' : 'disabled'}`)
   } catch (error) {
-    notify.error('Failed to update feature code')
+    toast.error('Failed to update feature code')
   }
 }
 
@@ -514,11 +510,11 @@ const deleteCode = async () => {
   deleting.value = true
   try {
     await featureCodesAPI.delete(deleteTarget.value.id)
-    notify.success('Feature code deleted')
+    toast.success('Feature code deleted')
     showDeleteModal.value = false
     loadData()
   } catch (error) {
-    notify.error('Failed to delete feature code')
+    toast.error('Failed to delete feature code')
   } finally {
     deleting.value = false
   }

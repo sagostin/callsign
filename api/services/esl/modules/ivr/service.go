@@ -440,6 +440,8 @@ func (s *Service) nodeWebRequest(ctx *flowContext, config map[string]interface{}
 	timeout := getConfigInt(config, "timeout", 5)
 	responseVar := getConfigStr(config, "responseVar", "api_response")
 	bodyStr := s.resolveVars(ctx, getConfigStr(config, "body", ""))
+	jsonPath := getConfigStr(config, "jsonPath", "")
+	extractedVar := getConfigStr(config, "extractedVar", "")
 
 	client := &http.Client{Timeout: time.Duration(timeout) * time.Second}
 
@@ -483,6 +485,28 @@ func (s *Service) nodeWebRequest(ctx *flowContext, config map[string]interface{}
 		"status":   resp.StatusCode,
 		"response": string(respBody[:min(len(respBody), 200)]),
 	}).Info("IVR: web request completed")
+
+	// Extract JSON path if configured
+	if jsonPath != "" {
+		extracted, err := extractJSONPath(string(respBody), jsonPath)
+		if err != nil {
+			ctx.logger.WithFields(log.Fields{
+				"jsonPath": jsonPath,
+				"error":    err,
+			}).Warn("IVR web_request: failed to extract JSON path")
+		} else {
+			varName := extractedVar
+			if varName == "" {
+				varName = sanitizeJSONPathVarName(jsonPath)
+			}
+			ctx.variables[varName] = extracted
+			ctx.logger.WithFields(log.Fields{
+				"jsonPath":  jsonPath,
+				"variable":  varName,
+				"extracted": extracted,
+			}).Debug("IVR web_request: JSON path extracted")
+		}
+	}
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return "success"
@@ -534,32 +558,124 @@ func (s *Service) nodeSendSMS(ctx *flowContext, config map[string]interface{}) s
 
 // nodeCondition evaluates a condition and branches
 func (s *Service) nodeCondition(ctx *flowContext, config map[string]interface{}) string {
-	variable := s.resolveVars(ctx, getConfigStr(config, "variable", ""))
+	variable := getConfigStr(config, "variable", "")
+	jsonPath := getConfigStr(config, "jsonPath", "")
 	operator := getConfigStr(config, "operator", "==")
-	value := s.resolveVars(ctx, getConfigStr(config, "value", ""))
+	value := getConfigStr(config, "value", "")
+	variable2 := getConfigStr(config, "variable2", "")
+	jsonPath2 := getConfigStr(config, "jsonPath2", "")
 
-	result := false
-	switch operator {
-	case "==":
-		result = variable == value
-	case "!=":
-		result = variable != value
-	case "contains":
-		result = strings.Contains(variable, value)
-	case ">":
-		result = variable > value
-	case "<":
-		result = variable < value
+	// Extract left-hand value from variable (with optional JSON path)
+	leftRaw := s.resolveVars(ctx, variable)
+	var leftValue string
+	if jsonPath != "" {
+		extracted, err := extractJSONPath(leftRaw, jsonPath)
+		if err != nil {
+			ctx.logger.WithFields(log.Fields{
+				"variable": variable,
+				"jsonPath": jsonPath,
+				"error":    err,
+			}).Warn("IVR condition: failed to extract JSON path from left operand")
+			leftValue = leftRaw
+		} else {
+			leftValue = extracted
+		}
+	} else {
+		leftValue = leftRaw
 	}
 
+	// Determine right-hand value: either static value or second variable
+	var rightValue string
+	if variable2 != "" {
+		rightRaw := s.resolveVars(ctx, variable2)
+		if jsonPath2 != "" {
+			extracted, err := extractJSONPath(rightRaw, jsonPath2)
+			if err != nil {
+				ctx.logger.WithFields(log.Fields{
+					"variable": variable2,
+					"jsonPath": jsonPath2,
+					"error":    err,
+				}).Warn("IVR condition: failed to extract JSON path from right operand")
+				rightValue = rightRaw
+			} else {
+				rightValue = extracted
+			}
+		} else {
+			rightValue = rightRaw
+		}
+	} else {
+		rightValue = s.resolveVars(ctx, value)
+	}
+
+	result := evaluateCondition(leftValue, operator, rightValue)
+
 	ctx.logger.WithFields(log.Fields{
-		"variable": variable, "op": operator, "value": value, "result": result,
+		"left":   leftValue,
+		"op":     operator,
+		"right":  rightValue,
+		"result": result,
 	}).Debug("IVR: condition evaluated")
 
 	if result {
 		return "true"
 	}
 	return "false"
+}
+
+// evaluateCondition compares two values using the specified operator
+func evaluateCondition(left, operator, right string) bool {
+	switch operator {
+	case "==":
+		return left == right
+	case "!=":
+		return left != right
+	case "contains":
+		return strings.Contains(left, right)
+	case ">":
+		return compareNumeric(left, right) > 0
+	case "<":
+		return compareNumeric(left, right) < 0
+	case ">=":
+		return compareNumeric(left, right) >= 0
+	case "<=":
+		return compareNumeric(left, right) <= 0
+	case "starts_with":
+		return strings.HasPrefix(left, right)
+	case "ends_with":
+		return strings.HasSuffix(left, right)
+	case "is_empty":
+		return left == ""
+	case "is_not_empty":
+		return left != ""
+	default:
+		return false
+	}
+}
+
+// compareNumeric compares two numeric strings, returning -1, 0, or 1
+func compareNumeric(a, b string) int {
+	// Try parsing as floats first
+	af, errA := strconv.ParseFloat(a, 64)
+	bf, errB := strconv.ParseFloat(b, 64)
+
+	if errA == nil && errB == nil {
+		if af < bf {
+			return -1
+		}
+		if af > bf {
+			return 1
+		}
+		return 0
+	}
+
+	// Fall back to string comparison
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
 }
 
 // nodeSetVariable stores a value in the flow context
@@ -1037,4 +1153,74 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// extractJSONPath extracts a value from JSON using a dot-notation path (e.g., "customer.balance")
+func extractJSONPath(jsonStr, path string) (string, error) {
+	if jsonStr == "" {
+		return "", fmt.Errorf("empty JSON string")
+	}
+
+	var data interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+		return "", fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	keys := strings.Split(path, ".")
+	current := data
+
+	for _, key := range keys {
+		key = strings.TrimPrefix(key, "$.")
+		if key == "" {
+			continue
+		}
+
+		switch c := current.(type) {
+		case map[string]interface{}:
+			var ok bool
+			current, ok = c[key]
+			if !ok {
+				return "", fmt.Errorf("path not found: %s", key)
+			}
+		case []interface{}:
+			idx, err := strconv.Atoi(key)
+			if err != nil {
+				return "", fmt.Errorf("cannot index array with non-numeric key: %s", key)
+			}
+			if idx < 0 || idx >= len(c) {
+				return "", fmt.Errorf("array index out of bounds: %d", idx)
+			}
+			current = c[idx]
+		default:
+			return "", fmt.Errorf("cannot traverse non-object/non-array at key: %s", key)
+		}
+	}
+
+	switch result := current.(type) {
+	case string:
+		return result, nil
+	case float64:
+		return strconv.FormatFloat(result, 'f', -1, 64), nil
+	case bool:
+		return strconv.FormatBool(result), nil
+	case nil:
+		return "", nil
+	default:
+		// For arrays and objects, return JSON representation
+		out, _ := json.Marshal(result)
+		return string(out), nil
+	}
+}
+
+// sanitizeJSONPathVarName converts a JSON path like "$.customer.balance" to a valid variable name "json_customer_balance"
+func sanitizeJSONPathVarName(path string) string {
+	path = strings.TrimPrefix(path, "$.")
+	parts := strings.Split(path, ".")
+	varName := "json"
+	for _, part := range parts {
+		if part != "" {
+			varName += "_" + part
+		}
+	}
+	return varName
 }

@@ -177,13 +177,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { 
   Plus as PlusIcon, Upload as UploadIcon, 
   PhoneIncoming as PhoneIncomingIcon, PhoneOutgoing as PhoneOutgoingIcon,
   Edit as EditIcon, Trash2 as TrashIcon, Ban, Phone, Voicemail
 } from 'lucide-vue-next'
 import { routingAPI, cdrAPI } from '../../services/api'
+
+const toast = inject('toast')
 
 const filter = ref('all')
 const showCreateModal = ref(false)
@@ -267,7 +269,7 @@ const deleteRule = async (rule) => {
     await loadBlocks()
   } catch (e) {
     console.error(e)
-    alert('Failed to delete block')
+    toast.error('Failed to delete block')
   }
 }
 
@@ -282,7 +284,7 @@ const saveRule = async () => {
     closeModal()
   } catch (e) {
     console.error(e)
-    alert('Failed to save block rule')
+    toast.error('Failed to save block rule')
   }
 }
 
@@ -308,7 +310,7 @@ const processImport = async () => {
     importData.value = ''
   } catch (e) {
     console.error(e)
-    alert('Import failed')
+    toast.error('Import failed')
   }
 }
 
