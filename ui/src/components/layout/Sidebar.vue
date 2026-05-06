@@ -116,6 +116,10 @@
             <BarChart3 class="nav-icon" />
             <span class="nav-label">Reports</span>
           </router-link>
+          <router-link to="/admin/operator-panel" class="nav-item" :title="isCollapsed ? 'Operator Panel' : ''">
+            <Activity class="nav-icon" />
+            <span class="nav-label">Operator Panel</span>
+          </router-link>
         </div>
 
         <div class="nav-section">
@@ -216,6 +220,10 @@
             <PrinterIcon class="nav-icon" />
             <span class="nav-label">Fax Server</span>
           </router-link>
+          <router-link to="/admin/messaging" class="nav-item" :title="isCollapsed ? 'Messaging' : ''">
+            <MessageSquare class="nav-icon" />
+            <span class="nav-label">Messaging</span>
+          </router-link>
         </div>
 
         <div class="nav-section">
@@ -227,6 +235,10 @@
           <router-link to="/admin/audio-library" class="nav-item" :title="isCollapsed ? 'Audio Library' : ''">
             <Mic class="nav-icon" />
             <span class="nav-label">Audio Library</span>
+          </router-link>
+          <router-link to="/admin/ai-greetings" class="nav-item" :title="isCollapsed ? 'AI Greetings' : ''">
+            <Sparkles class="nav-icon" />
+            <span class="nav-label">AI Greetings</span>
           </router-link>
         </div>
 
@@ -252,6 +264,10 @@
             <Hotel class="nav-icon" />
             <span class="nav-label">Hospitality</span>
           </router-link>
+          <router-link to="/admin/wake-up-calls" class="nav-item sub-item" :title="isCollapsed ? 'Wake Up Calls' : ''">
+            <AlarmClock class="nav-icon" />
+            <span class="nav-label">Wake Up Calls</span>
+          </router-link>
           <router-link to="/admin/sip-profiles" class="nav-item" :title="isCollapsed ? 'SIP Profiles' : ''">
             <NetworkIcon class="nav-icon" />
             <span class="nav-label">SIP Profiles</span>
@@ -263,6 +279,10 @@
           <router-link to="/admin/settings" class="nav-item" :title="isCollapsed ? 'Tenant Settings' : ''">
             <Settings class="nav-icon" />
             <span class="nav-label">Tenant Settings</span>
+          </router-link>
+          <router-link to="/admin/audit-log" class="nav-item" :title="isCollapsed ? 'Audit Log' : ''">
+            <ClipboardList class="nav-icon" />
+            <span class="nav-label">Audit Log</span>
           </router-link>
         </div>
 
@@ -397,6 +417,7 @@ import {
   Globe as GlobeIcon, Zap as ZapIcon, ToggleLeft as ToggleIcon, PhoneCall as PhoneCallIcon,
   Download as DownloadIcon, Volume2 as VolumeIcon, FileAudio as FileAudioIcon,
   Shield as ShieldIcon, Settings as SettingsIcon, Search as SearchIcon, Container as ContainerIcon,
+  AlarmClock, Sparkles, Activity, ClipboardList,
   MessageCircle as MessageCircleIcon, MapPin as MapPinIcon, Smartphone as SmartphoneIcon
 } from 'lucide-vue-next'
 
