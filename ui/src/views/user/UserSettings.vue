@@ -307,8 +307,7 @@
                 </label>
               </div>
               <div class="recording-controls" v-if="voicemailSettings.greetingType === 'custom'">
-                <button class="btn-secondary" @click="recordNewGreeting"><MicIcon class="btn-icon" /> Record New</button>
-                <button class="btn-secondary" @click="uploadGreeting"><UploadIcon class="btn-icon" /> Upload</button>
+                <!-- Record and Upload buttons hidden: backend does not support audio file upload for voicemail greetings. -->
                 <button class="btn-secondary" v-if="voicemailSettings.hasCustomGreeting" @click="playCurrentGreeting"><PlayIcon class="btn-icon" /> Play Current</button>
               </div>
             </div>
@@ -437,27 +436,7 @@
             </div>
           </div>
 
-          <div class="setting-card">
-            <div class="setting-header">
-              <div class="setting-info">
-                <span class="setting-title">Active Sessions</span>
-                <span class="setting-desc">Manage your logged-in devices</span>
-              </div>
-            </div>
-            <div class="setting-body">
-              <div class="session-list">
-                <div class="session-item">
-                  <MonitorIcon class="session-icon" />
-                  <div class="session-info">
-                    <span class="session-name">Current Session</span>
-                    <span class="session-meta">This browser • Active now</span>
-                  </div>
-                  <span class="session-badge current">Current</span>
-                </div>
-                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.5rem;">Session management coming soon</p>
-              </div>
-            </div>
-          </div>
+          <!-- Session management hidden: backend endpoint for listing/terminating user sessions does not exist yet. -->
         </div>
 
       </div>
@@ -476,7 +455,7 @@ import {
   PhoneCall as PhoneCallIcon, Headphones as HeadphonesIcon,
   Check as CheckIcon, X as XIcon
 } from 'lucide-vue-next'
-import { extensionPortalAPI } from '../../services/api'
+import { extensionPortalAPI, userGreetingsAPI } from '../../services/api'
 
 const toast = inject('toast')
 const activeSection = ref('profile')
@@ -531,6 +510,8 @@ const drop = (index) => {
   items.splice(index, 0, item)
   dragIndex.value = null
 }
+
+const userGreetings = ref([])
 
 const voicemailSettings = ref({
   pin: '',
@@ -615,6 +596,17 @@ const loadSettings = async () => {
     callHandling.value.devices = [
       { id: 'softphone', type: 'softphone', name: 'Web Softphone', details: 'Browser / Desktop App', enabled: true, ringTime: '20' }
     ]
+  }
+
+  // Load user greetings to determine if a custom greeting exists
+  try {
+    const greetRes = await userGreetingsAPI.list()
+    const greetings = greetRes.data?.data || greetRes.data || []
+    userGreetings.value = greetings
+    voicemailSettings.value.hasCustomGreeting = greetings.length > 0
+  } catch {
+    userGreetings.value = []
+    voicemailSettings.value.hasCustomGreeting = false
   }
 
   loading.value = false
@@ -730,16 +722,26 @@ const handlePhotoUpload = (event) => {
 }
 
 // Voicemail Greeting Handlers
-const recordNewGreeting = () => {
-  toast?.info('Recording feature coming soon')
-}
-
-const uploadGreeting = () => {
-  toast?.info('Greeting upload feature coming soon')
-}
-
-const playCurrentGreeting = () => {
-  toast?.info('Playing current greeting...')
+const playCurrentGreeting = async () => {
+  if (!userGreetings.value.length) {
+    toast?.info('No custom greeting available')
+    return
+  }
+  const greeting = userGreetings.value[0]
+  try {
+    const token = localStorage.getItem('token')
+    const headers = { 'Authorization': `Bearer ${token}` }
+    const res = await fetch(userGreetingsAPI.streamUrl(greeting.id), { headers })
+    if (!res.ok) throw new Error(`Failed: ${res.status}`)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const audio = new Audio(url)
+    audio.play().catch(() => {})
+    toast?.info('Playing current greeting')
+    audio.addEventListener('ended', () => { URL.revokeObjectURL(url) })
+  } catch (err) {
+    toast?.error('Failed to play greeting: ' + (err.message || 'Unknown error'))
+  }
 }
 </script>
 
