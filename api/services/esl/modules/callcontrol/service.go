@@ -340,7 +340,35 @@ func (s *Service) handleRingGroupCall(ctx *callContext, ringGroupUUID string) {
 
 		if rg.MissedCallTracking {
 			ctx.logger.Info("Ring group: missed call logged")
-			// TODO: persist missed call record + email notification if rg.MissedCallEmail != ""
+
+			record := models.MissedCallRecord{
+				RingGroupID:    rg.ID,
+				RingGroupUUID:  rg.UUID,
+				TenantID:        rg.TenantID,
+				CallerIDName:   ctx.callerName,
+				CallerIDNumber: ctx.callerID,
+				Destination:    rg.Extension,
+			}
+
+			if err := ctx.db.Create(&record).Error; err != nil {
+				ctx.logger.WithError(err).Error("Failed to persist missed call record")
+			}
+
+			if rg.MissedCallEmail != "" && ctx.manager.Email != nil {
+				if err := ctx.manager.Email.SendMissedCallNotification(
+					rg.MissedCallEmail,
+					rg.Name,
+					rg.Extension,
+					ctx.callerID,
+					ctx.callerName,
+				); err != nil {
+					ctx.logger.WithError(err).Error("Failed to send missed call notification email")
+				} else {
+					record.EmailSent = true
+					record.EmailSentTo = rg.MissedCallEmail
+					ctx.db.Save(&record)
+				}
+			}
 		}
 
 		// --- Timeout destination ---

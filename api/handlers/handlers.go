@@ -9,6 +9,7 @@ import (
 	"callsign/services/esl"
 	"callsign/services/logging"
 	"callsign/services/messaging"
+	"callsign/services/email"
 	"callsign/services/websocket"
 	"callsign/services/xmlcache"
 	"crypto/rand"
@@ -38,6 +39,7 @@ type Handler struct {
 	CHClient            *cdr.ClickHouseClient
 	XMLCache            *xmlcache.XMLCache
 	BroadcastWorker     *broadcast.BroadcastWorker
+	EmailService        *email.Service
 }
 
 // NewHandler creates a new Handler instance
@@ -67,6 +69,11 @@ func (h *Handler) SetMsgManager(mgr *messaging.Manager) {
 // SetClickHouse sets the ClickHouse CDR client reference
 func (h *Handler) SetClickHouse(ch *cdr.ClickHouseClient) {
 	h.CHClient = ch
+}
+
+// SetEmailService sets the email service reference
+func (h *Handler) SetEmailService(svc *email.Service) {
+	h.EmailService = svc
 }
 
 // SetXMLCache sets the XML cache reference for cache invalidation
@@ -655,7 +662,16 @@ func (h *Handler) RequestPasswordReset(c *fiber.Ctx) error {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate reset token"})
 	}
 
-	// TODO: Store token in database with expiration (password_reset_tokens table)
+	// Store token in database with expiration (1 hour)
+	resetToken := &models.PasswordResetToken{
+		Token:     token,
+		UserID:    user.ID,
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
+	if err := h.DB.Create(resetToken).Error; err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to store reset token"})
+	}
+
 	// Log token for testing purposes
 	h.logInfo("Auth", "PasswordReset", map[string]interface{}{
 		"user_id": user.ID,
@@ -663,11 +679,19 @@ func (h *Handler) RequestPasswordReset(c *fiber.Ctx) error {
 		"token":   token,
 	})
 
-	// TODO: Send reset email via email service
-	// For testing, return token in response
+	// Send reset email via email service
+	if h.EmailService != nil {
+		if err := h.EmailService.SendPasswordResetEmail(email, token); err != nil {
+			h.logInfo("Auth", "PasswordResetEmailFailed", map[string]interface{}{
+				"user_id": user.ID,
+				"email":   email,
+				"error":   err.Error(),
+			})
+		}
+	}
+
 	return c.JSON(fiber.Map{
 		"message": "If an account exists, a reset link has been sent",
-		"token":   token, // Remove in production - email the token instead
 	})
 }
 

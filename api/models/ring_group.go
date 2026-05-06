@@ -79,6 +79,28 @@ type RingGroup struct {
 	Destinations []RingGroupDestination `json:"destinations,omitempty" gorm:"foreignKey:RingGroupID"`
 }
 
+// MissedCallRecord logs a missed call on a ring group
+type MissedCallRecord struct {
+	ID             uint      `json:"id" gorm:"primaryKey"`
+	CreatedAt      time.Time `json:"created_at"`
+	RingGroupID    uint      `json:"ring_group_id" gorm:"index;not null"`
+	RingGroupUUID  uuid.UUID `json:"ring_group_uuid" gorm:"type:uuid;index;not null"`
+	TenantID       uint      `json:"tenant_id" gorm:"index;not null"`
+	CallerIDName   string    `json:"caller_id_name"`
+	CallerIDNumber string    `json:"caller_id_number" gorm:"index"`
+	Destination    string    `json:"destination"` // Ring group extension that was called
+	EmailSent      bool      `json:"email_sent" gorm:"default:false"`
+	EmailSentTo    string    `json:"email_sent_to"` // Email address notified
+}
+
+// BeforeCreate generates UUID if not set
+func (m *MissedCallRecord) BeforeCreate(tx *gorm.DB) error {
+	if m.RingGroupUUID == uuid.Nil {
+		m.RingGroupUUID = uuid.New()
+	}
+	return nil
+}
+
 // BeforeCreate generates UUID
 func (r *RingGroup) BeforeCreate(tx *gorm.DB) error {
 	r.UUID = uuid.New()

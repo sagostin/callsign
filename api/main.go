@@ -162,8 +162,10 @@ func main() {
 
 	// Initialize email service for voicemail notifications
 	emailCfg := emailsvc.LoadFromEnv()
+	var emailService *emailsvc.Service
 	if emailCfg.Enabled {
-		eslManager.SetEmailService(emailsvc.New(emailCfg))
+		emailService = emailsvc.New(emailCfg)
+		eslManager.SetEmailService(emailService)
 		logManager.Info("STARTUP", "Email service initialized (SMTP: "+emailCfg.SMTPHost+")", nil)
 	} else {
 		logManager.Info("STARTUP", "Email service not configured (set SMTP_HOST + SMTP_FROM_ADDRESS)", nil)
@@ -211,6 +213,7 @@ func main() {
 	r.Handler.SetESLManager(eslManager)
 	r.Handler.SetLogManager(logManager)
 	r.Handler.SetClickHouse(chClient)
+	r.Handler.SetEmailService(emailService)
 
 	// Initialize broadcast campaign worker
 	broadcastWorker := broadcast.NewBroadcastWorker(db, eslManager)

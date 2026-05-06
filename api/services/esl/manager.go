@@ -64,7 +64,7 @@ func (m *Manager) Start() error {
 	// Create and connect inbound client
 	m.Client = NewClient(
 		m.Config.FreeSwitchHost,
-		8021, // TODO: make configurable
+		m.Config.FreeSwitchPort,
 		m.Config.FreeSwitchPassword,
 	)
 

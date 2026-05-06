@@ -180,10 +180,16 @@ func AutoMigrate(db *gorm.DB) error {
 		// Call Broadcast
 		&BroadcastCampaign{},
 
+		// Bridges
+		&Bridge{},
+
 		// SMS Number Assignments & Message Queue
 		&SMSNumberAssignment{},
 		&MessageQueueItem{},
 		&MediaTranscodeJob{},
+
+		// Password Reset
+		&PasswordResetToken{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)

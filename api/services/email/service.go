@@ -70,7 +70,6 @@ func (s *Service) SendVoicemailNotification(to, extension, callerID, callerName 
 
 	subject := fmt.Sprintf("New Voicemail from %s (%s) - %d seconds", callerName, callerID, duration)
 
-	// Build text body
 	body := fmt.Sprintf(
 		"You have a new voicemail on extension %s.\n\n"+
 			"From: %s (%s)\n"+
@@ -79,8 +78,67 @@ func (s *Service) SendVoicemailNotification(to, extension, callerID, callerName 
 		extension, callerName, callerID, duration,
 	)
 
-	// Send with attachment
 	return s.sendWithAttachment(to, subject, body, wavFilePath)
+}
+
+// SendMissedCallNotification sends a missed call notification email for a ring group
+func (s *Service) SendMissedCallNotification(to, ringGroupName, ringGroupExt, callerID, callerName string) error {
+	if !s.IsEnabled() {
+		return nil
+	}
+
+	subject := fmt.Sprintf("Missed Call on %s (%s)", ringGroupName, ringGroupExt)
+
+	body := fmt.Sprintf(
+		"A call to %s (%s) was not answered.\n\n"+
+			"From: %s (%s)\n\n"+
+			"Please follow up with the caller as needed.\n",
+		ringGroupName, ringGroupExt, callerName, callerID,
+	)
+
+	return s.send(to, subject, body)
+}
+
+// SendPasswordResetEmail sends a password reset email
+func (s *Service) SendPasswordResetEmail(to, resetToken string) error {
+	if !s.IsEnabled() {
+		return nil
+	}
+
+	subject := "Password Reset Request - CallSign PBX"
+
+	body := fmt.Sprintf(
+		"You requested a password reset for your CallSign PBX account.\n\n"+
+			"Your reset token is: %s\n\n"+
+			"If you did not request this, please ignore this email.\n",
+		resetToken,
+	)
+
+	return s.send(to, subject, body)
+}
+
+// send sends a plain text email
+func (s *Service) send(to, subject, body string) error {
+	cfg := s.config
+	from := fmt.Sprintf("%s <%s>", cfg.FromName, cfg.FromAddress)
+
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s",
+		from, to, subject, body)
+
+	addr := net.JoinHostPort(cfg.SMTPHost, cfg.SMTPPort)
+	var auth smtp.Auth
+	if cfg.SMTPUser != "" {
+		auth = smtp.PlainAuth("", cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPHost)
+	}
+
+	err := smtp.SendMail(addr, auth, cfg.FromAddress, []string{to}, []byte(msg))
+	if err != nil {
+		log.WithError(err).Errorf("Failed to send email to %s", to)
+		return err
+	}
+
+	log.WithFields(log.Fields{"to": to, "subject": subject}).Info("Email sent")
+	return nil
 }
 
 // sendWithAttachment sends an email with a file attachment
@@ -91,7 +149,6 @@ func (s *Service) sendWithAttachment(to, subject, body, attachmentPath string) e
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
-	// Headers
 	headers := make(textproto.MIMEHeader)
 	headers.Set("From", from)
 	headers.Set("To", to)
@@ -99,13 +156,11 @@ func (s *Service) sendWithAttachment(to, subject, body, attachmentPath string) e
 	headers.Set("MIME-Version", "1.0")
 	headers.Set("Content-Type", fmt.Sprintf("multipart/mixed; boundary=%s", writer.Boundary()))
 
-	// Write headers
 	for k, v := range headers {
 		buf.WriteString(fmt.Sprintf("%s: %s\r\n", k, strings.Join(v, ", ")))
 	}
 	buf.WriteString("\r\n")
 
-	// Text part
 	textPart, err := writer.CreatePart(textproto.MIMEHeader{
 		"Content-Type": {"text/plain; charset=utf-8"},
 	})
@@ -114,22 +169,19 @@ func (s *Service) sendWithAttachment(to, subject, body, attachmentPath string) e
 	}
 	textPart.Write([]byte(body))
 
-	// Attachment part (if file exists)
 	if attachmentPath != "" {
 		fileData, err := os.ReadFile(attachmentPath)
 		if err != nil {
 			log.WithError(err).Warnf("Could not read voicemail attachment: %s", attachmentPath)
-			// Continue without attachment
 		} else {
 			filename := filepath.Base(attachmentPath)
 			attachPart, err := writer.CreatePart(textproto.MIMEHeader{
 				"Content-Type":              {mime.TypeByExtension(filepath.Ext(filename))},
 				"Content-Transfer-Encoding": {"base64"},
-				"Content-Disposition":       {fmt.Sprintf("attachment; filename=%q", filename)},
+				"Content-Disposition":      {fmt.Sprintf("attachment; filename=%q", filename)},
 			})
 			if err == nil {
 				encoded := base64.StdEncoding.EncodeToString(fileData)
-				// Wrap at 76 chars per line
 				for i := 0; i < len(encoded); i += 76 {
 					end := i + 76
 					if end > len(encoded) {
@@ -143,7 +195,6 @@ func (s *Service) sendWithAttachment(to, subject, body, attachmentPath string) e
 
 	writer.Close()
 
-	// Send via SMTP
 	addr := net.JoinHostPort(cfg.SMTPHost, cfg.SMTPPort)
 	var auth smtp.Auth
 	if cfg.SMTPUser != "" {
