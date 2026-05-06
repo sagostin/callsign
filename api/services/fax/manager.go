@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -128,7 +129,7 @@ func NewManager(db *gorm.DB, cfg *config.Config, logMgr *logging.LogManager) *Ma
 		RetryAttempts:   3,
 		RetryDelay:      time.Minute,
 		TempDir:         "/tmp/callsign-fax",
-		ESLAddr:         cfg.FreeSwitchHost + ":" + cfg.FreeSwitchPort,
+		ESLAddr:         cfg.FreeSwitchHost + ":" + strconv.Itoa(cfg.FreeSwitchPort),
 		ESLPassword:     cfg.FreeSwitchPassword,
 	}
 }

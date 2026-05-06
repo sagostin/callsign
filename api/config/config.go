@@ -28,7 +28,7 @@ type Config struct {
 
 	// FreeSWITCH settings
 	FreeSwitchHost     string
-	FreeSwitchPort     string
+	FreeSwitchPort     int
 	FreeSwitchPassword string
 	FreeSwitchAPIKey   string // API key for XML CURL authentication
 
@@ -121,7 +121,7 @@ func Load() *Config {
 
 		// FreeSWITCH - matches FREESWITCH_* from docker-compose
 		FreeSwitchHost:     getEnv("FREESWITCH_HOST", "127.0.0.1"),
-		FreeSwitchPort:     getEnv("FREESWITCH_ESL_PORT", "8021"),
+		FreeSwitchPort:     getEnvAsInt("FREESWITCH_ESL_PORT", 8021),
 		FreeSwitchPassword: getEnv("FREESWITCH_ESL_PASSWORD", "ClueCon"),
 		FreeSwitchAPIKey:   getEnv("FREESWITCH_API_KEY", ""),
 

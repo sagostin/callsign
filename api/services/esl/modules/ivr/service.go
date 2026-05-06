@@ -14,6 +14,8 @@ import (
 
 	"github.com/fiorix/go-eventsocket/eventsocket"
 	log "github.com/sirupsen/logrus"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
 const (
@@ -139,16 +141,17 @@ func (s *Service) Handle(conn *eventsocket.Connection) {
 
 // flowContext holds the execution state for a flow graph
 type flowContext struct {
-	conn       *eventsocket.Connection
-	manager    *esl.Manager
-	menu       *models.IVRMenu
-	uuid       string
-	callerID   string
-	callerName string
-	dest       string
-	domain     string
-	logger     *log.Entry
-	variables  map[string]string
+	conn        *eventsocket.Connection
+	manager     *esl.Manager
+	menu        *models.IVRMenu
+	nodeConfig  map[string]interface{}
+	uuid        string
+	callerID    string
+	callerName  string
+	dest        string
+	domain      string
+	logger      *log.Entry
+	variables   map[string]string
 }
 
 // executeFlowGraph walks the visual flow graph, executing each node
@@ -767,6 +770,8 @@ func (s *Service) nodeDatabase(ctx *flowContext, node *models.IVRFlowNode) strin
 		return "error"
 	}
 
+	ctx.nodeConfig = node.Config
+
 	var result string
 	var err error
 
@@ -832,16 +837,161 @@ func (s *Service) executeRestQuery(ctx *flowContext, query, operation string) (s
 	return string(body), nil
 }
 
-// executeMySQLQuery executes a MySQL query (placeholder)
+// executeMySQLQuery executes a MySQL query using connection config from node
 func (s *Service) executeMySQLQuery(ctx *flowContext, query, operation string) (string, error) {
-	ctx.logger.Warn("IVR database: MySQL queries not yet implemented")
-	return "", fmt.Errorf("mysql connection not implemented")
+	host := getConfigStr(ctx.nodeConfig, "mysql_host", "")
+	port := getConfigStr(ctx.nodeConfig, "mysql_port", "3306")
+	user := getConfigStr(ctx.nodeConfig, "mysql_user", "")
+	password := getConfigStr(ctx.nodeConfig, "mysql_password", "")
+	database := getConfigStr(ctx.nodeConfig, "mysql_database", "")
+
+	if host == "" || user == "" || database == "" {
+		return "", fmt.Errorf("MySQL connection config incomplete (host/user/database required)")
+	}
+
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		user, password, host, port, database)
+
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to MySQL: %w", err)
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		return "", fmt.Errorf("failed to get underlying DB: %w", err)
+	}
+	defer sqlDB.Close()
+
+	switch operation {
+	case "query":
+		rows, err := db.Raw(query).Rows()
+		if err != nil {
+			return "", fmt.Errorf("MySQL query failed: %w", err)
+		}
+		defer rows.Close()
+
+		columns, err := rows.Columns()
+		if err != nil {
+			return "", fmt.Errorf("failed to get columns: %w", err)
+		}
+
+		var results []map[string]interface{}
+		for rows.Next() {
+			values := make([]interface{}, len(columns))
+			valuePtrs := make([]interface{}, len(columns))
+			for i := range values {
+				valuePtrs[i] = &values[i]
+			}
+			if err := rows.Scan(valuePtrs...); err != nil {
+				return "", fmt.Errorf("failed to scan row: %w", err)
+			}
+			row := make(map[string]interface{})
+			for i, col := range columns {
+				row[col] = values[i]
+			}
+			results = append(results, row)
+		}
+
+		if len(results) == 0 {
+			return "", nil
+		}
+		jsonData, err := json.Marshal(results)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal results: %w", err)
+		}
+		return string(jsonData), nil
+
+	case "exec":
+		result := db.Exec(query)
+		if result.Error != nil {
+			return "", fmt.Errorf("MySQL exec failed: %w", result.Error)
+		}
+		return fmt.Sprintf("rows_affected:%d", result.RowsAffected), nil
+
+	case "single":
+		var data interface{}
+		if err := db.Raw(query).Scan(&data).Error; err != nil {
+			return "", fmt.Errorf("MySQL single query failed: %w", err)
+		}
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal single result: %w", err)
+		}
+		return string(jsonData), nil
+
+	default:
+		return "", fmt.Errorf("unknown operation: %s", operation)
+	}
 }
 
-// executeDefaultQuery executes a default database query (placeholder)
+// executeDefaultQuery executes a query using the default PostgreSQL database
 func (s *Service) executeDefaultQuery(ctx *flowContext, query, operation string) (string, error) {
-	ctx.logger.Warn("IVR database: default database queries not yet implemented")
-	return "", fmt.Errorf("default database connection not implemented")
+	manager := ctx.manager
+	if manager == nil || manager.DB == nil {
+		return "", fmt.Errorf("database not initialized")
+	}
+
+	switch operation {
+	case "query":
+		rows, err := manager.DB.Raw(query).Rows()
+		if err != nil {
+			return "", fmt.Errorf("PostgreSQL query failed: %w", err)
+		}
+		defer rows.Close()
+
+		columns, err := rows.Columns()
+		if err != nil {
+			return "", fmt.Errorf("failed to get columns: %w", err)
+		}
+
+		var results []map[string]interface{}
+		for rows.Next() {
+			values := make([]interface{}, len(columns))
+			valuePtrs := make([]interface{}, len(columns))
+			for i := range values {
+				valuePtrs[i] = &values[i]
+			}
+			if err := rows.Scan(valuePtrs...); err != nil {
+				return "", fmt.Errorf("failed to scan row: %w", err)
+			}
+			row := make(map[string]interface{})
+			for i, col := range columns {
+				row[col] = values[i]
+			}
+			results = append(results, row)
+		}
+
+		if len(results) == 0 {
+			return "", nil
+		}
+		jsonData, err := json.Marshal(results)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal results: %w", err)
+		}
+		return string(jsonData), nil
+
+	case "exec":
+		result := manager.DB.Exec(query)
+		if result.Error != nil {
+			return "", fmt.Errorf("PostgreSQL exec failed: %w", result.Error)
+		}
+		return fmt.Sprintf("rows_affected:%d", result.RowsAffected), nil
+
+	case "single":
+		var data interface{}
+		if err := manager.DB.Raw(query).Scan(&data).Error; err != nil {
+			return "", fmt.Errorf("PostgreSQL single query failed: %w", err)
+		}
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal single result: %w", err)
+		}
+		return string(jsonData), nil
+
+	default:
+		return "", fmt.Errorf("unknown operation: %s", operation)
+	}
 }
 
 // =====================

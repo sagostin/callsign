@@ -623,23 +623,152 @@ func (h *Handler) GetGatewayStatus(c *fiber.Ctx) error {
 // =====================
 
 func (h *Handler) ListBridges(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{"data": []interface{}{}, "message": "Not implemented"})
+	tenantID := middleware.GetScopedTenantID(c)
+
+	var bridges []models.Bridge
+	query := h.DB
+	if tenantID > 0 {
+		query = query.Where("tenant_id = ? OR tenant_id IS NULL", tenantID)
+	}
+
+	if err := query.Order("name").Find(&bridges).Error; err != nil {
+		h.logError("BRIDGE", "ListBridges: failed to retrieve bridges", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve bridges"})
+	}
+	return c.JSON(fiber.Map{"data": bridges})
 }
 
 func (h *Handler) CreateBridge(c *fiber.Ctx) error {
-	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Not implemented"})
+	var bridge models.Bridge
+	if err := c.BodyParser(&bridge); err != nil {
+		h.logWarn("BRIDGE", "CreateBridge: invalid request payload", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(c.Body(), &raw); err == nil {
+		if pw, ok := raw["password"].(string); ok && pw != "" {
+			bridge.Password = pw
+		}
+	}
+
+	tenantID := middleware.GetScopedTenantID(c)
+	if tenantID > 0 {
+		bridge.TenantID = &tenantID
+	}
+
+	if err := h.DB.Create(&bridge).Error; err != nil {
+		h.logError("BRIDGE", "CreateBridge: failed to create bridge", h.reqFields(c, map[string]interface{}{"error": err.Error(), "name": bridge.Name}))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create bridge"})
+	}
+
+	h.reloadXML()
+	h.logInfo("BRIDGE", "CreateBridge: bridge created successfully", h.reqFields(c, map[string]interface{}{"bridge_id": bridge.ID, "name": bridge.Name}))
+	return c.Status(http.StatusCreated).JSON(bridge)
 }
 
 func (h *Handler) GetBridge(c *fiber.Ctx) error {
-	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Not implemented"})
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid bridge ID"})
+	}
+
+	tenantID := middleware.GetScopedTenantID(c)
+
+	var bridge models.Bridge
+	query := h.DB
+	if tenantID > 0 {
+		query = query.Where("(tenant_id = ? OR tenant_id IS NULL)", tenantID)
+	}
+
+	if err := query.First(&bridge, id).Error; err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Bridge not found"})
+	}
+
+	return c.JSON(bridge)
 }
 
 func (h *Handler) UpdateBridge(c *fiber.Ctx) error {
-	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Not implemented"})
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		h.logWarn("BRIDGE", "UpdateBridge: invalid bridge ID", h.reqFields(c, map[string]interface{}{"raw_id": c.Params("id")}))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid bridge ID"})
+	}
+
+	tenantID := middleware.GetScopedTenantID(c)
+
+	var bridge models.Bridge
+	query := h.DB
+	if tenantID > 0 {
+		query = query.Where("tenant_id = ?", tenantID)
+	}
+
+	if err := query.First(&bridge, id).Error; err != nil {
+		h.logWarn("BRIDGE", "UpdateBridge: bridge not found", h.reqFields(c, map[string]interface{}{"bridge_id": id}))
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Bridge not found"})
+	}
+
+	existingPassword := bridge.Password
+
+	if err := c.BodyParser(&bridge); err != nil {
+		h.logWarn("BRIDGE", "UpdateBridge: invalid request payload", h.reqFields(c, map[string]interface{}{"error": err.Error(), "bridge_id": id}))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(c.Body(), &raw); err == nil {
+		if pw, ok := raw["password"].(string); ok && pw != "" {
+			bridge.Password = pw
+		} else {
+			bridge.Password = existingPassword
+		}
+	} else {
+		bridge.Password = existingPassword
+	}
+
+	bridge.ID = uint(id)
+	if tenantID > 0 {
+		bridge.TenantID = &tenantID
+	}
+
+	if err := h.DB.Save(&bridge).Error; err != nil {
+		h.logError("BRIDGE", "UpdateBridge: failed to update bridge", h.reqFields(c, map[string]interface{}{"error": err.Error(), "bridge_id": id, "name": bridge.Name}))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update bridge"})
+	}
+
+	h.reloadXML()
+	h.logInfo("BRIDGE", "UpdateBridge: bridge updated successfully", h.reqFields(c, map[string]interface{}{"bridge_id": id, "name": bridge.Name}))
+	return c.JSON(bridge)
 }
 
 func (h *Handler) DeleteBridge(c *fiber.Ctx) error {
-	return c.Status(http.StatusNotImplemented).JSON(fiber.Map{"error": "Not implemented"})
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		h.logWarn("BRIDGE", "DeleteBridge: invalid bridge ID", h.reqFields(c, map[string]interface{}{"raw_id": c.Params("id")}))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid bridge ID"})
+	}
+
+	tenantID := middleware.GetScopedTenantID(c)
+
+	var bridge models.Bridge
+	query := h.DB
+	if tenantID > 0 {
+		query = query.Where("tenant_id = ?", tenantID)
+	}
+
+	if err := query.First(&bridge, id).Error; err != nil {
+		h.logWarn("BRIDGE", "DeleteBridge: bridge not found", h.reqFields(c, map[string]interface{}{"bridge_id": id}))
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Bridge not found"})
+	}
+
+	if err := h.DB.Delete(&bridge).Error; err != nil {
+		h.logError("BRIDGE", "DeleteBridge: failed to delete bridge", h.reqFields(c, map[string]interface{}{"error": err.Error(), "bridge_id": id, "name": bridge.Name}))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete bridge"})
+	}
+
+	h.reloadXML()
+	h.logInfo("BRIDGE", "DeleteBridge: bridge deleted successfully", h.reqFields(c, map[string]interface{}{"bridge_id": id, "name": bridge.Name}))
+	return c.JSON(fiber.Map{"message": "Bridge deleted successfully"})
 }
 
 // =====================
