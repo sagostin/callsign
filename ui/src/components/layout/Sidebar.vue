@@ -120,6 +120,10 @@
 
         <div class="nav-section">
           <div class="nav-header" v-if="!isCollapsed">Users & Devices</div>
+          <router-link to="/admin/users" class="nav-item" :title="isCollapsed ? 'Users' : ''">
+            <UsersIcon class="nav-icon" />
+            <span class="nav-label">Users</span>
+          </router-link>
           <router-link to="/admin/extensions" class="nav-item" :title="isCollapsed ? 'Extensions' : ''">
             <Phone class="nav-icon" />
             <span class="nav-label">Extensions</span>
@@ -164,6 +168,10 @@
             <GalleryVerticalEnd class="nav-icon" />
             <span class="nav-label">Queues & Groups</span>
           </router-link>
+          <router-link to="/admin/ring-groups" class="nav-item" :title="isCollapsed ? 'Ring Groups' : ''">
+            <PhoneCallIcon class="nav-icon" />
+            <span class="nav-label">Ring Groups</span>
+          </router-link>
           <router-link to="/admin/time-conditions" class="nav-item" :title="isCollapsed ? 'Time Conditions' : ''">
             <ClockIcon class="nav-icon" />
             <span class="nav-label">Time Conditions</span>
@@ -175,6 +183,10 @@
           <router-link to="/admin/speed-dials" class="nav-item" :title="isCollapsed ? 'Speed Dials' : ''">
             <ZapIcon class="nav-icon" />
             <span class="nav-label">Speed Dials</span>
+          </router-link>
+          <router-link to="/admin/paging" class="nav-item" :title="isCollapsed ? 'Paging' : ''">
+            <VolumeIcon class="nav-icon" />
+            <span class="nav-label">Paging</span>
           </router-link>
         </div>
 

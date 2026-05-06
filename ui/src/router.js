@@ -99,6 +99,14 @@ const routes = [
       { path: 'speed-dials', component: () => import('./views/admin/SpeedDials.vue'), name: 'SpeedDials' },
       { path: 'extension-profiles', component: () => import('./views/admin/ExtensionProfiles.vue'), name: 'ExtensionProfiles' },
 
+      { path: 'paging', component: () => import('./views/admin/Paging.vue'), name: 'Paging' },
+
+      { path: 'ring-groups', component: () => import('./views/admin/RingGroups.vue'), name: 'RingGroups' },
+      { path: 'ring-groups/new', component: () => import('./views/admin/RingGroupForm.vue'), name: 'RingGroupFormNew' },
+      { path: 'ring-groups/:id', component: () => import('./views/admin/RingGroupForm.vue'), name: 'RingGroupFormEdit' },
+
+      { path: 'users', component: () => import('./views/admin/Users.vue'), name: 'Users' },
+
       { path: 'music-on-hold', component: () => import('./views/admin/MusicOnHold.vue'), name: 'MusicOnHold' },
       { path: 'music-on-hold/new', component: () => import('./views/admin/StreamForm.vue'), name: 'StreamFormNew' },
       { path: 'music-on-hold/:id', component: () => import('./views/admin/StreamForm.vue'), name: 'StreamFormEdit' },
