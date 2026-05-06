@@ -962,6 +962,7 @@ export const userGreetingsAPI = {
     update: (id, data) => api.put(`/user/greetings/${id}`, data),
     delete: (id) => api.delete(`/user/greetings/${id}`),
     activate: (id) => api.post(`/user/greetings/${id}/activate`),
+    streamUrl: (id) => `/api/user/greetings/${id}/stream`,
 }
 
 // =====================
