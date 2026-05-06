@@ -22,6 +22,8 @@ const routes = [
       { path: 'messages', component: () => import('./views/admin/Messaging.vue'), name: 'PortalMessages' },
       { path: 'voicemail', component: UserVoicemail, name: 'PortalVoicemail' },
       { path: 'conferences', component: () => import('./views/user/UserConferences.vue'), name: 'PortalConferences' },
+      { path: 'conferences/schedule', component: () => import('./views/user/ScheduleMeeting.vue'), name: 'PortalScheduleMeeting' },
+      { path: 'conferences/recordings', component: () => import('./views/user/ConferenceRecordings.vue'), name: 'PortalConferenceRecordings' },
       { path: 'fax', component: () => import('./views/user/UserFax.vue'), name: 'PortalFax' },
       { path: 'contacts', component: UserContacts, name: 'PortalContacts' },
       { path: 'recordings', component: () => import('./views/user/UserRecordings.vue'), name: 'PortalRecordings' },
