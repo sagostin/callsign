@@ -168,6 +168,10 @@
             <ClockIcon class="nav-icon" />
             <span class="nav-label">Time Conditions</span>
           </router-link>
+          <router-link to="/admin/schedules" class="nav-item" :title="isCollapsed ? 'Schedules' : ''">
+            <CalendarIcon class="nav-icon" />
+            <span class="nav-label">Schedules</span>
+          </router-link>
           <router-link to="/admin/toggles" class="nav-item" :title="isCollapsed ? 'Toggles' : ''">
             <ToggleIcon class="nav-icon" />
             <span class="nav-label">Toggles</span>
@@ -183,6 +187,14 @@
           <router-link to="/admin/conferences" class="nav-item" :title="isCollapsed ? 'Conferences' : ''">
             <UsersIcon class="nav-icon" />
             <span class="nav-label">Conferences</span>
+          </router-link>
+          <router-link to="/admin/chat" class="nav-item" :title="isCollapsed ? 'Chat' : ''">
+            <MessageCircleIcon class="nav-icon" />
+            <span class="nav-label">Chat</span>
+          </router-link>
+          <router-link to="/admin/messaging-numbers" class="nav-item" :title="isCollapsed ? 'Messaging Numbers' : ''">
+            <SmartphoneIcon class="nav-icon" />
+            <span class="nav-label">Messaging Numbers</span>
           </router-link>
           <router-link to="/admin/voicemail-manager" class="nav-item" :title="isCollapsed ? 'Voicemail' : ''">
             <Voicemail class="nav-icon" />
@@ -227,6 +239,14 @@
           <router-link to="/admin/hospitality" class="nav-item" :title="isCollapsed ? 'Hospitality' : ''">
             <Hotel class="nav-icon" />
             <span class="nav-label">Hospitality</span>
+          </router-link>
+          <router-link to="/admin/sip-profiles" class="nav-item" :title="isCollapsed ? 'SIP Profiles' : ''">
+            <NetworkIcon class="nav-icon" />
+            <span class="nav-label">SIP Profiles</span>
+          </router-link>
+          <router-link to="/admin/locations" class="nav-item" :title="isCollapsed ? 'Locations' : ''">
+            <MapPinIcon class="nav-icon" />
+            <span class="nav-label">Locations</span>
           </router-link>
           <router-link to="/admin/settings" class="nav-item" :title="isCollapsed ? 'Tenant Settings' : ''">
             <Settings class="nav-icon" />
@@ -311,6 +331,10 @@
             <GitMerge class="nav-icon" />
             <span class="nav-label">System Routing</span>
           </router-link>
+          <router-link to="/system/global-dial-plans" class="nav-item" :title="isCollapsed ? 'Global Dial Plans' : ''">
+            <GlobeIcon class="nav-icon" />
+            <span class="nav-label">Global Dial Plans</span>
+          </router-link>
           <router-link to="/system/messaging" class="nav-item" :title="isCollapsed ? 'Messaging' : ''">
             <MessageSquare class="nav-icon" />
             <span class="nav-label">Messaging Providers</span>
@@ -360,7 +384,8 @@ import {
   Terminal as TerminalIcon, Layers as LayersIcon, FileCode as FileCodeIcon,
   Globe as GlobeIcon, Zap as ZapIcon, ToggleLeft as ToggleIcon, PhoneCall as PhoneCallIcon,
   Download as DownloadIcon, Volume2 as VolumeIcon, FileAudio as FileAudioIcon,
-  Shield as ShieldIcon, Settings as SettingsIcon, Search as SearchIcon, Container as ContainerIcon
+  Shield as ShieldIcon, Settings as SettingsIcon, Search as SearchIcon, Container as ContainerIcon,
+  MessageCircle as MessageCircleIcon, MapPin as MapPinIcon, Smartphone as SmartphoneIcon
 } from 'lucide-vue-next'
 
 const props = defineProps({
