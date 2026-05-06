@@ -24,18 +24,12 @@
           <span class="stat-label">Active Now</span>
         </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-icon scheduled"><CalendarIcon class="icon" /></div>
-        <div class="stat-info">
-          <span class="stat-value">{{ scheduledMeetings.length }}</span>
-          <span class="stat-label">Scheduled</span>
-        </div>
-      </div>
+      <!-- Scheduled stat hidden: backend meeting scheduling API does not exist yet. -->
     </div>
 
     <div class="tabs">
       <button class="tab" :class="{ active: activeTab === 'rooms' }" @click="activeTab = 'rooms'">My Rooms</button>
-      <button class="tab" :class="{ active: activeTab === 'scheduled' }" @click="activeTab = 'scheduled'">Scheduled</button>
+      <!-- Scheduled tab hidden: backend meeting scheduling API does not exist yet. -->
       <button class="tab" :class="{ active: activeTab === 'history' }" @click="activeTab = 'history'">History</button>
     </div>
 
@@ -91,45 +85,7 @@
       </div>
     </div>
 
-    <!-- SCHEDULED TAB -->
-    <div class="tab-content" v-else-if="activeTab === 'scheduled'">
-      <div class="scheduled-list">
-        <div class="scheduled-card" v-for="meeting in scheduledMeetings" :key="meeting.id">
-          <div class="meeting-date">
-            <span class="date-day">{{ meeting.day }}</span>
-            <span class="date-month">{{ meeting.month }}</span>
-          </div>
-          <div class="meeting-info">
-            <h4>{{ meeting.title }}</h4>
-            <div class="meeting-meta">
-              <ClockIcon class="icon-xs" />
-              <span>{{ meeting.time }} ({{ meeting.duration }})</span>
-            </div>
-            <div class="meeting-participants">
-              <span class="participant-count">{{ meeting.invitees.length }} invited</span>
-              <div class="participant-avatars">
-                <div class="avatar" v-for="(inv, i) in meeting.invitees.slice(0, 3)" :key="i">{{ inv.charAt(0) }}</div>
-              </div>
-            </div>
-          </div>
-          <div class="meeting-actions">
-            <button class="btn-secondary small" @click="startMeeting(meeting)">Start Now</button>
-            <button class="btn-link" @click="editMeeting(meeting)">Edit</button>
-            <button class="btn-link text-bad" @click="cancelMeeting(meeting)">Cancel</button>
-          </div>
-        </div>
-
-        <div class="empty-state" v-if="scheduledMeetings.length === 0">
-          <CalendarIcon class="empty-icon" />
-          <p>No scheduled meetings</p>
-          <button class="btn-link" @click="showScheduleModal = true">Schedule one now</button>
-        </div>
-      </div>
-
-      <button class="btn-fab" @click="showScheduleModal = true">
-        <PlusIcon class="icon-sm" />
-      </button>
-    </div>
+    <!-- Scheduled tab content removed: backend meeting scheduling API does not exist yet. -->
 
     <!-- HISTORY TAB -->
     <div class="tab-content" v-else-if="activeTab === 'history'">
@@ -141,7 +97,7 @@
           <span class="participant-badge">{{ value }} people</span>
         </template>
         <template #actions="{ row }">
-          <button class="btn-link" v-if="row.recording" @click="playRecording(row)">Recording</button>
+          <!-- Recording playback hidden: no streaming endpoint for conference recordings. -->
           <button class="btn-link" @click="viewDetails(row)">Details</button>
         </template>
       </DataTable>
@@ -248,6 +204,36 @@
         </div>
       </div>
     </div>
+
+    <!-- SESSION DETAILS MODAL -->
+    <div v-if="showDetailsModal" class="modal-overlay" @click.self="showDetailsModal = false">
+      <div class="modal-card small">
+        <div class="modal-header">
+          <h3>Session Details</h3>
+          <button class="btn-icon" @click="showDetailsModal = false"><XIcon class="icon-sm" /></button>
+        </div>
+        <div class="modal-body">
+          <div v-if="sessionDetailsLoading" class="empty-state">
+            <p>Loading participants...</p>
+          </div>
+          <div v-else-if="sessionParticipants.length === 0" class="empty-state">
+            <p>No participant data available.</p>
+          </div>
+          <div v-else class="participant-list">
+            <div class="participant-item" v-for="p in sessionParticipants" :key="p.id">
+              <div class="participant-info">
+                <span class="participant-name">{{ p.caller_id_name || 'Unknown' }}</span>
+                <span class="participant-number">{{ p.caller_id_number || p.uuid }}</span>
+              </div>
+              <div class="participant-meta">
+                <span class="participant-time">{{ formatJoinTime(p.join_time) }}</span>
+                <span class="participant-status" :class="{ muted: p.muted }">{{ p.muted ? 'Muted' : 'Active' }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -271,6 +257,10 @@ const showShareModal = ref(false)
 const sharingConference = ref(null)
 const loading = ref(false)
 const editingConference = ref(null)
+const showDetailsModal = ref(false)
+const sessionDetailsLoading = ref(false)
+const sessionParticipants = ref([])
+const selectedSession = ref(null)
 
 const newRoom = ref({
   name: '',
@@ -340,6 +330,7 @@ const loadHistory = async () => {
       const res = await conferencesAPI.getSessions(conferences.value[0].id)
       const sessions = res.data || []
       meetingHistory.value = sessions.map(s => ({
+        id: s.id,
         date: new Date(s.start_time || s.created_at).toLocaleDateString(),
         name: s.conference_name || 'Conference',
         duration: s.duration || '00:00:00',
@@ -378,24 +369,37 @@ const editConference = (conf) => {
   showCreateModal.value = true
 }
 
-const startMeeting = (meeting) => {
-  toast?.info('Meeting scheduling coming soon')
+// Meeting scheduling functions hidden: backend meeting scheduling API does not exist yet.
+// const startMeeting = (meeting) => { ... }
+// const editMeeting = (meeting) => { ... }
+// const cancelMeeting = (meeting) => { ... }
+
+// Recording playback hidden: no streaming endpoint for conference recordings.
+// const playRecording = (row) => { ... }
+
+const viewDetails = async (row) => {
+  selectedSession.value = row
+  showDetailsModal.value = true
+  sessionDetailsLoading.value = true
+  sessionParticipants.value = []
+  try {
+    if (!row.id) {
+      sessionParticipants.value = []
+      return
+    }
+    const res = await conferencesAPI.getSessionParticipants(row.id)
+    sessionParticipants.value = res.data || []
+  } catch (err) {
+    console.error('Failed to load session participants:', err)
+    sessionParticipants.value = []
+  } finally {
+    sessionDetailsLoading.value = false
+  }
 }
 
-const editMeeting = (meeting) => {
-  toast?.info('Meeting editing coming soon')
-}
-
-const cancelMeeting = (meeting) => {
-  toast?.info('Meeting cancellation coming soon')
-}
-
-const playRecording = (row) => {
-  toast?.info('Recording playback coming soon')
-}
-
-const viewDetails = (row) => {
-  toast?.info('Session details coming soon')
+const formatJoinTime = (joinTime) => {
+  if (!joinTime) return ''
+  return new Date(joinTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
 const createRoom = async () => {
@@ -569,6 +573,17 @@ label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var
 .icon-xs { width: 14px; height: 14px; }
 .mono { font-family: monospace; }
 .participant-badge { background: var(--bg-app); padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+
+/* Session Details Modal */
+.participant-list { display: flex; flex-direction: column; gap: 8px; }
+.participant-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--bg-app); border-radius: 6px; }
+.participant-info { display: flex; flex-direction: column; }
+.participant-name { font-weight: 600; font-size: 13px; }
+.participant-number { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+.participant-meta { display: flex; align-items: center; gap: 8px; }
+.participant-time { font-size: 11px; color: var(--text-muted); }
+.participant-status { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: #dcfce7; color: #16a34a; }
+.participant-status.muted { background: #fee2e2; color: #dc2626; }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }

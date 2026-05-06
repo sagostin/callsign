@@ -124,6 +124,10 @@
 
         <div class="nav-section">
           <div class="nav-header" v-if="!isCollapsed">Users & Devices</div>
+          <router-link to="/admin/users" class="nav-item" :title="isCollapsed ? 'Users' : ''">
+            <UsersIcon class="nav-icon" />
+            <span class="nav-label">Users</span>
+          </router-link>
           <router-link to="/admin/extensions" class="nav-item" :title="isCollapsed ? 'Extensions' : ''">
             <Phone class="nav-icon" />
             <span class="nav-label">Extensions</span>
@@ -168,9 +172,17 @@
             <GalleryVerticalEnd class="nav-icon" />
             <span class="nav-label">Queues & Groups</span>
           </router-link>
+          <router-link to="/admin/ring-groups" class="nav-item" :title="isCollapsed ? 'Ring Groups' : ''">
+            <PhoneCallIcon class="nav-icon" />
+            <span class="nav-label">Ring Groups</span>
+          </router-link>
           <router-link to="/admin/time-conditions" class="nav-item" :title="isCollapsed ? 'Time Conditions' : ''">
             <ClockIcon class="nav-icon" />
             <span class="nav-label">Time Conditions</span>
+          </router-link>
+          <router-link to="/admin/schedules" class="nav-item" :title="isCollapsed ? 'Schedules' : ''">
+            <CalendarIcon class="nav-icon" />
+            <span class="nav-label">Schedules</span>
           </router-link>
           <router-link to="/admin/toggles" class="nav-item" :title="isCollapsed ? 'Toggles' : ''">
             <ToggleIcon class="nav-icon" />
@@ -180,6 +192,10 @@
             <ZapIcon class="nav-icon" />
             <span class="nav-label">Speed Dials</span>
           </router-link>
+          <router-link to="/admin/paging" class="nav-item" :title="isCollapsed ? 'Paging' : ''">
+            <VolumeIcon class="nav-icon" />
+            <span class="nav-label">Paging</span>
+          </router-link>
         </div>
 
         <div class="nav-section">
@@ -187,6 +203,14 @@
           <router-link to="/admin/conferences" class="nav-item" :title="isCollapsed ? 'Conferences' : ''">
             <UsersIcon class="nav-icon" />
             <span class="nav-label">Conferences</span>
+          </router-link>
+          <router-link to="/admin/chat" class="nav-item" :title="isCollapsed ? 'Chat' : ''">
+            <MessageCircleIcon class="nav-icon" />
+            <span class="nav-label">Chat</span>
+          </router-link>
+          <router-link to="/admin/messaging-numbers" class="nav-item" :title="isCollapsed ? 'Messaging Numbers' : ''">
+            <SmartphoneIcon class="nav-icon" />
+            <span class="nav-label">Messaging Numbers</span>
           </router-link>
           <router-link to="/admin/voicemail-manager" class="nav-item" :title="isCollapsed ? 'Voicemail' : ''">
             <Voicemail class="nav-icon" />
@@ -243,6 +267,14 @@
           <router-link to="/admin/wake-up-calls" class="nav-item sub-item" :title="isCollapsed ? 'Wake Up Calls' : ''">
             <AlarmClock class="nav-icon" />
             <span class="nav-label">Wake Up Calls</span>
+          </router-link>
+          <router-link to="/admin/sip-profiles" class="nav-item" :title="isCollapsed ? 'SIP Profiles' : ''">
+            <NetworkIcon class="nav-icon" />
+            <span class="nav-label">SIP Profiles</span>
+          </router-link>
+          <router-link to="/admin/locations" class="nav-item" :title="isCollapsed ? 'Locations' : ''">
+            <MapPinIcon class="nav-icon" />
+            <span class="nav-label">Locations</span>
           </router-link>
           <router-link to="/admin/settings" class="nav-item" :title="isCollapsed ? 'Tenant Settings' : ''">
             <Settings class="nav-icon" />
@@ -331,6 +363,10 @@
             <GitMerge class="nav-icon" />
             <span class="nav-label">System Routing</span>
           </router-link>
+          <router-link to="/system/global-dial-plans" class="nav-item" :title="isCollapsed ? 'Global Dial Plans' : ''">
+            <GlobeIcon class="nav-icon" />
+            <span class="nav-label">Global Dial Plans</span>
+          </router-link>
           <router-link to="/system/messaging" class="nav-item" :title="isCollapsed ? 'Messaging' : ''">
             <MessageSquare class="nav-icon" />
             <span class="nav-label">Messaging Providers</span>
@@ -381,7 +417,8 @@ import {
   Globe as GlobeIcon, Zap as ZapIcon, ToggleLeft as ToggleIcon, PhoneCall as PhoneCallIcon,
   Download as DownloadIcon, Volume2 as VolumeIcon, FileAudio as FileAudioIcon,
   Shield as ShieldIcon, Settings as SettingsIcon, Search as SearchIcon, Container as ContainerIcon,
-  AlarmClock, Sparkles, Activity, ClipboardList
+  AlarmClock, Sparkles, Activity, ClipboardList,
+  MessageCircle as MessageCircleIcon, MapPin as MapPinIcon, Smartphone as SmartphoneIcon
 } from 'lucide-vue-next'
 
 const props = defineProps({

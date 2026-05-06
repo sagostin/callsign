@@ -1,7 +1,7 @@
 <template>
   <div class="view-header">
      <div class="header-content">
-       <button class="back-link" @click="$router.push('/admin/queues')">← Back to Groups</button>
+        <button class="back-link" @click="$router.push('/admin/ring-groups')">← Back to Ring Groups</button>
        <h2>{{ isNew ? 'New Ring Group' : 'Edit Ring Group' }}</h2>
      </div>
   </div>
