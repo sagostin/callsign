@@ -54,6 +54,10 @@ const routes = [
       { path: 'ivr/menus/:id', component: () => import('./views/admin/IVRMenuForm.vue'), name: 'IVRMenuForm' },
 
       { path: 'call-flows', component: () => import('./views/admin/CallFlows.vue'), name: 'CallFlows' },
+      { path: 'call-flows/new', component: () => import('./views/admin/CallFlowForm.vue'), name: 'CallFlowFormNew' },
+      { path: 'call-flows/:id', component: () => import('./views/admin/CallFlowForm.vue'), name: 'CallFlowFormEdit' },
+
+      { path: 'chat', component: () => import('./views/admin/Chat.vue'), name: 'Chat' },
 
       { path: 'toggles', component: () => import('./views/admin/Toggles.vue'), name: 'Toggles' },
 
@@ -120,15 +124,20 @@ const routes = [
       { path: 'voicemail-manager/:id', component: () => import('./views/admin/VoicemailBoxForm.vue'), name: 'VoicemailBoxFormEdit' },
 
       { path: 'messaging', component: () => import('./views/admin/Messaging.vue'), name: 'Messaging' },
+      { path: 'messaging-numbers', component: () => import('./views/admin/MessagingNumbers.vue'), name: 'MessagingNumbers' },
+      { path: 'locations', component: () => import('./views/admin/LocationManager.vue'), name: 'LocationManager' },
       { path: 'reports', component: () => import('./views/admin/Reports.vue'), name: 'Reports' },
       { path: 'audit-log', component: () => import('./views/admin/AuditLog.vue'), name: 'AuditLog' },
       { path: 'settings', component: () => import('./views/admin/TenantSettings.vue'), name: 'TenantSettings' },
+      { path: 'sip-profiles', component: () => import('./views/admin/SipProfiles.vue'), name: 'TenantSipProfiles' },
 
       { path: 'time-conditions', component: () => import('./views/admin/TimeConditions.vue'), name: 'TimeConditions' },
       { path: 'time-conditions/new', component: () => import('./views/admin/TimeConditionForm.vue'), name: 'TimeConditionFormNew' },
       { path: 'time-conditions/:id', component: () => import('./views/admin/TimeConditionForm.vue'), name: 'TimeConditionFormEdit' },
-      // Legacy redirect
-      { path: 'schedules', redirect: '/admin/time-conditions' },
+
+      { path: 'schedules', component: () => import('./views/admin/Schedules.vue'), name: 'Schedules' },
+      { path: 'schedules/new', component: () => import('./views/admin/ScheduleForm.vue'), name: 'ScheduleFormNew' },
+      { path: 'schedules/:id', component: () => import('./views/admin/ScheduleForm.vue'), name: 'ScheduleFormEdit' },
     ]
   },
 
@@ -157,6 +166,7 @@ const routes = [
       { path: 'sip-profiles', component: () => import('./views/system/SipProfiles.vue'), name: 'SipProfiles' },
       { path: 'acls', component: () => import('./views/system/ACLProfiles.vue'), name: 'ACLProfiles' },
       { path: 'routing', component: () => import('./views/system/SystemRoutes.vue'), name: 'SystemRoutes' },
+      { path: 'global-dial-plans', component: () => import('./views/admin/GlobalDialPlans.vue'), name: 'GlobalDialPlans' },
       { path: 'dial-plans', redirect: '/system/routing' }, // legacy redirect
       // Temporarily disabled phrases routes
       // { path: 'phrases', component: () => import('./views/system/Phrases.vue'), name: 'SystemPhrases' },
