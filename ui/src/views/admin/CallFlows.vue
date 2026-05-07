@@ -5,6 +5,9 @@
         <h2>Call Flows</h2>
         <p class="text-muted text-sm">Visual routing overview for all inbound numbers</p>
       </div>
+      <div class="header-actions">
+        <button class="btn-primary" @click="$router.push('/admin/call-flows/new')">+ New Call Flow</button>
+      </div>
     </div>
 
     <!-- Filter Bar -->
@@ -484,4 +487,26 @@ const getNodeIcon = (type) => {
 .stat { display: flex; align-items: center; gap: 8px; }
 .stat-value { font-size: 18px; font-weight: 700; color: var(--text-primary); }
 .stat-label { font-size: 11px; color: var(--text-muted); }
+
+.header-actions { display: flex; gap: 8px; }
+.btn-primary {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.btn-secondary {
+  background: white;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
 </style>
