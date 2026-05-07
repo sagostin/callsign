@@ -226,6 +226,78 @@ func (h *Handler) ScheduleWakeupESL(c *fiber.Ctx) error {
 	})
 }
 
+// HangupCallByUUID hangs up an active call by its channel UUID
+func (h *Handler) HangupCallByUUID(c *fiber.Ctx) error {
+	uuid := c.Params("uuid")
+	if uuid == "" {
+		h.logWarn("LIVE", "HangupCallByUUID: UUID required", h.reqFields(c, nil))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Call UUID required"})
+	}
+
+	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		h.logWarn("LIVE", "HangupCallByUUID: FreeSWITCH not connected", h.reqFields(c, nil))
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH not connected"})
+	}
+
+	_, err := h.ESLManager.Client.API(fmt.Sprintf("uuid_kill %s", uuid))
+	if err != nil {
+		h.logError("LIVE", "HangupCallByUUID: Failed to hangup call", h.reqFields(c, map[string]interface{}{"uuid": uuid, "error": err.Error()}))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to hangup call"})
+	}
+
+	h.logInfo("LIVE", "HangupCallByUUID: Call hung up", h.reqFields(c, map[string]interface{}{"uuid": uuid}))
+	return c.JSON(fiber.Map{"message": "Hangup command sent", "uuid": uuid})
+}
+
+// OriginateCall originates a call from an extension to a destination number
+func (h *Handler) OriginateCall(c *fiber.Ctx) error {
+	tenantID := middleware.GetTenantID(c)
+
+	var req struct {
+		FromExtension string `json:"from_extension"`
+		ToNumber      string `json:"to_number"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		h.logWarn("LIVE", "OriginateCall: Invalid request payload", h.reqFields(c, nil))
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+	if req.FromExtension == "" || req.ToNumber == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "from_extension and to_number are required"})
+	}
+
+	if h.ESLManager == nil || !h.ESLManager.IsConnected() {
+		h.logWarn("LIVE", "OriginateCall: FreeSWITCH not connected", h.reqFields(c, nil))
+		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "FreeSWITCH not connected"})
+	}
+
+	var tenantDomain string
+	if tenantID > 0 {
+		var tenant models.Tenant
+		if err := h.DB.First(&tenant, tenantID).Error; err == nil {
+			tenantDomain = tenant.Domain
+		}
+	}
+	if tenantDomain == "" {
+		tenantDomain = "default"
+	}
+
+	dialString := fmt.Sprintf("user/%s@%s", req.FromExtension, tenantDomain)
+	bridge := fmt.Sprintf("bridge(sofia/external/%s)", req.ToNumber)
+	jobUUID, err := h.ESLManager.Client.Originate(dialString, bridge, "")
+	if err != nil {
+		h.logError("LIVE", "OriginateCall: Failed to originate call", h.reqFields(c, map[string]interface{}{"error": err.Error()}))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to originate call"})
+	}
+
+	h.logInfo("LIVE", "OriginateCall: Call originated", h.reqFields(c, map[string]interface{}{"from": req.FromExtension, "to": req.ToNumber, "job_uuid": jobUUID}))
+	return c.JSON(fiber.Map{
+		"message":  "Originate command sent",
+		"from":     req.FromExtension,
+		"to":       req.ToNumber,
+		"job_uuid": jobUUID,
+	})
+}
+
 // GetDeviceRegistrations returns SIP registration status from FreeSWITCH Sofia
 func (h *Handler) GetDeviceRegistrations(c *fiber.Ctx) error {
 	if h.ESLManager == nil || !h.ESLManager.IsConnected() {

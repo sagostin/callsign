@@ -913,6 +913,8 @@ export const liveAPI = {
     startRecording: (uuid) => api.post('/live/recording/start', { uuid }),
     stopRecording: (uuid) => api.post('/live/recording/stop', { uuid }),
     getActiveCalls: () => api.get('/live/calls'),
+    hangupCall: (uuid) => api.post(`/live/calls/${uuid}/hangup`),
+    originate: (fromExtension, toNumber) => api.post('/live/originate', { from_extension: fromExtension, to_number: toNumber }),
     getQueueStats: () => api.get('/live/queue-stats'),
     scheduleWakeup: (data) => api.post('/live/wakeup/schedule', data),
 }

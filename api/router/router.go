@@ -613,6 +613,8 @@ func (r *Router) Init() {
 	liveOps.Post("/recording/start", r.Handler.StartCallRecording)
 	liveOps.Post("/recording/stop", r.Handler.StopCallRecording)
 	liveOps.Get("/calls", r.Handler.GetActiveCallsData)
+	liveOps.Post("/calls/:uuid/hangup", r.Handler.HangupCallByUUID)
+	liveOps.Post("/originate", r.Handler.OriginateCall)
 	liveOps.Get("/queue-stats", r.Handler.GetLiveQueueStats)
 	liveOps.Post("/wakeup/schedule", r.Handler.ScheduleWakeupESL)
 	liveOps.Get("/registrations", r.Handler.GetDeviceRegistrations)
