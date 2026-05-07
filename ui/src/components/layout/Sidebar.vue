@@ -123,11 +123,7 @@
         </div>
 
         <div class="nav-section">
-          <div class="nav-header" v-if="!isCollapsed">Users & Devices</div>
-          <router-link to="/admin/users" class="nav-item" :title="isCollapsed ? 'Users' : ''">
-            <UsersIcon class="nav-icon" />
-            <span class="nav-label">Users</span>
-          </router-link>
+          <div class="nav-header" v-if="!isCollapsed">Extensions & Devices</div>
           <router-link to="/admin/extensions" class="nav-item" :title="isCollapsed ? 'Extensions' : ''">
             <Phone class="nav-icon" />
             <span class="nav-label">Extensions</span>
@@ -140,9 +136,17 @@
             <LayersIcon class="nav-icon" />
             <span class="nav-label">Device Profiles</span>
           </router-link>
+          <router-link to="/admin/devices/templates" class="nav-item sub-item" :title="isCollapsed ? 'Templates' : ''">
+            <FileCodeIcon class="nav-icon" />
+            <span class="nav-label">Device Templates</span>
+          </router-link>
           <router-link to="/admin/provisioning" class="nav-item sub-item" :title="isCollapsed ? 'Provisioning' : ''">
             <SettingsIcon class="nav-icon" />
             <span class="nav-label">Provisioning</span>
+          </router-link>
+          <router-link to="/admin/extension-profiles" class="nav-item sub-item" :title="isCollapsed ? 'Extension Profiles' : ''">
+            <UsersIcon class="nav-icon" />
+            <span class="nav-label">Extension Profiles</span>
           </router-link>
         </div>
 
@@ -224,6 +228,10 @@
             <MessageSquare class="nav-icon" />
             <span class="nav-label">Messaging</span>
           </router-link>
+          <router-link to="/admin/call-broadcast" class="nav-item" :title="isCollapsed ? 'Call Broadcast' : ''">
+            <VolumeIcon class="nav-icon" />
+            <span class="nav-label">Call Broadcast</span>
+          </router-link>
         </div>
 
         <div class="nav-section">
@@ -235,6 +243,10 @@
           <router-link to="/admin/audio-library" class="nav-item" :title="isCollapsed ? 'Audio Library' : ''">
             <Mic class="nav-icon" />
             <span class="nav-label">Audio Library</span>
+          </router-link>
+          <router-link to="/admin/music-on-hold" class="nav-item" :title="isCollapsed ? 'Music on Hold' : ''">
+            <Music class="nav-icon" />
+            <span class="nav-label">Music on Hold</span>
           </router-link>
           <router-link to="/admin/ai-greetings" class="nav-item" :title="isCollapsed ? 'AI Greetings' : ''">
             <Sparkles class="nav-icon" />
