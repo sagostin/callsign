@@ -6,7 +6,7 @@
         <p class="text-muted text-sm">Manage pre-configured extension settings templates.</p>
       </div>
       <div class="header-actions">
-        <button class="btn-primary" @click="showCreateModal = true">
+        <button class="btn-primary" @click="openCreateModal">
           <PlusIcon class="btn-icon" /> New Profile
         </button>
       </div>
@@ -18,10 +18,6 @@
         <div class="stat-value">{{ profiles.length }}</div>
         <div class="stat-label">Total Profiles</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value">{{ activeProfiles }}</div>
-        <div class="stat-label">Active</div>
-      </div>
       <div class="stat-card highlight">
         <div class="stat-value">{{ assignedExtensions }}</div>
         <div class="stat-label">Extensions Using</div>
@@ -29,57 +25,49 @@
     </div>
 
     <!-- Profiles Grid -->
-    <div class="profiles-grid">
-      <div v-for="profile in profiles" :key="profile.id" class="profile-card" :class="{ default: profile.isDefault }">
+    <div v-if="loading" class="loading-state">
+      <p class="text-muted">Loading profiles...</p>
+    </div>
+    <div v-else-if="profiles.length === 0" class="empty-state">
+      <UsersIcon class="empty-icon" />
+      <h4>No Extension Profiles</h4>
+      <p class="text-muted text-sm">Create profiles to define permission sets and calling rules for extensions.</p>
+      <button class="btn-primary" @click="openCreateModal">Create First Profile</button>
+    </div>
+    <div v-else class="profiles-grid">
+      <div v-for="profile in profiles" :key="profile.id" class="profile-card">
         <div class="profile-header">
+          <div class="profile-icon" :style="{ background: profile.color }">
+            {{ profile.name.charAt(0) }}
+          </div>
           <div class="profile-info">
             <h4>{{ profile.name }}</h4>
-            <span class="profile-meta">{{ profile.extensionsCount }} extensions</span>
+            <span class="profile-meta">{{ profile.extensionCount }} extensions</span>
           </div>
-          <span v-if="profile.isDefault" class="default-badge">Default</span>
         </div>
-        
-        <div class="profile-settings">
-          <div class="setting-item">
-            <span class="setting-label">Caller ID</span>
-            <span class="setting-value">{{ profile.callerId || 'Extension CID' }}</span>
-          </div>
-          <div class="setting-item">
-            <span class="setting-label">Recording</span>
-            <span class="setting-value" :class="profile.recording ? 'yes' : 'no'">
-              {{ profile.recording ? 'Enabled' : 'Disabled' }}
+
+        <div class="profile-permissions">
+          <div v-for="(perm, key) in permissionLabels" :key="key" class="perm-row">
+            <span class="perm-label">{{ perm.label }}</span>
+            <span class="perm-value" :class="{ enabled: profile.permissions[key], blocked: !profile.permissions[key] }">
+              {{ profile.permissions[key] ? perm.enabled : perm.disabled }}
             </span>
           </div>
-          <div class="setting-item">
-            <span class="setting-label">Voicemail</span>
-            <span class="setting-value">{{ profile.voicemailEnabled ? 'Enabled' : 'Disabled' }}</span>
-          </div>
-          <div class="setting-item">
-            <span class="setting-label">Ring Timeout</span>
-            <span class="setting-value">{{ profile.ringTimeout }}s</span>
-          </div>
-        </div>
-        
-        <div class="profile-features">
-          <span v-if="profile.callWaiting" class="feature-badge">Call Waiting</span>
-          <span v-if="profile.dnd" class="feature-badge">DND</span>
-          <span v-if="profile.callForward" class="feature-badge">Call Forward</span>
-          <span v-if="profile.intercom" class="feature-badge">Intercom</span>
         </div>
 
         <div class="profile-footer">
           <button class="btn-link" @click="editProfile(profile)">Edit</button>
           <button class="btn-link" @click="duplicateProfile(profile)">Duplicate</button>
-          <button class="btn-link danger" @click="deleteProfile(profile)" :disabled="profile.isDefault">Delete</button>
+          <button class="btn-link danger" @click="deleteProfile(profile)">Delete</button>
         </div>
       </div>
     </div>
 
     <!-- Create/Edit Modal -->
-    <div class="modal-overlay" v-if="showCreateModal" @click.self="closeModal">
+    <div class="modal-overlay" v-if="showModal" @click.self="closeModal">
       <div class="modal-card large">
         <div class="modal-header">
-          <h3>{{ editingProfile ? 'Edit Profile' : 'New Extension Profile' }}</h3>
+          <h3>{{ isEditing ? 'Edit Profile' : 'New Extension Profile' }}</h3>
           <button class="close-btn" @click="closeModal">×</button>
         </div>
         <div class="modal-body">
@@ -88,82 +76,51 @@
             <div class="form-row">
               <div class="form-group">
                 <label>Profile Name</label>
-                <input v-model="form.name" class="input-field" placeholder="Standard User">
+                <input v-model="form.name" class="input-field" placeholder="e.g. Sales Team">
               </div>
               <div class="form-group">
-                <label class="checkbox-label">
-                  <input type="checkbox" v-model="form.isDefault">
-                  Set as Default Profile
-                </label>
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Description</label>
-              <input v-model="form.description" class="input-field" placeholder="Profile for standard office users">
-            </div>
-          </div>
-
-          <div class="form-section">
-            <h4>Caller ID Settings</h4>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Outbound Caller ID</label>
-                <select v-model="form.callerIdType" class="input-field">
-                  <option value="extension">Use Extension CID</option>
-                  <option value="main">Use Main Number</option>
-                  <option value="custom">Custom Number</option>
-                </select>
-              </div>
-              <div class="form-group" v-if="form.callerIdType === 'custom'">
-                <label>Custom CID Number</label>
-                <input v-model="form.customCid" class="input-field" placeholder="+1 555-123-4567">
+                <label>Profile Color</label>
+                <div class="color-picker">
+                  <button
+                    v-for="c in colorOptions"
+                    :key="c"
+                    class="color-swatch"
+                    :style="{ background: c }"
+                    :class="{ selected: form.color === c }"
+                    @click="form.color = c"
+                  >
+                    <CheckIcon v-if="form.color === c" class="check-icon" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
           <div class="form-section">
-            <h4>Call Settings</h4>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Ring Timeout (seconds)</label>
-                <input type="number" v-model.number="form.ringTimeout" class="input-field" min="10" max="120">
-              </div>
-              <div class="form-group">
-                <label>Max Concurrent Calls</label>
-                <input type="number" v-model.number="form.maxCalls" class="input-field" min="1" max="10">
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label class="checkbox-label"><input type="checkbox" v-model="form.callWaiting"> Call Waiting</label>
-              </div>
-              <div class="form-group">
-                <label class="checkbox-label"><input type="checkbox" v-model="form.intercom"> Intercom/Paging</label>
-              </div>
+            <h4>Permissions</h4>
+            <div class="perm-toggles">
+              <label v-for="(perm, key) in permissionLabels" :key="key" class="toggle-row">
+                <input type="checkbox" v-model="form.permissions[key]">
+                <span>{{ perm.label }}</span>
+              </label>
             </div>
           </div>
 
-          <div class="form-section">
-            <h4>Recording & Voicemail</h4>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Call Recording</label>
-                <select v-model="form.recording" class="input-field">
-                  <option value="">Disabled</option>
-                  <option value="all">Record All Calls</option>
-                  <option value="inbound">Inbound Only</option>
-                  <option value="outbound">Outbound Only</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="checkbox-label"><input type="checkbox" v-model="form.voicemailEnabled"> Voicemail Enabled</label>
-              </div>
-            </div>
+          <!-- Call Handling Rules (only when editing) -->
+          <div class="form-section" v-if="isEditing && form.id">
+            <h4>Call Handling Rules</h4>
+            <p class="help-text">Rules applied to all extensions using this profile.</p>
+            <CallHandlingRules
+              :profileId="form.id"
+              :api="extensionProfilesAPI"
+            />
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="closeModal">Cancel</button>
-          <button class="btn-primary" @click="saveProfile">Save Profile</button>
+          <button class="btn-primary" @click="saveProfile" :disabled="saving || !form.name">
+            {{ saving ? 'Saving...' : 'Save Profile' }}
+          </button>
         </div>
       </div>
     </div>
@@ -171,84 +128,136 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { Plus as PlusIcon } from 'lucide-vue-next'
+import { ref, computed, onMounted, inject } from 'vue'
+import { Plus as PlusIcon, Users as UsersIcon, Check as CheckIcon } from 'lucide-vue-next'
+import CallHandlingRules from '../../components/common/CallHandlingRules.vue'
+import { extensionProfilesAPI } from '@/services/api'
 
-const showCreateModal = ref(false)
-const editingProfile = ref(null)
+const toast = inject('toast')
 
-const profiles = ref([
-  { 
-    id: 1, name: 'Standard Office', isDefault: true, extensionsCount: 45,
-    callerId: 'Extension CID', recording: false, voicemailEnabled: true, ringTimeout: 30,
-    callWaiting: true, dnd: false, callForward: true, intercom: true
-  },
-  { 
-    id: 2, name: 'Executive', isDefault: false, extensionsCount: 5,
-    callerId: 'Main Number', recording: true, voicemailEnabled: true, ringTimeout: 20,
-    callWaiting: true, dnd: true, callForward: true, intercom: false
-  },
-  { 
-    id: 3, name: 'Call Center Agent', isDefault: false, extensionsCount: 25,
-    callerId: 'Main Number', recording: true, voicemailEnabled: false, ringTimeout: 15,
-    callWaiting: false, dnd: false, callForward: false, intercom: true
-  },
-  { 
-    id: 4, name: 'Lobby Phone', isDefault: false, extensionsCount: 3,
-    callerId: 'Extension CID', recording: false, voicemailEnabled: false, ringTimeout: 60,
-    callWaiting: false, dnd: false, callForward: false, intercom: true
-  },
-])
+const profiles = ref([])
+const loading = ref(false)
+const saving = ref(false)
+const showModal = ref(false)
+const isEditing = ref(false)
 
-const form = ref({
+const permissionLabels = {
+  outbound: { label: 'Outbound Calls', enabled: 'Allowed', disabled: 'Blocked' },
+  international: { label: 'International Dialing', enabled: 'Allowed', disabled: 'Blocked' },
+  recording: { label: 'Call Recording', enabled: 'Enabled', disabled: 'Disabled' },
+  portal: { label: 'Portal Access', enabled: 'Allowed', disabled: 'Blocked' },
+  voicemail: { label: 'Voicemail Config', enabled: 'Allowed', disabled: 'Blocked' }
+}
+
+const colorOptions = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b']
+
+const defaultForm = () => ({
+  id: null,
   name: '',
-  description: '',
-  isDefault: false,
-  callerIdType: 'extension',
-  customCid: '',
-  ringTimeout: 30,
-  maxCalls: 2,
-  callWaiting: true,
-  intercom: true,
-  recording: '',
-  voicemailEnabled: true
+  color: '#6366f1',
+  permissions: { outbound: true, international: false, recording: true, portal: true, voicemail: true }
 })
 
-const activeProfiles = computed(() => profiles.value.filter(p => p.extensionsCount > 0).length)
-const assignedExtensions = computed(() => profiles.value.reduce((sum, p) => sum + p.extensionsCount, 0))
+const form = ref(defaultForm())
+
+const assignedExtensions = computed(() => profiles.value.reduce((sum, p) => sum + (p.extensionCount || 0), 0))
+
+onMounted(() => loadProfiles())
+
+async function loadProfiles() {
+  loading.value = true
+  try {
+    const response = await extensionProfilesAPI.list()
+    profiles.value = (response.data || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      color: p.color || '#6366f1',
+      extensionCount: p.extension_count || 0,
+      permissions: p.permissions || {}
+    }))
+  } catch (error) {
+    toast?.error(error.message || 'Failed to load profiles')
+    profiles.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+const openCreateModal = () => {
+  form.value = defaultForm()
+  isEditing.value = false
+  showModal.value = true
+}
 
 const editProfile = (profile) => {
-  editingProfile.value = profile
-  form.value = { ...profile }
-  showCreateModal.value = true
+  form.value = {
+    id: profile.id,
+    name: profile.name,
+    color: profile.color,
+    permissions: { ...profile.permissions }
+  }
+  isEditing.value = true
+  showModal.value = true
 }
 
-const duplicateProfile = (profile) => {
-  const newProfile = { ...profile, id: Date.now(), name: profile.name + ' (Copy)', isDefault: false, extensionsCount: 0 }
-  profiles.value.push(newProfile)
-}
-
-const deleteProfile = (profile) => {
-  if (profile.isDefault) return
-  if (confirm(`Delete profile "${profile.name}"?`)) {
-    profiles.value = profiles.value.filter(p => p.id !== profile.id)
+const duplicateProfile = async (profile) => {
+  try {
+    const payload = {
+      name: profile.name + ' (Copy)',
+      color: profile.color,
+      permissions: { ...profile.permissions }
+    }
+    await extensionProfilesAPI.create(payload)
+    toast?.success('Profile duplicated')
+    await loadProfiles()
+  } catch (error) {
+    toast?.error(error.message || 'Failed to duplicate profile')
   }
 }
 
-const saveProfile = () => {
-  if (editingProfile.value) {
-    const idx = profiles.value.findIndex(p => p.id === editingProfile.value.id)
-    if (idx !== -1) profiles.value[idx] = { ...form.value, id: editingProfile.value.id }
-  } else {
-    profiles.value.push({ ...form.value, id: Date.now(), extensionsCount: 0 })
+const deleteProfile = async (profile) => {
+  if (!confirm(`Delete profile "${profile.name}"? Extensions using it will be unassigned.`)) return
+  try {
+    await extensionProfilesAPI.delete(profile.id)
+    toast?.success(`Profile "${profile.name}" deleted`)
+    await loadProfiles()
+  } catch (error) {
+    toast?.error(error.message || 'Failed to delete profile')
   }
-  closeModal()
+}
+
+const saveProfile = async () => {
+  if (!form.value.name) {
+    toast?.error('Profile name is required')
+    return
+  }
+  saving.value = true
+  try {
+    const payload = {
+      name: form.value.name,
+      color: form.value.color,
+      permissions: form.value.permissions
+    }
+    if (isEditing.value && form.value.id) {
+      await extensionProfilesAPI.update(form.value.id, payload)
+      toast?.success('Profile updated')
+    } else {
+      await extensionProfilesAPI.create(payload)
+      toast?.success('Profile created')
+    }
+    closeModal()
+    await loadProfiles()
+  } catch (error) {
+    toast?.error(error.message || 'Failed to save profile')
+  } finally {
+    saving.value = false
+  }
 }
 
 const closeModal = () => {
-  showCreateModal.value = false
-  editingProfile.value = null
-  form.value = { name: '', description: '', isDefault: false, callerIdType: 'extension', customCid: '', ringTimeout: 30, maxCalls: 2, callWaiting: true, intercom: true, recording: '', voicemailEnabled: true }
+  showModal.value = false
+  isEditing.value = false
+  form.value = defaultForm()
 }
 </script>
 
@@ -258,6 +267,7 @@ const closeModal = () => {
 .view-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .header-content h2 { margin: 0 0 4px; }
 .btn-primary { display: flex; align-items: center; gap: 6px; background: var(--primary-color); color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-icon { width: 14px; height: 14px; }
 
 .stats-row { display: flex; gap: 16px; margin-bottom: 20px; }
@@ -265,6 +275,11 @@ const closeModal = () => {
 .stat-card.highlight { border-color: var(--primary-color); background: #f0f9ff; }
 .stat-value { font-size: 28px; font-weight: 700; color: var(--text-primary); }
 .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; }
+
+.loading-state, .empty-state { text-align: center; padding: 60px 20px; background: white; border: 1px solid var(--border-color); border-radius: 8px; }
+.empty-state .empty-icon { width: 48px; height: 48px; color: var(--text-muted); margin-bottom: 16px; }
+.empty-state h4 { margin: 0 0 8px; font-size: 16px; }
+.empty-state p { margin: 0 0 16px; }
 
 .profiles-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
 
@@ -274,31 +289,38 @@ const closeModal = () => {
   border-radius: 8px;
   overflow: hidden;
 }
-.profile-card.default { border-left: 3px solid var(--primary-color); }
 .profile-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 
 .profile-header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
+  gap: 12px;
   padding: 14px;
   background: #f8fafc;
   border-bottom: 1px solid var(--border-color);
 }
+.profile-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 16px;
+  flex-shrink: 0;
+}
 .profile-info h4 { margin: 0 0 4px; font-size: 14px; }
 .profile-meta { font-size: 11px; color: var(--text-muted); }
-.default-badge { font-size: 9px; background: var(--primary-color); color: white; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; font-weight: 600; }
 
-.profile-settings { padding: 14px; }
-.setting-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f1f5f9; }
-.setting-item:last-child { border-bottom: none; }
-.setting-label { font-size: 11px; color: var(--text-muted); }
-.setting-value { font-size: 12px; font-weight: 500; }
-.setting-value.yes { color: #22c55e; }
-.setting-value.no { color: #94a3b8; }
-
-.profile-features { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 14px 14px; }
-.feature-badge { font-size: 9px; background: #eff6ff; color: #3b82f6; padding: 3px 8px; border-radius: 4px; font-weight: 500; }
+.profile-permissions { padding: 14px; }
+.perm-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f1f5f9; }
+.perm-row:last-child { border-bottom: none; }
+.perm-label { font-size: 11px; color: var(--text-muted); }
+.perm-value { font-size: 12px; font-weight: 500; }
+.perm-value.enabled { color: #22c55e; }
+.perm-value.blocked { color: #94a3b8; }
 
 .profile-footer {
   display: flex;
@@ -309,12 +331,11 @@ const closeModal = () => {
 }
 .btn-link { background: none; border: none; color: var(--primary-color); font-size: 12px; font-weight: 500; cursor: pointer; }
 .btn-link.danger { color: #ef4444; }
-.btn-link:disabled { color: #cbd5e1; cursor: not-allowed; }
 
 /* Modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; }
 .modal-card { background: white; border-radius: 12px; width: 90%; max-width: 500px; max-height: 85vh; overflow: hidden; display: flex; flex-direction: column; }
-.modal-card.large { max-width: 600px; }
+.modal-card.large { max-width: 700px; }
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-color); }
 .modal-header h3 { margin: 0; font-size: 16px; }
 .close-btn { width: 28px; height: 28px; border: none; background: #f1f5f9; border-radius: 6px; font-size: 18px; cursor: pointer; }
@@ -330,5 +351,18 @@ const closeModal = () => {
 .form-row .form-group { flex: 1; }
 .input-field { width: 100%; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; box-sizing: border-box; }
 .input-field:focus { border-color: var(--primary-color); outline: none; }
-.checkbox-label { display: flex !important; align-items: center; gap: 8px; font-size: 12px !important; cursor: pointer; text-transform: none !important; }
+.help-text { font-size: 11px; color: var(--text-muted); margin: 4px 0; }
+
+/* Color Picker */
+.color-picker { display: flex; flex-wrap: wrap; gap: 8px; }
+.color-swatch { width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.color-swatch:hover { transform: scale(1.1); }
+.color-swatch.selected { border-color: var(--text-primary); box-shadow: 0 0 0 2px white, 0 0 0 4px var(--text-primary); }
+.check-icon { width: 16px; height: 16px; color: white; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3)); }
+
+/* Permission Toggles */
+.perm-toggles { display: flex; flex-direction: column; gap: 8px; }
+.toggle-row { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; padding: 8px; border-radius: 6px; transition: background 0.15s; }
+.toggle-row:hover { background: #f8fafc; }
+.toggle-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary-color); }
 </style>

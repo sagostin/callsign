@@ -1,7 +1,7 @@
 <template>
   <div class="view-header">
     <div class="header-left">
-      <button class="back-link" @click="$router.push('/queues')">← Back to Queues</button>
+      <button class="back-link" @click="$router.push('/admin/queues')">← Back to Queues</button>
       <h2>{{ isNew ? 'Add New Queue' : 'Edit Queue' }}</h2>
     </div>
   </div>

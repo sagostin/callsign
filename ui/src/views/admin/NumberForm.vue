@@ -1,7 +1,7 @@
 <template>
   <div class="view-header">
     <div class="header-left">
-      <button class="back-link" @click="$router.push('/numbers')">← Back to Numbers</button>
+      <button class="back-link" @click="$router.push('/admin/routing')">← Back to Routing</button>
       <h2>Add New Number</h2>
     </div>
   </div>

@@ -13,9 +13,9 @@
     <template #type="{ value }">
        <span class="badge">{{ value }}</span>
     </template>
-    <template #actions>
-       <button class="btn-link" @click="$router.push('/admin/bridges/1')">Edit</button>
-       <button class="btn-link text-bad" @click="deleteExtension">Delete</button>
+    <template #actions="{ row }">
+       <button class="btn-link" @click="$router.push(`/admin/bridges/${row.id}`)">Edit</button>
+       <button class="btn-link text-bad" @click="deleteExtension(row)">Delete</button>
     </template>
   </DataTable>
 </template>

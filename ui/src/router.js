@@ -40,6 +40,7 @@ const routes = [
     children: [
       { path: '', component: Overview, name: 'Overview' },
       { path: 'extensions', component: () => import('./views/admin/Extensions.vue'), name: 'Extensions' },
+      { path: 'extensions/new', component: () => import('./views/admin/ExtensionDetail.vue'), name: 'ExtensionDetailNew' },
       { path: 'extensions/:id', component: () => import('./views/admin/ExtensionDetail.vue'), name: 'ExtensionDetail' },
       { path: 'conferences', component: () => import('./views/admin/Conferences.vue'), name: 'Conferences' },
       { path: 'conferences/new', component: () => import('./views/admin/ConferenceForm.vue'), name: 'ConferenceFormNew' },
@@ -110,8 +111,6 @@ const routes = [
       { path: 'ring-groups', component: () => import('./views/admin/RingGroups.vue'), name: 'RingGroups' },
       { path: 'ring-groups/new', component: () => import('./views/admin/RingGroupForm.vue'), name: 'RingGroupFormNew' },
       { path: 'ring-groups/:id', component: () => import('./views/admin/RingGroupForm.vue'), name: 'RingGroupFormEdit' },
-
-      { path: 'users', component: () => import('./views/admin/Users.vue'), name: 'Users' },
 
       { path: 'music-on-hold', component: () => import('./views/admin/MusicOnHold.vue'), name: 'MusicOnHold' },
       { path: 'music-on-hold/new', component: () => import('./views/admin/StreamForm.vue'), name: 'StreamFormNew' },
